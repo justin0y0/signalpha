@@ -1,0 +1,7 @@
+[build]
+dockerfilePath = "backend/Dockerfile.railway"
+
+[deploy]
+healthcheckPath = "/api/v1/health"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"

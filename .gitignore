@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.venv/
+.env
+.env.local
+node_modules/
+dist/
+coverage/
+htmlcov/
+data/raw/
+data/processed/
+.DS_Store
