@@ -71,15 +71,25 @@ export type PredictionResponse = {
 
 export type BacktestResponse = {
   total_samples: number
+  total_trades: number
   accuracy: number
   precision_weighted: number
   recall_weighted: number
   f1_weighted: number
   sharpe_ratio: number
-  mae?: number | null
-  rmse?: number | null
+  sortino_ratio: number
+  max_drawdown: number
+  total_return: number
+  win_rate: number
+  avg_win_pct: number
+  avg_loss_pct: number
+  profit_factor: number
+  mae: number | null
+  rmse: number | null
   confusion_matrix: number[][]
-  equity_curve: { date: string; equity: number }[]
+  equity_curve: { date: string; equity: number; drawdown: number }[]
+  direction_stats: { direction: string; signals: number; hits: number; hit_rate: number; avg_return_pct: number }[]
+}[]
 }
 
 export type PerformanceResponse = {
