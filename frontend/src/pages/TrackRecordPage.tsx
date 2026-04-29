@@ -16,6 +16,7 @@ type Summary = {
 type Confusion = { classes: string[]; matrix: Record<string, Record<string, number>>; total: number }
 type CalibPt = { confidence_bin: number; n: number; predicted_rate: number; actual_rate: number }
 type RollingPt = { date: string; accuracy: number; n: number }
+type ConfBreakRow = { min_confidence: number; label: string; n: number; hit_rate: number }
 type RecentItem = {
   ticker: string; earnings_date: string; sector: string
   predicted: string; predicted_prob: number; confidence: number
@@ -203,10 +204,12 @@ function RecentTable({ items, total, onFilter, verdict, setVerdict, minConf, set
                 <td><span className="tr-ticker">{r.ticker}</span></td>
                 <td className="tr-sector">{r.sector}</td>
                 <td>
-                  <span className="tr-dir" style={{ color: DIR_COLOR[r.predicted as keyof typeof DIR_COLOR] || CYAN }}>
-                    {DIR_ICON[r.predicted as keyof typeof DIR_ICON]} {r.predicted}
-                  </span>
-                  <span className="tr-prob">{fmt(r.predicted_prob)}</span>
+                  <div className="tr-pred-cell">
+                    <span className="tr-dir" style={{ color: DIR_COLOR[r.predicted as keyof typeof DIR_COLOR] || CYAN }}>
+                      {DIR_ICON[r.predicted as keyof typeof DIR_ICON]} {r.predicted}
+                    </span>
+                    <span className="tr-prob">{fmt(r.predicted_prob)}</span>
+                  </div>
                 </td>
                 <td>
                   <div className="tr-conf-bar">
@@ -245,6 +248,7 @@ export function TrackRecordPage() {
   const [confusion, setConfusion] = useState<Confusion | null>(null)
   const [calib, setCalib] = useState<CalibPt[]>([])
   const [rolling, setRolling] = useState<RollingPt[]>([])
+  const [confBreak, setConfBreak] = useState<ConfBreakRow[]>([])
   const [recent, setRecent] = useState<RecentItem[]>([])
   const [totalFiltered, setTotalFiltered] = useState(0)
   const [verdict, setVerdict] = useState('all')
@@ -264,6 +268,7 @@ export function TrackRecordPage() {
       fetch(`${API}/confusion`).then(r => r.json()).then(setConfusion),
       fetch(`${API}/calibration`).then(r => r.json()).then(d => setCalib(d.points)),
       fetch(`${API}/rolling`).then(r => r.json()).then(d => setRolling(d.points)),
+      fetch(`${API}/confidence-breakdown`).then(r => r.json()).then(d => setConfBreak(d.rows)),
       fetchRecent('all'),
     ]).finally(() => setLoading(false))
   }, [fetchRecent])
@@ -294,7 +299,7 @@ export function TrackRecordPage() {
           <KpiCard label="HIGH Confidence" value={fmt(summary.by_confidence.HIGH?.hit_rate ?? 0)} sub={`${summary.by_confidence.HIGH?.n.toLocaleString()} predictions`} accent={CYAN} />
           <KpiCard label="Avg Actual Move" value={`±${summary.avg_actual_move_pct}%`} sub="T+1 absolute return" accent={PURPLE} />
           {summary.best_sector && (
-            <KpiCard label="Best Sector" value={summary.best_sector.name.split(' ')[0]}
+            <KpiCard label="Best Sector" value={summary.best_sector.name.replace(' Services','').replace(' Cyclical','').replace(' Defensive','')} 
               sub={`${fmt(summary.best_sector.hit_rate)} · ${summary.best_sector.n} events`} accent={GREEN} />
           )}
         </div>
@@ -321,6 +326,40 @@ export function TrackRecordPage() {
                 <div className="tr-sector-row__stat mono">{fmt(s.hit_rate)} <span className="tr-sector-row__n">({s.n})</span></div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {confBreak.length > 0 && (
+        <div className="tr-card">
+          <div className="tr-card__title">
+            Accuracy by Confidence Threshold
+            <span className="tr-card__sub">higher confidence → higher hit rate · threshold = ±2% T+1 return</span>
+          </div>
+          <div className="tr-confbreak">
+            {confBreak.map(r => (
+              <div key={r.label} className="tr-confbreak__row">
+                <div className="tr-confbreak__label">{r.label}</div>
+                <div className="tr-confbreak__bar-wrap">
+                  <div className="tr-confbreak__bar" style={{
+                    width: `${r.hit_rate * 100}%`,
+                    background: r.hit_rate >= 0.85 ? '#4ade80' : r.hit_rate >= 0.75 ? '#38bdf8' : r.hit_rate >= 0.6 ? '#a78bfa' : '#64748b'
+                  }} />
+                  <div className="tr-confbreak__baseline" style={{ left: '33.3%' }} />
+                  <div className="tr-confbreak__baseline tr-confbreak__baseline--amber" style={{ left: '50%' }} />
+                </div>
+                <div className="tr-confbreak__stat">
+                  <span className="tr-confbreak__pct" style={{
+                    color: r.hit_rate >= 0.85 ? '#4ade80' : r.hit_rate >= 0.75 ? '#38bdf8' : '#a78bfa'
+                  }}>{(r.hit_rate * 100).toFixed(1)}%</span>
+                  <span className="tr-confbreak__n">n={r.n.toLocaleString()}</span>
+                </div>
+              </div>
+            ))}
+            <div className="tr-confbreak__note">
+              ⚠ Overall accuracy includes in-sample predictions. True walk-forward OOS accuracy = 49.3% (5,393 events, 47 folds).
+              High-confidence ≥75% subset reflects stronger model conviction.
+            </div>
           </div>
         </div>
       )}

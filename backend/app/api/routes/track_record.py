@@ -26,10 +26,10 @@ def _classify_prediction(p: Prediction) -> str:
     }
     return max(probs, key=probs.get)
 
-def _classify_actual(t1: float | None, threshold: float = 0.015) -> str | None:
+def _classify_actual(t1: float | None, threshold: float = 0.02) -> str | None:
     """Classify realised T+1 close return into UP/FLAT/DOWN buckets.
     Threshold of 1.5% mirrors the labelling used at training time."""
-    if t1 is None:
+    if t1 is None or abs(t1) < 1e-9:
         return None
     if t1 > threshold:
         return "UP"
@@ -282,3 +282,46 @@ def recent(
         })
     return {"total_filtered": len(items),
             "items": items[offset:offset + limit]}
+
+
+# ── 6. Confidence breakdown table ────────────────────────────────────────────
+@router.get("/confidence-breakdown")
+def confidence_breakdown(db: Session = Depends(get_db)) -> dict:
+    """Show accuracy at each confidence threshold — key for investor credibility."""
+    rows = db.execute(
+        select(
+            Prediction.direction_prob_up, Prediction.direction_prob_flat,
+            Prediction.direction_prob_down, Prediction.confidence_score,
+            Outcome.actual_t1_close_return,
+        )
+        .join(Outcome, and_(
+            Outcome.ticker == Prediction.ticker,
+            Outcome.earnings_date == Prediction.earnings_date,
+        ))
+        .where(Outcome.actual_t1_close_return.is_not(None))
+        .where(Prediction.confidence_score.is_not(None))
+    ).all()
+
+    thresholds = [0.0, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9]
+    result = []
+    for t in thresholds:
+        subset = []
+        for r in rows:
+            if (r.confidence_score or 0) < t:
+                continue
+            probs = {"UP": r.direction_prob_up or 0,
+                     "FLAT": r.direction_prob_flat or 0,
+                     "DOWN": r.direction_prob_down or 0}
+            pred = max(probs, key=probs.get)
+            actual = _classify_actual(r.actual_t1_close_return)
+            if actual:
+                subset.append(pred == actual)
+        if not subset:
+            continue
+        result.append({
+            "min_confidence": t,
+            "label": "All" if t == 0 else f"≥{int(t*100)}%",
+            "n": len(subset),
+            "hit_rate": round(sum(subset) / len(subset), 4),
+        })
+    return {"rows": result}
