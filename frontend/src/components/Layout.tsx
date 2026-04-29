@@ -46,7 +46,7 @@ export function Layout() {
         </NavLink>
 
         {/* Desktop nav */}
-        <nav className="nav nav--desktop">
+        <nav className="nav">
           {links.map(l => (
             <NavLink key={l.to} to={l.to} end={l.end}>{l.label}</NavLink>
           ))}

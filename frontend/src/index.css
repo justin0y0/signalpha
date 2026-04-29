@@ -2997,3 +2997,9 @@ input, select { font: inherit; color: inherit; }
 }
 
 @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+
+/* Mobile nav - only hides desktop nav below 768px */
+@media (max-width: 768px) {
+  .nav { display: none; }
+  .nav-burger { display: flex !important; }
+}
