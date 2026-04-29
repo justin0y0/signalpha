@@ -2885,9 +2885,8 @@ input, select { font: inherit; color: inherit; }
 .bt-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 260px; color: var(--text-tertiary); font-size: 0.88rem; text-align: center; gap: 0.25rem; }
 
 /* ═══════════════════════ Mobile Nav ═══════════════════════ */
-.nav--desktop { display: flex; }
 .nav-burger { display: none; }
-
+.nav--desktop { display: flex; }
 @media (max-width: 768px) {
   .nav--desktop { display: none; }
 
@@ -2998,8 +2997,3 @@ input, select { font: inherit; color: inherit; }
 
 @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
 
-/* Mobile nav - only hides desktop nav below 768px */
-@media (max-width: 768px) {
-  .nav { display: none; }
-  .nav-burger { display: flex !important; }
-}
