@@ -31,6 +31,7 @@ export function Layout() {
           <NavLink to="/backtest">Backtest</NavLink>
           <NavLink to="/performance">Performance</NavLink>
           <NavLink to="/simulator">Simulator</NavLink>
+          <NavLink to="/track-record">Track Record</NavLink>
           <NavLink to="/about">About</NavLink>
           <NavLink to="/contact">Contact</NavLink>
         </nav>

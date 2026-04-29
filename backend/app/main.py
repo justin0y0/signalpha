@@ -12,6 +12,7 @@ from backend.app.api.routes.health import router as health_router
 from backend.app.api.routes.performance import router as performance_router
 from backend.app.api.routes.predict import router as predict_router
 from backend.app.api.routes.simulator import router as simulator_router
+from backend.app.api.routes.track_record import router as track_record_router
 from backend.app.api.routes.quote import router as quote_router
 from backend.app.core.config import get_settings
 from backend.app.core.logging import configure_logging
@@ -44,6 +45,7 @@ app.include_router(predict_router, prefix=settings.api_v1_prefix)
 app.include_router(quote_router, prefix=settings.api_v1_prefix)
 app.include_router(backtest_router, prefix=settings.api_v1_prefix)
 app.include_router(performance_router, prefix=settings.api_v1_prefix)
+app.include_router(track_record_router, prefix=settings.api_v1_prefix)
 app.include_router(simulator_router, prefix=settings.api_v1_prefix)
 
 
