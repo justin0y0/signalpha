@@ -89,7 +89,6 @@ export type BacktestResponse = {
   confusion_matrix: number[][]
   equity_curve: { date: string; equity: number; drawdown: number }[]
   direction_stats: { direction: string; signals: number; hits: number; hit_rate: number; avg_return_pct: number }[]
-}[]
 }
 
 export type PerformanceResponse = {
