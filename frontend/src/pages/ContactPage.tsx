@@ -213,7 +213,7 @@ export function ContactPage() {
                   </div>
                   <div className="contact-card__loc">
                     <MapPin size={12} />
-                    Los Angeles ↔ New York
+                    Los Angeles
                   </div>
                 </div>
               </div>
@@ -286,9 +286,9 @@ export function ContactPage() {
           {[
             'ML & Data Science',
             'Earnings drift / PEAD',
-            'Multi-modal financial NLP',
-            'Walk-forward backtesting',
-            'Bayesian / conformal uncertainty',
+            'Earnings call sentiment',
+            'Out-of-sample testing',
+            'Risk-adjusted backtesting',
             'Production ML systems',
             'Quantitative Finance',
           ].map((c) => (

@@ -11,6 +11,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from backend.app.core.config import get_settings
 from backend.app.core.logging import configure_logging, get_logger
 from data_pipeline.jobs import (
+    run_simulator_step,
     collect_earnings_calendar,
     collect_macro_data,
     collect_options_data,
@@ -36,6 +37,13 @@ scheduler.add_job(
 scheduler.add_job(collect_macro_data, CronTrigger(hour=8, minute=0), id="collect_macro_data", max_instances=1, coalesce=True)
 scheduler.add_job(run_predictions, CronTrigger(hour=17, minute=0), id="run_predictions", max_instances=1, coalesce=True)
 scheduler.add_job(retrain_models, CronTrigger(month="*/1", day=1, hour=2, minute=0), id="retrain_models", max_instances=1, coalesce=True)
+scheduler.add_job(
+    run_simulator_step,
+    IntervalTrigger(minutes=30),
+    id="run_simulator_step",
+    max_instances=1,
+    coalesce=True,
+)
 scheduler.add_job(
     collect_post_earnings_results,
     IntervalTrigger(hours=1),

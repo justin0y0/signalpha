@@ -225,3 +225,27 @@ def retrain_models() -> None:
             )
         session.commit()
     logger.info("Finished model retraining")
+
+
+def run_simulator_step() -> None:
+    """Auto-step the simulator every 30 minutes during market hours."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from backend.app.db.session import SessionLocal
+    from backend.app.services.simulation_service import run_step
+
+    # Only run during US market hours-ish (4am-8pm ET, Mon-Fri)
+    et = datetime.now(ZoneInfo("America/New_York"))
+    if et.weekday() >= 5:
+        return
+    if et.hour < 4 or et.hour >= 20:
+        return
+
+    db = SessionLocal()
+    try:
+        result = run_step(db)
+        logger.info("simulator auto-step: %s", result)
+    except Exception as e:
+        logger.error("simulator auto-step failed: %s", e)
+    finally:
+        db.close()

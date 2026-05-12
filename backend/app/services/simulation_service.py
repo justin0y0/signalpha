@@ -428,9 +428,17 @@ def run_step(db: Session) -> dict[str, Any]:
         p_up = _to_float(pred.direction_prob_up)
         p_down = _to_float(pred.direction_prob_down)
         p_flat = _to_float(pred.direction_prob_flat)
+        # Require directional conviction: dominant class must beat FLAT by 15pp
+        # AND must beat the opposing class by 20pp. Otherwise skip.
+        MIN_FLAT_MARGIN = 0.15
+        MIN_DIR_MARGIN  = 0.20
         if p_up > p_down and p_up > p_flat:
+            if (p_up - p_flat) < MIN_FLAT_MARGIN or (p_up - p_down) < MIN_DIR_MARGIN:
+                continue
             side = "LONG"
         elif p_down > p_up and p_down > p_flat:
+            if (p_down - p_flat) < MIN_FLAT_MARGIN or (p_down - p_up) < MIN_DIR_MARGIN:
+                continue
             side = "SHORT"
         else:
             continue
@@ -582,7 +590,7 @@ def get_dashboard(db: Session, equity_curve_limit: int = 200, trades_limit: int 
         select(SimulationTrade).order_by(desc(SimulationTrade.executed_at)).limit(trades_limit)
     ).scalars().all()
     curve = db.execute(
-        select(SimulationState).order_by(SimulationState.snapshot_at.asc()).limit(equity_curve_limit * 4)
+        select(SimulationState).order_by(SimulationState.snapshot_at.desc()).limit(equity_curve_limit * 4)
     ).scalars().all()
     if len(curve) > equity_curve_limit:
         idxs = np.linspace(0, len(curve) - 1, equity_curve_limit).astype(int).tolist()
