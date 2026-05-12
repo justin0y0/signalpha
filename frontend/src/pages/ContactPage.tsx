@@ -27,9 +27,9 @@ const LINKEDIN_DISPLAY = 'in/justin-yu-881727291'
 
 const TERMINAL_LINES: { prompt?: string; text: string; tone?: 'cmd' | 'out' | 'warn' | 'ok' | 'comment' }[] = [
   { prompt: '$', text: 'whoami', tone: 'cmd' },
-  { text: 'Justin Yu  \u00B7  Columbia MSAI', tone: 'out' },
+  { text: 'Justin Yu', tone: 'out' },
   { prompt: '$', text: 'cat ./role.txt', tone: 'cmd' },
-  { text: 'Looking for: quant research, ML / signals, applied AI', tone: 'out' },
+  { text: 'Building: ML-powered market intelligence systems', tone: 'out' },
   { prompt: '$', text: 'curl -s api.signalpha.app/about | jq .stack', tone: 'cmd' },
   { text: '"Python  \u00B7  PyTorch  \u00B7  XGBoost  \u00B7  TypeScript  \u00B7  SQL  \u00B7  Docker"', tone: 'out' },
   { prompt: '$', text: 'echo $REPLY_SLA', tone: 'cmd' },
@@ -189,7 +189,7 @@ export function ContactPage() {
           ML and markets.
         </h1>
         <p className="contact-hero__lede">
-          Open to quant research roles, applied ML positions, and any conversation about post-earnings
+          Open to ML engineering, data science, and quantitative roles. Always happy to chat about post-earnings
           drift, ensemble models, or production-grade financial UI.
         </p>
       </motion.section>
@@ -209,7 +209,7 @@ export function ContactPage() {
                   <div className="contact-card__name">Justin Yu</div>
                   <div className="contact-card__role">
                     <Briefcase size={12} />
-                    Columbia MSAI · Quant ML
+                    ML Engineer · Data Scientist
                   </div>
                   <div className="contact-card__loc">
                     <MapPin size={12} />
@@ -284,13 +284,13 @@ export function ContactPage() {
         <div className="contact-focus__title">What I'd love to talk about</div>
         <div className="contact-focus__chips">
           {[
-            'Quant research roles',
+            'ML & Data Science',
             'Earnings drift / PEAD',
             'Multi-modal financial NLP',
             'Walk-forward backtesting',
             'Bayesian / conformal uncertainty',
             'Production ML systems',
-            'Any role at a multi-manager pod',
+            'Quantitative Finance',
           ].map((c) => (
             <span key={c} className="contact-focus__chip">
               {c}
