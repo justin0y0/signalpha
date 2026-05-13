@@ -19,6 +19,7 @@ export function Layout() {
     { to: '/performance', label: 'Performance' },
     { to: '/simulator', label: 'Simulator' },
     { to: '/track-record', label: 'Track Record' },
+    { to: '/showdown', label: 'Showdown' },
     { to: '/about', label: 'About' },
     { to: '/contact', label: 'Contact' },
   ]
