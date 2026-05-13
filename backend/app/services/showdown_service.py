@@ -34,14 +34,14 @@ STRATEGIES: list[StrategyDef] = [
         "Buffett-inspired selectivity",
         "#fbbf24",
         "Only trade when the model is highly confident (≥75%) AND the expected move is large (≥4%). Quality over quantity."),
-    StrategyDef("FADER", "The Fader", "🔁", "Markets overreact",
-        "De Bondt & Thaler (JF 1985) · Overreaction",
-        "#a78bfa",
-        "Fade large gaps. The crowd over-reacts to earnings; reversion follows. Short rallies, long panics."),
-    StrategyDef("CONTRARIAN", "The Contrarian", "🐻", "Be greedy when others are fearful",
-        "Templeton's maximum pessimism",
-        "#f87171",
-        "Fade the model's own high-conviction calls. When the algorithm screams DOWN, go LONG. Anti-consensus."),
+    StrategyDef("TREND_LORD", "The Trend Lord", "🐢", "The trend is your friend",
+        "Richard Dennis & The Turtle Traders (1983)",
+        "#fb923c",
+        "Pure mechanical trend-following. Trade every gap regardless of size — the legendary Turtles proved simple rule-based trend systems beat most discretionary trading."),
+    StrategyDef("COMPOUNDER", "The Compounder", "🌱", "Long-only, never shorts",
+        "Buffett — Rule #1: Don't lose money",
+        "#2dd4bf",
+        "Long-only quality. Enters when the model says UP with confidence ≥ 55%. Never shorts, even when the algorithm screams DOWN — Buffett's principle that shorting is asymmetric risk."),
 ]
 
 
@@ -64,20 +64,23 @@ def _sniper(row) -> int:
     if row["prob_down"] > row["prob_up"] and row["prob_down"] > row["prob_flat"]: return -1
     return 0
 
-def _fader(row) -> int:
-    if row["gap_pct"] > 0.05: return -1
-    if row["gap_pct"] < -0.05: return 1
+def _trendlord(row) -> int:
+    """Pure trend-following — any gap triggers a trade in its direction."""
+    if row["gap_pct"] > 0: return 1
+    if row["gap_pct"] < 0: return -1
     return 0
 
-def _contrarian(row) -> int:
-    if row["prob_up"] > 0.65: return -1
-    if row["prob_down"] > 0.65: return 1
+def _compounder(row) -> int:
+    """Long-only — never shorts, even when ML predicts DOWN."""
+    if (row["confidence"] or 0) < 0.55: return 0
+    if row["prob_up"] > row["prob_down"] and row["prob_up"] > row["prob_flat"]:
+        return 1
     return 0
 
 
 SIGNALS: dict[str, Callable] = {
     "QUANT": _quant, "DRIFTER": _drifter, "SNIPER": _sniper,
-    "FADER": _fader, "CONTRARIAN": _contrarian,
+    "TREND_LORD": _trendlord, "COMPOUNDER": _compounder,
 }
 
 

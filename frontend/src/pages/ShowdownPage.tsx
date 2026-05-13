@@ -31,8 +31,10 @@ export function ShowdownPage() {
   const [data, setData] = useState<Showdown | null>(null)
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
-  const [startDate, setStartDate] = useState('2023-01-01')
-  const [endDate, setEndDate] = useState('2026-04-30')
+  const todayD = new Date()
+  const launchD = new Date(todayD.getTime() - 60 * 86400000)
+  const [startDate, setStartDate] = useState(launchD.toISOString().slice(0, 10))
+  const [endDate, setEndDate] = useState(todayD.toISOString().slice(0, 10))
   const [selectedStrat, setSelectedStrat] = useState<string | null>(null)
 
   const load = async () => {
@@ -86,11 +88,11 @@ export function ShowdownPage() {
   return (
     <div className="sw-page">
       <motion.div className="sw-hero" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="sw-hero__badge"><span className="sw-hero__dot" />STRATEGY SHOWDOWN</div>
-        <h1 className="sw-hero__title">5 Trading Philosophies. $1M Each. Who Wins?</h1>
+        <div className="sw-hero__badge"><span className="sw-hero__dot" />LIVE STRATEGY SHOWDOWN</div>
+        <h1 className="sw-hero__title">5 Trading Philosophies. $1M Each. Live Challenge.</h1>
         <p className="sw-hero__sub">
-          Same data, same risk budget, five different schools of thought — from Bernard & Thomas's PEAD
-          to Templeton's contrarianism to your own ML signal. Pick a date range and see who comes out on top.
+          Each strategy launched 60 days ago with $1M. As new earnings come in, the race updates live. From Bernard & Thomas's
+          post-earnings drift to Buffett's long-only discipline to the Turtle Traders' mechanical trend-following.
         </p>
       </motion.div>
 
