@@ -94,6 +94,32 @@ const TAB_GUIDE = [
       'Realised P&L card tracks closed trades with exit reason breakdown',
     ],
   },
+  {
+    name: 'Track Record',
+    to: '/track-record',
+    icon: ClipboardList,
+    tag: 'Audit',
+    blurb:
+      'Every prediction the model has ever made, joined against the realised outcome. No cherry-picking. Confusion matrix, calibration curve, rolling 90-day accuracy, accuracy by confidence threshold, and a sortable table of all 5,406 events with verdict badges.',
+    actions: [
+      'Calibration curve: when model says 80% confident, is hit rate actually 80%?',
+      'Filter by confidence threshold to see precision vs recall tradeoff',
+      'True walk-forward OOS accuracy = 49.3% across 5,393 held-out test events',
+    ],
+  },
+  {
+    name: 'Showdown',
+    to: '/showdown',
+    icon: Trophy,
+    tag: 'Live race',
+    blurb:
+      '5 trading philosophies, $1M each, racing on the same 60-day live window. The ML model goes head-to-head against Bernard & Thomas\u2019s PEAD momentum, Buffett-inspired selectivity, the Turtle Traders\u2019 mechanical trend-following, and a long-only compounder.',
+    actions: [
+      'Leaderboard updates as new earnings events settle',
+      'Race chart: 5 equity curves overlaid, hover any point for all strategies',
+      'Trade attribution table shows exactly which strategy made each trade',
+    ],
+  },
 ] as const
 
 const FEATURE_GROUPS = [
