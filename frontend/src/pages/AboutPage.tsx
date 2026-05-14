@@ -19,6 +19,8 @@ import {
   Sparkles,
   Target,
   TrendingUp,
+  ClipboardList,
+  Trophy,
 } from 'lucide-react'
 
 // ============================================================
