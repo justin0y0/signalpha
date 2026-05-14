@@ -26,6 +26,15 @@ logger = get_logger(__name__)
 settings = get_settings()
 collector = DataCollector(settings)
 
+# Valid columns for PriceFeature table (everything else → feature_payload)
+PRICE_FEATURE_COLS = {
+    'price_1d_pre','price_5d_pre','price_10d_pre','price_20d_pre','price_60d_pre',
+    'ret_1d_pre','ret_5d_pre','ret_10d_pre','ret_20d_pre','ret_60d_pre',
+    'atm_iv','iv_rank','iv_percentile','iv_crush_hist','expected_move_pct',
+    'volume_anomaly','rsi_14','macd','macd_signal','bollinger_position',
+    'dist_52w_high','dist_52w_low','feature_payload',
+}
+
 SECTOR_MAP = {
     "Technology": "Technology", "Financial Services": "Financial Services",
     "Healthcare": "Healthcare", "Consumer Cyclical": "Consumer Cyclical",
@@ -223,9 +232,16 @@ def backfill_features(tickers: list[str]) -> None:
                         "raw_payload": _json_safe(raw),
                     })
                 if eng:
+                    safe_eng = _json_safe(eng)
+                    # Only pass columns that exist in PriceFeature
+                    pf_vals = {k: v for k, v in safe_eng.items() if k in PRICE_FEATURE_COLS}
+                    # Overflow unknown keys into feature_payload JSON column
+                    overflow = {k: v for k, v in safe_eng.items() if k not in PRICE_FEATURE_COLS}
+                    if overflow:
+                        pf_vals['feature_payload'] = overflow
                     _upsert(session, PriceFeature,
                         {"ticker": event.ticker, "earnings_date": event.earnings_date},
-                        _json_safe(eng))
+                        pf_vals)
                 session.commit()
             ok += 1
 
