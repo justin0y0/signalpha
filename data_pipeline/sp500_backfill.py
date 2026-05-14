@@ -54,15 +54,34 @@ def _upsert(session, model_cls, identity, values):
 
 
 def _json_safe(obj):
+    """Recursively convert non-JSON-serializable types including NaN/inf/numpy."""
+    import math
+    if obj is None:
+        return None
+    if isinstance(obj, bool):
+        return obj
     if isinstance(obj, dict):
-        return {k: _json_safe(v) for k, v in obj.items()}
+        return {str(k): _json_safe(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_json_safe(v) for v in obj]
     if isinstance(obj, (pd.Timestamp, datetime.datetime, datetime.date)):
-        return obj.isoformat()
-    if hasattr(obj, 'item'):
-        return obj.item()
-    return obj
+        return obj.isoformat() if hasattr(obj, "isoformat") else str(obj)
+    if isinstance(obj, float):
+        return None if (math.isnan(obj) or math.isinf(obj)) else obj
+    if isinstance(obj, (int, str)):
+        return obj
+    # numpy scalars and anything with .item()
+    try:
+        v = obj.item()
+        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+            return None
+        return v
+    except (AttributeError, ValueError):
+        pass
+    try:
+        return str(obj)
+    except Exception:
+        return None
 
 
 # ── STEP 1: Get S&P 500 tickers ───────────────────────────────────────────────
@@ -206,7 +225,7 @@ def backfill_features(tickers: list[str]) -> None:
                 if eng:
                     _upsert(session, PriceFeature,
                         {"ticker": event.ticker, "earnings_date": event.earnings_date},
-                        eng)
+                        _json_safe(eng))
                 session.commit()
             ok += 1
 
