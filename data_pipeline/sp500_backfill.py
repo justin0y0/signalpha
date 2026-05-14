@@ -24,6 +24,21 @@ from backend.app.db.models import (
 from backend.app.db.session import SessionLocal
 from data_pipeline.collector import DataCollector
 
+
+def _json_safe(obj):
+    """Recursively convert non-JSON-serializable types (Timestamp, date, etc)."""
+    import pandas as pd
+    import datetime
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    if isinstance(obj, (pd.Timestamp, datetime.datetime, datetime.date)):
+        return obj.isoformat() if hasattr(obj, 'isoformat') else str(obj)
+    if hasattr(obj, 'item'):   # numpy scalars
+        return obj.item()
+    return obj
+
 logger = get_logger(__name__)
 settings = get_settings()
 collector = DataCollector(settings)
@@ -176,7 +191,7 @@ def backfill_features(sp500: set[str]) -> None:
                         "cash_and_equivalents": raw.get("cash_and_equivalents"),
                         "buyback_amount": raw.get("buyback_amount"),
                         "transcript_sentiment": raw.get("transcript_sentiment"),
-                        "raw_payload": raw,
+                        "raw_payload": _json_safe(raw),
                     })
                 if eng:
                     _upsert(session, PriceFeature,
