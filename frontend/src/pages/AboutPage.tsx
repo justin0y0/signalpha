@@ -29,8 +29,8 @@ import {
 // ============================================================
 
 const STAT_ROW: { label: string; value: string; tint: 'cyan' | 'purple' | 'emerald' | 'amber' }[] = [
-  { label: 'Tracked Equities', value: '149', tint: 'cyan' },
-  { label: 'Earnings Events', value: '5,510', tint: 'purple' },
+  { label: 'Tracked Equities', value: '181', tint: 'cyan' },
+  { label: 'Earnings Events', value: '6,277', tint: 'purple' },
   { label: 'Engineered Features', value: '102', tint: 'emerald' },
   { label: 'Walk-forward Folds', value: '47', tint: 'amber' },
 ]
