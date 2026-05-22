@@ -83,6 +83,32 @@ SIGNALS: dict[str, Callable] = {
 
 # Pre-earnings strategies (use ML predictions only, can signal in advance)
 PRE_EARNINGS = {"QUANT", "SNIPER", "COMPOUNDER"}
+
+# ─── Signal timing helpers ─────────────────────────────────────────
+def _signal_clock(earnings_date: date, report_time: str | None) -> tuple[str, str]:
+    """Return (ISO datetime when signal fires, HH:MM string).
+    BMO = signal at 08:00 ET morning of earnings (Bloomberg/Reuters print at ~7-8am).
+    AMC = signal at 16:05 ET on earnings day (5 min after close).
+    """
+    from datetime import datetime as _dt, time as _t
+    rt = (report_time or "AMC").upper()
+    if rt == "BMO":
+        sig_dt = _dt.combine(earnings_date, _t(8, 0))
+        return sig_dt.isoformat(), "08:00 ET"
+    else:
+        sig_dt = _dt.combine(earnings_date, _t(16, 5))
+        return sig_dt.isoformat(), "16:05 ET"
+
+def _exec_clock(earnings_date: date, report_time: str | None, days_offset: int) -> str:
+    """Return ISO datetime for entry/exit execution at standard market hours."""
+    from datetime import datetime as _dt, time as _t, timedelta as _td
+    rt = (report_time or "AMC").upper()
+    # If BMO: entry at 9:30 AM same day; if AMC: entry at 9:30 AM next day
+    base = earnings_date if rt == "BMO" else earnings_date + _td(days=1)
+    exec_dt = _dt.combine(base + _td(days=days_offset), _t(9, 30) if days_offset == 0 else _t(16, 0))
+    return exec_dt.isoformat()
+
+
 # Post-earnings strategies (need gap_pct, signal at T+1)
 POST_EARNINGS = {"DRIFTER", "TREND_LORD"}
 
@@ -100,6 +126,7 @@ def _to_dict(p, o):
         "gap_pct": (o.actual_t1_gap_pct if o else 0.0) or 0.0,
         "t5_return": (o.actual_t5_return if o else None),
         "outcome_known": (o is not None and o.actual_t5_return is not None),
+        "report_time": getattr(p, "report_time", None) or "AMC",
     }
 
 
@@ -233,16 +260,21 @@ def run_showdown(
                     "expected_move": p.expected_move_pct or 0,
                     "gap_pct": 0.0,
                 }
-                s = sig_fn(row)
-                if s != 0:
+                sig_val = sig_fn(row)
+                if sig_val != 0:
+                    rt = getattr(p, "report_time", None) or "AMC"
+                    fires_iso, fires_clk = _signal_clock(p.earnings_date, rt)
                     pending_signals.append({
                         "ticker": p.ticker,
                         "earnings_date": p.earnings_date.isoformat(),
-                        "side": "LONG" if s == 1 else "SHORT",
+                        "side": "LONG" if sig_val == 1 else "SHORT",
                         "confidence": round((p.confidence_score or 0) * 100, 1),
                         "expected_move": round((p.expected_move_pct or 0) * 100, 1) if p.expected_move_pct else None,
                         "sector": p.sector or "—",
                         "days_until": (p.earnings_date - today).days,
+                        "report_time": rt,
+                        "fires_at": fires_iso,
+                        "fires_at_clock": fires_clk,
                     })
 
         # Stats
@@ -286,6 +318,12 @@ def run_showdown(
     results.sort(key=lambda x: -x["final_equity"])
     live_feed.sort(key=lambda x: x["timestamp"], reverse=True)
 
+    next_sig = None
+    for st in results:
+        for ps in st.get("pending_signals", []):
+            if next_sig is None or ps["fires_at"] < next_sig["fires_at"]:
+                next_sig = {**ps, "strategy": st["code"], "strategy_emoji": st["emoji"], "strategy_name": st["name"], "strategy_color": st["color"]}
+
     return {
         "strategies": results,
         "events": len(df_rows),
@@ -293,6 +331,7 @@ def run_showdown(
         "launch_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
         "as_of": datetime.utcnow().isoformat(),
-        "live_feed": live_feed[:25],
+        "live_feed": live_feed[:30],
         "days_since_launch": (today - start_date).days,
+        "next_signal": next_sig,
     }

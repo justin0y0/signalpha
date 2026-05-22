@@ -1,6 +1,9 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Play, Trophy, BookOpen, TrendingUp, TrendingDown, Activity, Eye, Zap, Radio } from 'lucide-react'
+import {
+  Trophy, BookOpen, TrendingUp, TrendingDown, Activity, Eye, Zap, Radio,
+  Cpu, Target, Clock, AlertCircle,
+} from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, ReferenceLine,
@@ -18,6 +21,7 @@ type ClosedTrade = {
 type PendingSignal = {
   ticker: string; earnings_date: string; side: string; confidence: number;
   expected_move: number | null; sector: string; days_until: number;
+  report_time: string; fires_at: string; fires_at_clock: string;
 }
 type Strategy = {
   code: string; name: string; emoji: string; tagline: string;
@@ -33,16 +37,42 @@ type FeedEvent = {
   type: string; timestamp: string; strategy: string;
   ticker: string; side: string; return_pct?: number; win?: boolean;
 }
+type NextSig = (PendingSignal & {
+  strategy: string; strategy_emoji: string; strategy_name: string; strategy_color: string;
+}) | null
 type Showdown = {
   strategies: Strategy[]; events: number; initial_capital: number;
   launch_date: string; end_date: string; as_of: string;
-  live_feed: FeedEvent[]; days_since_launch: number;
+  live_feed: FeedEvent[]; days_since_launch: number; next_signal: NextSig;
 }
 
-const RANK_EMOJI = ['🥇', '🥈', '🥉', '4.', '5.']
-const fmtPct = (v: number, d = 1) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(d)}%`
-const fmt$ = (v: number) => `$${(v / 1000).toFixed(1)}k`
-const sparkPath = (vals: number[], w: number, h: number) => {
+const fmtPct = (v: number, d = 2) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(d)}%`
+const fmtDollar = (v: number) => `$${Math.round(v).toLocaleString()}`
+
+// Smoothly counts up to target number (for LCD-style displays)
+function useCountUp(target: number, duration = 800): number {
+  const [value, setValue] = useState(target)
+  const prevRef = useRef(target)
+  useEffect(() => {
+    const start = prevRef.current
+    const delta = target - start
+    if (Math.abs(delta) < 0.001) { setValue(target); return }
+    const t0 = performance.now()
+    let raf = 0
+    const step = (now: number) => {
+      const p = Math.min(1, (now - t0) / duration)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setValue(start + delta * eased)
+      if (p < 1) raf = requestAnimationFrame(step)
+      else prevRef.current = target
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [target, duration])
+  return value
+}
+
+function sparkPath(vals: number[], w: number, h: number): string {
   if (vals.length < 2) return ''
   const mn = Math.min(...vals), mx = Math.max(...vals)
   const range = mx - mn || 1
@@ -51,6 +81,17 @@ const sparkPath = (vals: number[], w: number, h: number) => {
     const y = h - ((v - mn) / range) * h
     return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
   }).join(' ')
+}
+
+function fmtCountdown(ms: number): string {
+  if (ms <= 0) return 'FIRING NOW'
+  const s = Math.floor(ms / 1000)
+  const d = Math.floor(s / 86400)
+  const h = Math.floor((s % 86400) / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  if (d > 0) return `${d}d ${String(h).padStart(2, '0')}h ${String(m).padStart(2, '0')}m`
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 }
 
 export function ShowdownPage() {
@@ -69,20 +110,15 @@ export function ShowdownPage() {
   const load = useCallback(async () => {
     try {
       const r = await fetch(`/api/v1/showdown?start_date=${launchDate}&end_date=${today}`)
-      const d = await r.json()
-      setData(d)
-    } finally {
-      setLoading(false)
-    }
+      setData(await r.json())
+    } finally { setLoading(false) }
   }, [launchDate, today])
 
   useEffect(() => { load() }, [load])
-  // Tick every second for "as of" display
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(t)
   }, [])
-  // Auto-refresh data every 60s
   useEffect(() => {
     const t = setInterval(load, 60_000)
     return () => clearInterval(t)
@@ -101,163 +137,128 @@ export function ShowdownPage() {
     return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date))
   }, [data])
 
-  const allOpenPositions = useMemo(() => {
-    if (!data) return []
-    const items: (OpenPos & { stratCode: string; stratEmoji: string; stratColor: string; stratName: string })[] = []
-    data.strategies.forEach(s => {
-      s.currently_open.forEach(p => items.push({
-        ...p, stratCode: s.code, stratEmoji: s.emoji, stratColor: s.color, stratName: s.name,
-      }))
-    })
-    return items
-      .filter(p => !selectedStrat || p.stratCode === selectedStrat)
-      .sort((a, b) => b.entry_date.localeCompare(a.entry_date))
-  }, [data, selectedStrat])
-
-  const allPending = useMemo(() => {
-    if (!data) return []
-    const items: (PendingSignal & { stratCode: string; stratEmoji: string; stratColor: string; stratName: string })[] = []
-    data.strategies.forEach(s => {
-      s.pending_signals.forEach(p => items.push({
-        ...p, stratCode: s.code, stratEmoji: s.emoji, stratColor: s.color, stratName: s.name,
-      }))
-    })
-    return items
-      .filter(p => !selectedStrat || p.stratCode === selectedStrat)
-      .sort((a, b) => a.earnings_date.localeCompare(b.earnings_date))
-      .slice(0, 20)
-  }, [data, selectedStrat])
+  const countdownMs = useMemo(() => {
+    if (!data?.next_signal) return null
+    return new Date(data.next_signal.fires_at).getTime() - now.getTime()
+  }, [data, now])
 
   if (loading || !data) return (
-    <div className="sw-loading">
-      <div className="sw-loading__spinner" />
-      <div>Loading live showdown…</div>
+    <div className="mc-loading">
+      <div className="mc-loading__scan" />
+      <div className="mc-loading__text">INITIALIZING MISSION CONTROL</div>
+      <div className="mc-loading__sub">Loading 5 trading agents…</div>
     </div>
   )
 
   return (
-    <div className="sw-page">
-      {/* Hero */}
-      <motion.div className="sw-hero-live" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="sw-hero-live__top">
-          <div className="sw-live-badge">
-            <span className="sw-live-dot" />LIVE
+    <div className="mc-page">
+      {/* ═══ MISSION CONTROL HERO ═══ */}
+      <div className="mc-hero">
+        <div className="mc-hero__scanlines" />
+        <div className="mc-hero__grid" />
+        <div className="mc-hero__content">
+          <div className="mc-hero__top">
+            <div className="mc-status">
+              <span className="mc-status__dot" />
+              <span className="mc-status__txt">LIVE</span>
+            </div>
+            <div className="mc-clock">
+              <Clock size={14} />
+              <span className="mc-clock__time">{now.toLocaleTimeString('en-US', { hour12: false })}</span>
+              <span className="mc-clock__tz">ET</span>
+            </div>
+            <div className="mc-system">
+              SYSTEM · DAY {data.days_since_launch} · {data.events} EVENTS PROCESSED
+            </div>
           </div>
-          <div className="sw-hero-live__meta">
-            Day <b>{data.days_since_launch}</b> since launch ({data.launch_date}) ·
-            Updated <b className="mono">{now.toLocaleTimeString('en-US', { hour12: false })}</b> ·
-            Auto-refresh 60s
+          <div className="mc-hero__main">
+            <div>
+              <div className="mc-hero__eyebrow">SIGNALPHA MISSION CONTROL</div>
+              <h1 className="mc-hero__title">5 Bots · 5 Strategies · 1 Battle</h1>
+            </div>
+            {data.next_signal && countdownMs !== null && (
+              <div className="mc-next" style={{ borderColor: data.next_signal.strategy_color }}>
+                <div className="mc-next__label">NEXT SIGNAL FIRES IN</div>
+                <div className="mc-next__time mono" style={{ color: data.next_signal.strategy_color }}>
+                  {fmtCountdown(countdownMs)}
+                </div>
+                <div className="mc-next__detail">
+                  <span className="mc-next__emoji">{data.next_signal.strategy_emoji}</span>
+                  <span style={{ color: data.next_signal.strategy_color, fontWeight: 700 }}>
+                    {data.next_signal.strategy_name}
+                  </span>
+                  →
+                  <span style={{ color: data.next_signal.side === 'LONG' ? '#4ade80' : '#f87171', fontWeight: 700 }}>
+                    {data.next_signal.side === 'LONG' ? '↑ LONG' : '↓ SHORT'}
+                  </span>
+                  <span className="mono" style={{ color: '#38bdf8', fontWeight: 700 }}>{data.next_signal.ticker}</span>
+                  <span className="mc-next__when">
+                    {data.next_signal.earnings_date.slice(5)} @ {data.next_signal.fires_at_clock}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-        <h1 className="sw-hero-live__title">Strategy Showdown · Live Trading Floor</h1>
-        <p className="sw-hero-live__sub">
-          5 trading bots running on the same earnings event stream. Each launched with $1M.
-          Watch open positions update, pending signals fire, and the leaderboard reshuffle as new earnings drop.
-        </p>
-      </motion.div>
+      </div>
 
-      {/* Leaderboard with sparklines */}
-      <motion.div className="sw-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="sw-card__title">
-          <Trophy size={14} />Leaderboard
-          <span className="sw-card__sub">{data.events.toLocaleString()} events processed · click any row to filter all panels</span>
-        </div>
-        <div className="sw-board">
-          {data.strategies.map((s, i) => {
-            const equity = s.equity_curve.map(p => p.equity)
-            return (
-              <motion.button key={s.code}
-                className={`sw-row ${selectedStrat === s.code ? 'sw-row--active' : ''}`}
-                onClick={() => setSelectedStrat(selectedStrat === s.code ? null : s.code)}
-                layout
-                initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.06 }}
-                style={{ borderLeft: `3px solid ${s.color}` }}>
-                <div className="sw-row__rank">{RANK_EMOJI[i]}</div>
-                <div className="sw-row__emoji">{s.emoji}</div>
-                <div className="sw-row__name">
-                  <div className="sw-row__nameMain">{s.name}</div>
-                  <div className="sw-row__tagline">{s.tagline}</div>
-                </div>
-                <svg className="sw-row__spark" viewBox="0 0 100 24" preserveAspectRatio="none">
-                  <path d={sparkPath(equity, 100, 24)} fill="none" stroke={s.color} strokeWidth="1.4" />
-                </svg>
-                <div className="sw-row__stat">
-                  <div className="sw-row__label">Return</div>
-                  <div className="sw-row__val" style={{ color: s.total_return >= 0 ? s.color : '#f87171' }}>
-                    {fmtPct(s.total_return)}
-                  </div>
-                </div>
-                <div className="sw-row__stat">
-                  <div className="sw-row__label">Sharpe</div>
-                  <div className="sw-row__val mono">{s.sharpe.toFixed(2)}</div>
-                </div>
-                <div className="sw-row__stat">
-                  <div className="sw-row__label">Open</div>
-                  <div className="sw-row__val mono">{s.currently_open.length}</div>
-                </div>
-                <div className="sw-row__stat">
-                  <div className="sw-row__label">Trades</div>
-                  <div className="sw-row__val mono">{s.trades}</div>
-                </div>
-                <div className="sw-row__stat">
-                  <div className="sw-row__label">Win %</div>
-                  <div className="sw-row__val mono">{(s.win_rate * 100).toFixed(0)}%</div>
-                </div>
-              </motion.button>
-            )
-          })}
-        </div>
-      </motion.div>
-
-      {/* Live feed */}
+      {/* ═══ SCROLLING TICKER TAPE ═══ */}
       {data.live_feed.length > 0 && (
-        <motion.div className="sw-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-          <div className="sw-card__title">
-            <Radio size={14} />Live Feed
-            <span className="sw-card__sub">recent trade events across all strategies · last 14 days</span>
-          </div>
-          <div className="sw-feed">
-            {data.live_feed.map((e, i) => {
-              const strat = data.strategies.find(s => s.code === e.strategy)
-              if (!strat) return null
-              return (
-                <motion.div key={i} className="sw-feed__row"
-                  initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.02 }}>
-                  <span className="sw-feed__time mono">{e.timestamp.slice(5, 10)}</span>
-                  <span className="sw-feed__strat" style={{ color: strat.color }}>
-                    {strat.emoji} {strat.name}
-                  </span>
-                  <span className="sw-feed__action">
-                    {e.type === 'open' ? '→ opened' : '✓ closed'}
-                  </span>
-                  <span className="sw-feed__side" style={{ color: e.side === 'LONG' ? '#4ade80' : '#f87171' }}>
-                    {e.side === 'LONG' ? '↑' : '↓'} {e.side}
-                  </span>
-                  <span className="sw-feed__ticker mono">{e.ticker}</span>
-                  {e.return_pct !== undefined && (
-                    <span className="sw-feed__return mono" style={{ color: (e.return_pct ?? 0) >= 0 ? '#4ade80' : '#f87171' }}>
-                      {(e.return_pct ?? 0) >= 0 ? '+' : ''}{e.return_pct?.toFixed(2)}%
+        <div className="mc-tape-wrap">
+          <div className="mc-tape">
+            <div className="mc-tape__scroll">
+              {[...data.live_feed, ...data.live_feed].map((e, i) => {
+                const strat = data.strategies.find(s => s.code === e.strategy)
+                if (!strat) return null
+                return (
+                  <span key={i} className="mc-tape__item">
+                    <span className="mc-tape__t mono">{e.timestamp.slice(5, 10)}</span>
+                    <span className="mc-tape__s" style={{ color: strat.color }}>{strat.emoji} {strat.name}</span>
+                    <span className="mc-tape__a">
+                      {e.type === 'open' ? '→ OPEN' : '✓ CLOSE'}
                     </span>
-                  )}
-                </motion.div>
-              )
-            })}
+                    <span style={{ color: e.side === 'LONG' ? '#4ade80' : '#f87171', fontWeight: 700 }}>
+                      {e.side}
+                    </span>
+                    <span className="mono" style={{ color: '#38bdf8', fontWeight: 700 }}>{e.ticker}</span>
+                    {e.return_pct !== undefined && (
+                      <span className="mono" style={{ color: (e.return_pct ?? 0) >= 0 ? '#4ade80' : '#f87171', fontWeight: 700 }}>
+                        {(e.return_pct ?? 0) >= 0 ? '+' : ''}{e.return_pct?.toFixed(2)}%
+                      </span>
+                    )}
+                    <span className="mc-tape__div">•</span>
+                  </span>
+                )
+              })}
+            </div>
           </div>
-        </motion.div>
+        </div>
       )}
 
-      {/* Race chart */}
-      <motion.div className="sw-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-        <div className="sw-card__title">
-          <Activity size={14} />Race Chart
-          <span className="sw-card__sub">cumulative return since launch · {selectedStrat ? 'filtered' : 'all 5'}</span>
+      {/* ═══ 5 BIG BOARDS ═══ */}
+      <div className="mc-boards">
+        {data.strategies.map((s, i) => {
+          const equity = s.equity_curve.map(p => p.equity)
+          const isActive = selectedStrat === s.code
+          const isLeader = i === 0
+          return (
+            <BigBoard key={s.code} strategy={s} equity={equity}
+              rank={i + 1} isActive={isActive} isLeader={isLeader}
+              onClick={() => setSelectedStrat(isActive ? null : s.code)} />
+          )
+        })}
+      </div>
+
+      {/* ═══ RACE CHART ═══ */}
+      <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+        <div className="mc-panel__title">
+          <Activity size={14} /> RACE CHART
+          <span className="mc-panel__sub">cumulative return since {data.launch_date}</span>
         </div>
         <div style={{ height: 320 }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={mergedCurve} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(56,189,248,0.06)" />
               <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false}
                 tickFormatter={v => v.slice(5)} minTickGap={50} />
               <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false}
@@ -268,15 +269,15 @@ export function ShowdownPage() {
                   if (!active || !payload?.length) return null
                   const sorted = [...payload].sort((a: any, b: any) => (b.value ?? 0) - (a.value ?? 0))
                   return (
-                    <div className="sw-tt">
-                      <div className="sw-tt__date">{label}</div>
+                    <div className="mc-tt">
+                      <div className="mc-tt__date mono">{label}</div>
                       {sorted.map((p: any) => {
-                        const s = data.strategies.find(x => x.code === p.dataKey)
-                        if (!s) return null
+                        const st = data.strategies.find(x => x.code === p.dataKey)
+                        if (!st) return null
                         return (
-                          <div key={p.dataKey} className="sw-tt__row">
-                            <span>{s.emoji} {s.name}</span>
-                            <b style={{ color: p.value >= 0 ? s.color : '#f87171' }}>
+                          <div key={p.dataKey} className="mc-tt__row">
+                            <span>{st.emoji} {st.name}</span>
+                            <b style={{ color: p.value >= 0 ? st.color : '#f87171' }}>
                               {p.value >= 0 ? '+' : ''}{p.value.toFixed(2)}%
                             </b>
                           </div>
@@ -289,8 +290,8 @@ export function ShowdownPage() {
               {data.strategies.map(s => (
                 <Line key={s.code} type="monotone" dataKey={s.code}
                   stroke={s.color}
-                  strokeWidth={selectedStrat === null || selectedStrat === s.code ? 2.2 : 0.5}
-                  strokeOpacity={selectedStrat === null || selectedStrat === s.code ? 1 : 0.2}
+                  strokeWidth={selectedStrat === null || selectedStrat === s.code ? 2.5 : 0.6}
+                  strokeOpacity={selectedStrat === null || selectedStrat === s.code ? 1 : 0.18}
                   dot={false} animationDuration={1200} />
               ))}
             </LineChart>
@@ -298,96 +299,192 @@ export function ShowdownPage() {
         </div>
       </motion.div>
 
-      {/* Two columns: Open positions | Pending signals */}
-      <div className="sw-grid-2">
-        <motion.div className="sw-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
-          <div className="sw-card__title">
-            <Eye size={14} />Currently Open Positions
-            <span className="sw-card__sub">{allOpenPositions.length} live across {selectedStrat ? '1' : '5'} strategies</span>
-          </div>
-          {allOpenPositions.length === 0 ? (
-            <div className="sw-empty">No open positions right now. Waiting for next earnings event.</div>
-          ) : (
-            <div className="sw-list">
-              {allOpenPositions.map((p, i) => (
-                <div key={i} className="sw-pos">
-                  <span className="sw-pos__strat" style={{ borderColor: p.stratColor, color: p.stratColor }}>
-                    {p.stratEmoji} {p.stratName}
-                  </span>
-                  <span className="sw-pos__ticker mono">{p.ticker}</span>
-                  <span className="sw-pos__side" style={{ color: p.side === 'LONG' ? '#4ade80' : '#f87171' }}>
-                    {p.side === 'LONG' ? <TrendingUp size={11} /> : <TrendingDown size={11} />} {p.side}
-                  </span>
-                  <span className="sw-pos__notional mono">{fmt$(p.notional)}</span>
-                  <span className="sw-pos__conf">
-                    {p.confidence ? `${p.confidence.toFixed(0)}% conf` : '—'}
-                  </span>
-                  <span className="sw-pos__days mono">d+{p.days_held}</span>
-                  <span className="sw-pos__exit">exits {p.exit_date.slice(5)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </motion.div>
+      {/* ═══ SIGNAL CALENDAR ═══ */}
+      <SignalCalendar data={data} />
 
-        <motion.div className="sw-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-          <div className="sw-card__title">
-            <Zap size={14} />Watchlist · Pending Signals
-            <span className="sw-card__sub">upcoming earnings each strategy is targeting · next 14 days</span>
-          </div>
-          {allPending.length === 0 ? (
-            <div className="sw-empty">No pending signals. Strategies are sitting in cash.</div>
-          ) : (
-            <div className="sw-list">
-              {allPending.map((p, i) => (
-                <div key={i} className="sw-pending">
-                  <span className="sw-pending__strat" style={{ borderColor: p.stratColor, color: p.stratColor }}>
-                    {p.stratEmoji} {p.stratName}
+      {/* ═══ EVENT LOG ═══ */}
+      <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
+        <div className="mc-panel__title">
+          <Radio size={14} /> EVENT LOG
+          <span className="mc-panel__sub">last 30 trade events with precise timestamps</span>
+        </div>
+        <div className="mc-log">
+          {data.live_feed.map((e, i) => {
+            const strat = data.strategies.find(s => s.code === e.strategy)
+            if (!strat) return null
+            return (
+              <motion.div key={i} className="mc-log__row"
+                initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.015 }}>
+                <span className="mc-log__time mono">{e.timestamp.slice(0, 10)} {e.type === 'open' ? '09:30' : '16:00'} ET</span>
+                <span className="mc-log__strat" style={{ color: strat.color }}>
+                  {strat.emoji} {strat.name}
+                </span>
+                <span className="mc-log__verb" style={{ color: e.type === 'open' ? '#38bdf8' : '#a78bfa' }}>
+                  {e.type === 'open' ? 'OPENED' : 'CLOSED'}
+                </span>
+                <span style={{ color: e.side === 'LONG' ? '#4ade80' : '#f87171', fontWeight: 700, fontSize: '0.7rem' }}>
+                  {e.side === 'LONG' ? '↑ LONG' : '↓ SHORT'}
+                </span>
+                <span className="mono mc-log__tk">{e.ticker}</span>
+                {e.return_pct !== undefined && (
+                  <span className="mono mc-log__ret" style={{ color: (e.return_pct ?? 0) >= 0 ? '#4ade80' : '#f87171' }}>
+                    {(e.return_pct ?? 0) >= 0 ? '+' : ''}{e.return_pct?.toFixed(2)}%
                   </span>
-                  <span className="sw-pending__ticker mono">{p.ticker}</span>
-                  <span className="sw-pending__side" style={{ color: p.side === 'LONG' ? '#4ade80' : '#f87171' }}>
-                    {p.side === 'LONG' ? '↑' : '↓'} {p.side}
-                  </span>
-                  <span className="sw-pending__conf">{p.confidence.toFixed(0)}%</span>
-                  {p.expected_move !== null && (
-                    <span className="sw-pending__em mono">±{p.expected_move.toFixed(1)}%</span>
-                  )}
-                  <span className="sw-pending__when">
-                    {p.days_until === 0 ? 'TODAY' : `in ${p.days_until}d`}
-                    <span className="sw-pending__date"> · {p.earnings_date.slice(5)}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </motion.div>
-      </div>
-
-      {/* Strategy cards */}
-      <div className="sw-cards">
-        {data.strategies.map((s, i) => (
-          <motion.div key={s.code} className="sw-cardlet"
-            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35 + i * 0.05 }}
-            style={{ borderTop: `3px solid ${s.color}` }}>
-            <div className="sw-cardlet__head">
-              <span className="sw-cardlet__emoji">{s.emoji}</span>
-              <div>
-                <div className="sw-cardlet__name">{s.name}</div>
-                <div className="sw-cardlet__tag">{s.tagline}</div>
-              </div>
-            </div>
-            <p className="sw-cardlet__desc">{s.description}</p>
-            <div className="sw-cardlet__stats">
-              <div><span>Return</span><b style={{ color: s.total_return >= 0 ? s.color : '#f87171' }}>{fmtPct(s.total_return)}</b></div>
-              <div><span>Sharpe</span><b>{s.sharpe.toFixed(2)}</b></div>
-              <div><span>Trades</span><b>{s.trades}</b></div>
-              <div><span>Win</span><b>{(s.win_rate * 100).toFixed(0)}%</b></div>
-            </div>
-            <div className="sw-cardlet__cite"><BookOpen size={11} /> {s.citation}</div>
-          </motion.div>
-        ))}
-      </div>
+                )}
+              </motion.div>
+            )
+          })}
+        </div>
+      </motion.div>
     </div>
+  )
+}
+
+
+function BigBoard({ strategy: s, equity, rank, isActive, isLeader, onClick }: {
+  strategy: Strategy; equity: number[]; rank: number;
+  isActive: boolean; isLeader: boolean; onClick: () => void;
+}) {
+  const ret = useCountUp(s.total_return * 100)
+  const equityUSD = useCountUp(s.final_equity)
+  return (
+    <motion.button
+      className={`mc-board ${isActive ? 'mc-board--active' : ''} ${isLeader ? 'mc-board--leader' : ''}`}
+      onClick={onClick}
+      layout
+      initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.08 + rank * 0.04 }}
+      style={{ '--strat-color': s.color } as React.CSSProperties}
+    >
+      <div className="mc-board__top">
+        <div className="mc-board__rank">#{rank}</div>
+        <div className="mc-board__name-wrap">
+          <span className="mc-board__emoji">{s.emoji}</span>
+          <div>
+            <div className="mc-board__name">{s.name}</div>
+            <div className="mc-board__tag">{s.tagline}</div>
+          </div>
+        </div>
+        {isLeader && <div className="mc-board__leader-badge">LEADER</div>}
+      </div>
+
+      <div className="mc-board__lcd">
+        <div className="mc-board__lcd-bg" />
+        <div className={`mc-board__lcd-num mono ${ret >= 0 ? 'up' : 'down'}`}>
+          {ret >= 0 ? '+' : ''}{ret.toFixed(2)}%
+        </div>
+        <div className="mc-board__lcd-sub mono">{fmtDollar(equityUSD)}</div>
+      </div>
+
+      <svg className="mc-board__spark" viewBox="0 0 100 30" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id={`grad-${s.code}`} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={s.color} stopOpacity="0.35" />
+            <stop offset="100%" stopColor={s.color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={sparkPath(equity, 100, 30)} fill="none" stroke={s.color} strokeWidth="1.6" />
+        <path d={`${sparkPath(equity, 100, 30)} L 100 30 L 0 30 Z`} fill={`url(#grad-${s.code})`} />
+      </svg>
+
+      <div className="mc-board__metrics">
+        <div className="mc-board__metric">
+          <div className="mc-board__metric-l">SHARPE</div>
+          <div className="mc-board__metric-v mono">{s.sharpe.toFixed(2)}</div>
+        </div>
+        <div className="mc-board__metric">
+          <div className="mc-board__metric-l">OPEN</div>
+          <div className="mc-board__metric-v mono">{s.currently_open.length}</div>
+        </div>
+        <div className="mc-board__metric">
+          <div className="mc-board__metric-l">TRADES</div>
+          <div className="mc-board__metric-v mono">{s.trades}</div>
+        </div>
+        <div className="mc-board__metric">
+          <div className="mc-board__metric-l">WIN %</div>
+          <div className="mc-board__metric-v mono">{(s.win_rate * 100).toFixed(0)}%</div>
+        </div>
+      </div>
+
+      {s.currently_open.length > 0 && (
+        <div className="mc-board__chips">
+          {s.currently_open.slice(0, 4).map((p, i) => (
+            <span key={i} className="mc-chip">
+              <span style={{ color: p.side === 'LONG' ? '#4ade80' : '#f87171', fontWeight: 700 }}>
+                {p.side === 'LONG' ? '↑' : '↓'}
+              </span>
+              <span className="mono">{p.ticker}</span>
+              <span className="mc-chip__d">d+{p.days_held}</span>
+            </span>
+          ))}
+          {s.currently_open.length > 4 && (
+            <span className="mc-chip mc-chip--more">+{s.currently_open.length - 4}</span>
+          )}
+        </div>
+      )}
+    </motion.button>
+  )
+}
+
+
+function SignalCalendar({ data }: { data: Showdown }) {
+  // Group pending signals by date
+  const byDate = new Map<string, { date: string; signals: (PendingSignal & { strategy: Strategy })[] }>()
+  data.strategies.forEach(s => {
+    s.pending_signals.forEach(p => {
+      const key = p.earnings_date
+      if (!byDate.has(key)) byDate.set(key, { date: key, signals: [] })
+      byDate.get(key)!.signals.push({ ...p, strategy: s })
+    })
+  })
+  const days = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date))
+
+  return (
+    <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+      <div className="mc-panel__title">
+        <Target size={14} /> SIGNAL CALENDAR
+        <span className="mc-panel__sub">next 14 days · which strategies will fire on which earnings</span>
+      </div>
+      {days.length === 0 ? (
+        <div className="mc-empty">No pending signals. All strategies sitting in cash.</div>
+      ) : (
+        <div className="mc-cal">
+          {days.slice(0, 14).map((d) => {
+            // Group same-ticker signals
+            const byTicker = new Map<string, (PendingSignal & { strategy: Strategy })[]>()
+            d.signals.forEach(sig => {
+              if (!byTicker.has(sig.ticker)) byTicker.set(sig.ticker, [])
+              byTicker.get(sig.ticker)!.push(sig)
+            })
+            return (
+              <div key={d.date} className="mc-cal__day">
+                <div className="mc-cal__date mono">{d.date.slice(5)}</div>
+                <div className="mc-cal__tickers">
+                  {Array.from(byTicker.entries()).map(([ticker, sigs]) => (
+                    <div key={ticker} className="mc-cal__tk-row">
+                      <span className="mc-cal__tk mono">{ticker}</span>
+                      <span className="mc-cal__rt mono">{sigs[0].report_time}</span>
+                      <span className="mc-cal__sd" style={{ color: sigs[0].side === 'LONG' ? '#4ade80' : '#f87171' }}>
+                        {sigs[0].side === 'LONG' ? '↑' : '↓'}
+                      </span>
+                      <span className="mc-cal__clock mono">@{sigs[0].fires_at_clock}</span>
+                      <div className="mc-cal__bots">
+                        {sigs.map(sig => (
+                          <span key={sig.strategy.code} title={`${sig.strategy.name} (${sig.confidence}% conf)`}
+                            style={{ color: sig.strategy.color }}>
+                            {sig.strategy.emoji}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </motion.div>
   )
 }
