@@ -107,6 +107,49 @@ export function PerformanceTrackerPage() {
         />
       </div>
 
+      {data.confidence_tiers && data.confidence_tiers.length > 0 && (
+        <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}>
+          <h3 className="card-title">
+            <Target size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+            High-Conviction Accuracy · Confidence Tiers
+          </h3>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', margin: '0.25rem 0 1.25rem' }}>
+            The headline accuracy treats all predictions equally — but trading only uses high-conviction calls.
+            Filter by confidence threshold and the picture changes. <em>Directional</em> excludes FLAT predictions and FLAT actuals.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem' }}>
+            {data.confidence_tiers.map((t: any) => (
+              <div
+                key={t.threshold}
+                style={{
+                  background: 'rgba(255,255,255,0.02)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '0.9rem 1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.35rem',
+                }}
+              >
+                <div style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+                  {t.threshold === 0 ? 'All predictions' : `Conf \u2265 ${(t.threshold * 100).toFixed(0)}%`}
+                </div>
+                <div className="mono" style={{ fontSize: '1.55rem', fontWeight: 800, color: accuracyColor(t.accuracy), lineHeight: 1 }}>
+                  {(t.accuracy * 100).toFixed(1)}%
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                  {t.n_samples.toLocaleString()} samples
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', borderTop: '1px solid var(--border)', paddingTop: '0.4rem', marginTop: '0.15rem' }}>
+                  Directional: <b className="mono" style={{ color: accuracyColor(t.directional_accuracy) }}>{(t.directional_accuracy * 100).toFixed(1)}%</b>
+                  <span style={{ marginLeft: '0.35rem' }}>({t.n_directional.toLocaleString()})</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
       <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '1.25rem 1.5rem 1rem' }}>
           <h3 className="card-title"><Grid3x3 size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />Per-Sector Performance · Accuracy Heatmap</h3>

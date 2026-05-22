@@ -17,8 +17,17 @@ class SectorPerformance(BaseModel):
     recorded_at: datetime
 
 
+class ConfidenceTier(BaseModel):
+    threshold: float
+    n_samples: int
+    accuracy: float
+    n_directional: int
+    directional_accuracy: float
+
+
 class PerformanceResponse(BaseModel):
     model_version: str | None = None
     by_sector: list[SectorPerformance] = Field(default_factory=list)
     confusion_matrix: list[list[int]] = Field(default_factory=list)
     feature_importance: list[dict] = Field(default_factory=list)
+    confidence_tiers: list[ConfidenceTier] = Field(default_factory=list)
