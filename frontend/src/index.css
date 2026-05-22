@@ -3430,3 +3430,40 @@ input, select { font: inherit; color: inherit; }
   .pulse-sector { grid-template-columns: 90px 1fr 60px; }
   .pulse-sector__count { display: none; }
 }
+
+/* ═══ Pulse — Multi-factor additions ═══ */
+.pulse-notif { display: flex; align-items: center; gap: 0.6rem; padding: 0.65rem 1rem; border-radius: 6px; font-size: 0.78rem; border: 1px solid; }
+.pulse-notif--on { background: rgba(74,222,128,0.06); border-color: rgba(74,222,128,0.3); color: #4ade80; }
+.pulse-notif--off { background: rgba(251,191,36,0.05); border-color: rgba(251,191,36,0.25); color: var(--text-secondary); }
+.pulse-notif code { font-family: var(--font-mono); font-size: 0.7rem; background: rgba(255,255,255,0.05); padding: 0.05rem 0.3rem; border-radius: 3px; color: #38bdf8; }
+
+.pulse-hi { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.9rem; }
+.pulse-hi-card { padding: 1rem 1.1rem; background: linear-gradient(180deg, rgba(13,24,41,0.8), rgba(13,24,41,0.5)); border: 2px solid; border-radius: 10px; display: flex; flex-direction: column; gap: 0.5rem; }
+.pulse-hi-card__top { display: flex; justify-content: space-between; align-items: center; }
+.pulse-hi-card__stars { color: #fbbf24; font-size: 0.88rem; letter-spacing: 0.1em; }
+.pulse-hi-card__notif { display: inline-flex; align-items: center; gap: 0.25rem; font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700; padding: 0.15rem 0.45rem; background: rgba(74,222,128,0.12); border: 1px solid rgba(74,222,128,0.4); color: #4ade80; border-radius: 3px; }
+.pulse-hi-card__ticker { font-size: 1.6rem; font-weight: 800; color: #38bdf8; letter-spacing: -0.02em; line-height: 1; }
+.pulse-hi-card__price { font-size: 0.78rem; color: var(--text-secondary); }
+.pulse-hi-card__lcd { background: rgba(0,0,0,0.4); border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.2rem; position: relative; overflow: hidden; }
+.pulse-hi-card__lcd::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, transparent 0px, transparent 2px, rgba(255,255,255,0.02) 2px, rgba(255,255,255,0.02) 3px); pointer-events: none; }
+.pulse-hi-card__score-l { position: relative; font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 0.12em; color: var(--text-tertiary); font-weight: 700; }
+.pulse-hi-card__score { position: relative; font-size: 1.7rem; font-weight: 800; line-height: 1.05; margin-top: 0.15rem; font-variant-numeric: tabular-nums; }
+.pulse-hi-card__action { display: flex; justify-content: space-between; align-items: center; padding-top: 0.5rem; border-top: 1px solid var(--border); }
+.pulse-hi-card__action > span:first-child { display: inline-flex; align-items: center; gap: 0.3rem; }
+.pulse-hi-card__size { color: var(--text-secondary); font-size: 0.78rem; font-weight: 700; }
+.pulse-hi-card__exit { font-size: 0.66rem; color: var(--text-tertiary); }
+.pulse-hi-card__factors { padding-top: 0.5rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.25rem; }
+.pulse-hi-card__factors-l { font-family: var(--font-mono); font-size: 0.56rem; letter-spacing: 0.12em; color: var(--text-tertiary); font-weight: 700; margin-bottom: 0.2rem; }
+.pulse-hi-card__factor { display: flex; justify-content: space-between; font-size: 0.7rem; }
+.pulse-hi-card__factor-l { color: var(--text-secondary); }
+
+.pulse-signal__top { display: flex; justify-content: space-between; align-items: center; }
+.pulse-signal__ticker { font-size: 1.05rem; font-weight: 800; color: #38bdf8; }
+.pulse-signal__score { font-size: 0.95rem; font-weight: 800; }
+.pulse-signal__price { font-size: 0.7rem; color: var(--text-tertiary); }
+.pulse-signal__factors-mini { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem; }
+.pulse-signal__chip { font-size: 0.62rem; padding: 0.15rem 0.4rem; background: rgba(255,255,255,0.04); border-radius: 3px; color: var(--text-secondary); }
+.pulse-signal__chip--more { color: var(--text-tertiary); font-weight: 700; }
+
+.pulse-heat__top { display: flex; justify-content: space-between; align-items: center; }
+.pulse-heat__badge { font-size: 0.6rem; font-weight: 700; padding: 0.05rem 0.3rem; border: 1px solid; border-radius: 3px; }

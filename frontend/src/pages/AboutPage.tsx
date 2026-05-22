@@ -115,11 +115,24 @@ const TAB_GUIDE = [
     icon: Trophy,
     tag: 'Live race',
     blurb:
-      '5 trading philosophies, $1M each, racing on the same 60-day live window. The ML model goes head-to-head against Bernard & Thomas\u2019s PEAD momentum, Buffett-inspired selectivity, the Turtle Traders\u2019 mechanical trend-following, and a long-only compounder.',
+      '5 trading philosophies, $1M each, racing on the same 60-day live window. Mission Control aesthetic with LCD displays, scanline overlay, real-time countdown timer to the next pending signal, scrolling ticker tape of recent trades, and a 14-day signal calendar showing which bots will fire on which upcoming earnings.',
     actions: [
-      'Leaderboard updates as new earnings events settle',
-      'Race chart: 5 equity curves overlaid, hover any point for all strategies',
-      'Trade attribution table shows exactly which strategy made each trade',
+      'LCD-style big boards with count-up animations for each strategy',
+      'Scrolling ticker tape and event log with precise timestamps',
+      'Next-signal countdown timer accurate to the second',
+    ],
+  },
+  {
+    name: 'Pulse',
+    to: '/pulse',
+    icon: Activity,
+    tag: 'Real-time',
+    blurb:
+      'Continuous intraday scanner running on top-30 S&P 500 names. Multi-factor conviction scoring across 6 independent signals (RSI, MA distance, momentum, volume, gap, sector). Trades fire when |score| \u2265 0.5; high-conviction signals (|score| \u2265 0.65) are pushed to Telegram so you don\u2019t have to keep the page open.',
+    actions: [
+      'Heat map of 30 mega-caps with per-cell sparklines and RSI badges',
+      'High-conviction signal cards show contributing factors with weighted scores',
+      'Phone alerts via Telegram bot — set up once, get notified within seconds of a signal firing',
     ],
   },
 ] as const

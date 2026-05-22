@@ -1,53 +1,55 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Activity, Flame, Zap, TrendingUp, TrendingDown, Radio, Gauge } from 'lucide-react'
+import { Activity, Flame, Zap, TrendingUp, TrendingDown, Bell, BellOff, Star } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 
+type Factor = { label: string; value: number }
 type Ticker = {
   ticker: string; sector: string; price: number; rsi: number; vol_z: number;
   dist_ma: number; intraday_ret: number; ret_5m: number; gap_pct: number;
   spark: number[]; last_ts: string;
+  score: number; factors: Factor[];
 }
 type Signal = {
-  ticker: string; sector: string; type: string; type_label: string;
-  emoji: string; side: string; color: string; price: number; rsi: number;
-  vol_z: number; intraday_ret: number; timestamp: string;
+  ticker: string; sector: string; score: number; side: string;
+  factors: Factor[]; price: number; rsi: number; vol_z: number;
+  intraday_ret: number; suggested_size: number; exit_clock: string;
+  timestamp: string; high_conviction: boolean; notified: boolean;
 }
-type Sector = { sector: string; avg_ret: number; count: number }
 type Trade = {
-  ticker: string; side: string; type: string;
+  ticker: string; side: string; score: number;
   entry_time: string; exit_time: string;
   entry_price: number; exit_price: number;
   pnl: number; return_pct: number; win: boolean;
 }
-type Portfolio = {
-  final_equity: number; total_return: number; trades: number; wins: number;
-  win_rate: number; sharpe: number;
-  equity_curve: { ts: string; equity: number }[];
-  trade_log: Trade[];
-}
 type PulseData = {
-  tickers: Ticker[]; signals: Signal[]; sectors: Sector[];
+  tickers: Ticker[]; signals: Signal[];
+  sectors: { sector: string; avg_ret: number; count: number }[];
   market: { avg_return: number; breadth: number; avg_vol_z: number; avg_rsi: number; n_tickers: number };
-  portfolio: Portfolio; as_of: string;
+  portfolio: { final_equity: number; total_return: number; trades: number; wins: number;
+               win_rate: number; sharpe: number;
+               equity_curve: { ts: string; equity: number }[]; trade_log: Trade[] };
+  notifications: { configured: boolean; has_token: boolean; has_chat_id: boolean; sent_last_hour: number };
+  thresholds: { signal: number; notify: number };
+  as_of: string;
 }
 
-function useCountUp(target: number, duration = 700): number {
+function useCountUp(target: number, dur = 700): number {
   const [v, setV] = useState(target)
   const prev = useRef(target)
   useEffect(() => {
-    const t0 = performance.now(), start = prev.current, delta = target - start
-    if (Math.abs(delta) < 0.001) { setV(target); return }
+    const t0 = performance.now(), s = prev.current, d = target - s
+    if (Math.abs(d) < 0.001) { setV(target); return }
     let raf = 0
     const step = (n: number) => {
-      const p = Math.min(1, (n - t0) / duration)
-      setV(start + delta * (1 - Math.pow(1 - p, 3)))
+      const p = Math.min(1, (n - t0) / dur)
+      setV(s + d * (1 - Math.pow(1 - p, 3)))
       if (p < 1) raf = requestAnimationFrame(step)
       else prev.current = target
     }
     raf = requestAnimationFrame(step)
     return () => cancelAnimationFrame(raf)
-  }, [target, duration])
+  }, [target, dur])
   return v
 }
 
@@ -63,45 +65,64 @@ export function PulsePage() {
   const [now, setNow] = useState(new Date())
 
   const load = useCallback(async () => {
-    try {
-      const r = await fetch('/api/v1/pulse')
-      setData(await r.json())
-    } finally { setLoading(false) }
+    try { setData(await (await fetch('/api/v1/pulse')).json()) }
+    finally { setLoading(false) }
   }, [])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(t)
-  }, [])
-  useEffect(() => {
-    const t = setInterval(load, 60_000)
-    return () => clearInterval(t)
-  }, [load])
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
+  useEffect(() => { const t = setInterval(load, 60_000); return () => clearInterval(t) }, [load])
 
   if (loading || !data) return (
     <div className="mc-loading">
       <div className="mc-loading__scan" />
       <div className="mc-loading__text">SCANNING MARKET</div>
-      <div className="mc-loading__sub">Fetching 5-min bars for {30} tickers…</div>
+      <div className="mc-loading__sub">Computing multi-factor conviction scores…</div>
     </div>
   )
 
+  const highConv = data.signals.filter(s => s.high_conviction)
+  const medConv = data.signals.filter(s => !s.high_conviction)
+
   return (
     <div className="mc-page">
-      <PulseHero data={data} now={now} />
+      <PulseHero data={data} now={now} highConv={highConv.length} />
+      <NotifBanner status={data.notifications} sent={data.signals.filter(s => s.notified).length} />
       <MarketGauges data={data} />
-      <SignalFeed signals={data.signals} />
+      {highConv.length > 0 && (
+        <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="mc-panel__title">
+            <Star size={14} /> HIGH CONVICTION SIGNALS
+            <span className="mc-panel__sub">
+              |score| ≥ {data.thresholds.notify} · sent to Telegram if configured
+            </span>
+          </div>
+          <div className="pulse-hi">
+            {highConv.map((s, i) => <HighConvCard key={i} sig={s} />)}
+          </div>
+        </motion.div>
+      )}
+      {medConv.length > 0 && (
+        <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <div className="mc-panel__title">
+            <Zap size={14} /> ACTIVE SIGNALS
+            <span className="mc-panel__sub">|score| ≥ {data.thresholds.signal} · traded but not notified</span>
+          </div>
+          <div className="pulse-signals">
+            {medConv.map((s, i) => <SignalCard key={i} sig={s} />)}
+          </div>
+        </motion.div>
+      )}
+      {data.signals.length === 0 && (
+        <div className="mc-panel"><div className="mc-empty">Market is quiet. No signals above threshold.</div></div>
+      )}
       <HeatMap tickers={data.tickers} />
       <PortfolioPanel portfolio={data.portfolio} />
-      <SectorBars sectors={data.sectors} />
     </div>
   )
 }
 
-
-function PulseHero({ data, now }: { data: PulseData; now: Date }) {
-  const sigCount = data.signals.length
+function PulseHero({ data, now, highConv }: { data: PulseData; now: Date; highConv: number }) {
   return (
     <div className="mc-hero">
       <div className="mc-hero__scanlines" />
@@ -110,14 +131,17 @@ function PulseHero({ data, now }: { data: PulseData; now: Date }) {
         <div className="mc-hero__top">
           <div className="mc-status"><span className="mc-status__dot" /><span className="mc-status__txt">SCANNING</span></div>
           <div className="mc-clock"><span className="mc-clock__time">{now.toLocaleTimeString('en-US', { hour12: false })}</span><span className="mc-clock__tz">ET</span></div>
-          <div className="mc-system">PULSE · {data.market.n_tickers} TICKERS · 5-MIN BARS · {sigCount} ACTIVE SIGNALS</div>
+          <div className="mc-system">
+            PULSE · {data.market.n_tickers} TICKERS · {data.signals.length} SIGNALS · {highConv} HIGH-CONVICTION
+          </div>
         </div>
         <div className="mc-hero__main">
           <div>
-            <div className="mc-hero__eyebrow">REAL-TIME MARKET PULSE</div>
-            <h1 className="mc-hero__title">Continuous Anomaly Scanner</h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', margin: '0.4rem 0 0', maxWidth: 700 }}>
-              5 technical signal types running on top-30 S&P 500 names. Refreshes every minute. Trades simulated on $1M book with 1-hour holding periods.
+            <div className="mc-hero__eyebrow">MULTI-FACTOR CONVICTION SCANNER</div>
+            <h1 className="mc-hero__title">Anomaly Detection · 6-Factor Score</h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0.4rem 0 0', maxWidth: 720, lineHeight: 1.55 }}>
+              Each ticker scored by 6 independent factors: RSI, MA distance, momentum, volume, gap, sector.
+              Trades fire when |score| ≥ {data.thresholds.signal}. Phone alerts when |score| ≥ {data.thresholds.notify}.
             </p>
           </div>
         </div>
@@ -126,27 +150,42 @@ function PulseHero({ data, now }: { data: PulseData; now: Date }) {
   )
 }
 
-
-function MarketGauges({ data }: { data: PulseData }) {
-  const m = data.market
-  const breadthPct = m.breadth * 100
+function NotifBanner({ status, sent }: { status: PulseData['notifications']; sent: number }) {
+  if (status.configured) return (
+    <div className="pulse-notif pulse-notif--on">
+      <Bell size={14} />
+      <span><b>Telegram alerts ON</b> · {sent} sent this scan · {status.sent_last_hour} in last hour</span>
+    </div>
+  )
   return (
-    <div className="pulse-gauges">
-      <Gauge1 label="MARKET" value={`${m.avg_return >= 0 ? '+' : ''}${(m.avg_return * 100).toFixed(2)}%`}
-        accent={m.avg_return >= 0 ? '#4ade80' : '#f87171'} sub="avg intraday return" />
-      <Gauge1 label="BREADTH" value={`${breadthPct.toFixed(0)}%`}
-        accent={breadthPct >= 50 ? '#4ade80' : '#f87171'} sub={`${Math.round(breadthPct / 100 * m.n_tickers)}/${m.n_tickers} advancing`} />
-      <Gauge1 label="VOLUME" value={`${m.avg_vol_z >= 0 ? '+' : ''}${m.avg_vol_z.toFixed(1)}σ`}
-        accent={m.avg_vol_z > 1 ? '#fbbf24' : '#38bdf8'} sub="z-score vs 60-bar avg" />
-      <Gauge1 label="AVG RSI" value={m.avg_rsi.toFixed(1)}
-        accent={m.avg_rsi > 70 ? '#f87171' : m.avg_rsi < 30 ? '#4ade80' : '#38bdf8'} sub="market-wide 14-period" />
-      <Gauge1 label="SIGNALS" value={data.signals.length.toString()}
-        accent="#a78bfa" sub="firing right now" />
+    <div className="pulse-notif pulse-notif--off">
+      <BellOff size={14} />
+      <span>
+        <b>Phone alerts not configured.</b> Set <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code> in server <code>.env</code> to receive high-conviction signals.
+      </span>
     </div>
   )
 }
 
-function Gauge1({ label, value, accent, sub }: { label: string; value: string; accent: string; sub: string }) {
+function MarketGauges({ data }: { data: PulseData }) {
+  const m = data.market, b = m.breadth * 100
+  return (
+    <div className="pulse-gauges">
+      <Gauge label="MARKET" value={`${m.avg_return >= 0 ? '+' : ''}${(m.avg_return * 100).toFixed(2)}%`}
+        accent={m.avg_return >= 0 ? '#4ade80' : '#f87171'} sub="avg intraday return" />
+      <Gauge label="BREADTH" value={`${b.toFixed(0)}%`}
+        accent={b >= 50 ? '#4ade80' : '#f87171'} sub={`${Math.round(b / 100 * m.n_tickers)}/${m.n_tickers} advancing`} />
+      <Gauge label="VOLUME" value={`${m.avg_vol_z >= 0 ? '+' : ''}${m.avg_vol_z.toFixed(1)}σ`}
+        accent={m.avg_vol_z > 1 ? '#fbbf24' : '#38bdf8'} sub="z vs 60-bar avg" />
+      <Gauge label="AVG RSI" value={m.avg_rsi.toFixed(1)}
+        accent={m.avg_rsi > 70 ? '#f87171' : m.avg_rsi < 30 ? '#4ade80' : '#38bdf8'} sub="14-period" />
+      <Gauge label="SIGNALS" value={data.signals.length.toString()}
+        accent="#a78bfa" sub={`thr ≥ ${data.thresholds.signal}`} />
+    </div>
+  )
+}
+
+function Gauge({ label, value, accent, sub }: { label: string; value: string; accent: string; sub: string }) {
   return (
     <div className="pulse-gauge" style={{ '--accent': accent } as React.CSSProperties}>
       <div className="pulse-gauge__label">{label}</div>
@@ -157,67 +196,101 @@ function Gauge1({ label, value, accent, sub }: { label: string; value: string; a
   )
 }
 
-
-function SignalFeed({ signals }: { signals: Signal[] }) {
+function HighConvCard({ sig }: { sig: Signal }) {
+  const stars = Math.min(5, Math.max(1, Math.round(Math.abs(sig.score) * 6)))
+  const color = sig.side === 'LONG' ? '#4ade80' : '#f87171'
   return (
-    <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-      <div className="mc-panel__title">
-        <Zap size={14} /> ACTIVE SIGNALS
-        <span className="mc-panel__sub">live anomalies firing on current bar · {signals.length} total</span>
+    <motion.div className="pulse-hi-card"
+      initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+      style={{ borderColor: color, boxShadow: `0 0 32px -10px ${color}` }}>
+      <div className="pulse-hi-card__top">
+        <div className="pulse-hi-card__stars">{'★'.repeat(stars)}{'☆'.repeat(5 - stars)}</div>
+        {sig.notified && <div className="pulse-hi-card__notif"><Bell size={10} /> SENT</div>}
       </div>
-      {signals.length === 0 ? (
-        <div className="mc-empty">Market is quiet. No signals firing right now.</div>
-      ) : (
-        <div className="pulse-signals">
-          {signals.slice(0, 24).map((s, i) => (
-            <motion.div key={i} className="pulse-signal"
-              initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: i * 0.03 }}
-              style={{ borderColor: s.color, boxShadow: `0 0 20px -8px ${s.color}` }}>
-              <div className="pulse-signal__top">
-                <span className="pulse-signal__emoji">{s.emoji}</span>
-                <span className="pulse-signal__type" style={{ color: s.color }}>{s.type_label}</span>
-              </div>
-              <div className="pulse-signal__ticker mono">{s.ticker}</div>
-              <div className="pulse-signal__price mono">${s.price.toFixed(2)}</div>
-              <div className="pulse-signal__action">
-                <span style={{ color: s.side === 'LONG' ? '#4ade80' : '#f87171', fontWeight: 800 }}>
-                  {s.side === 'LONG' ? <TrendingUp size={11} /> : <TrendingDown size={11} />} {s.side}
-                </span>
-                <span className="pulse-signal__ret mono" style={{ color: s.intraday_ret >= 0 ? '#4ade80' : '#f87171' }}>
-                  {s.intraday_ret >= 0 ? '+' : ''}{(s.intraday_ret * 100).toFixed(2)}%
-                </span>
-              </div>
-              <div className="pulse-signal__meta mono">
-                RSI {s.rsi.toFixed(0)} · VOL {s.vol_z.toFixed(1)}σ
-              </div>
-            </motion.div>
-          ))}
+      <div className="pulse-hi-card__ticker mono">{sig.ticker}</div>
+      <div className="pulse-hi-card__price mono">${sig.price.toFixed(2)}</div>
+      <div className="pulse-hi-card__lcd">
+        <div className="pulse-hi-card__score-l">CONVICTION</div>
+        <div className="pulse-hi-card__score mono" style={{ color }}>
+          {sig.score > 0 ? '+' : ''}{sig.score.toFixed(2)}
         </div>
-      )}
+      </div>
+      <div className="pulse-hi-card__action">
+        <span style={{ color, fontWeight: 800, fontSize: '1rem' }}>
+          {sig.side === 'LONG' ? <TrendingUp size={14} /> : <TrendingDown size={14} />} {sig.side}
+        </span>
+        <span className="mono pulse-hi-card__size">${sig.suggested_size.toLocaleString()}</span>
+      </div>
+      <div className="pulse-hi-card__exit mono">exit ~{sig.exit_clock}</div>
+      <div className="pulse-hi-card__factors">
+        <div className="pulse-hi-card__factors-l">FACTORS</div>
+        {sig.factors.map((f, i) => (
+          <div key={i} className="pulse-hi-card__factor">
+            <span className="pulse-hi-card__factor-l">{f.label}</span>
+            <span className="mono" style={{ color: f.value >= 0 ? '#4ade80' : '#f87171' }}>
+              {f.value >= 0 ? '+' : ''}{f.value.toFixed(2)}
+            </span>
+          </div>
+        ))}
+      </div>
     </motion.div>
   )
 }
 
+function SignalCard({ sig }: { sig: Signal }) {
+  const color = sig.side === 'LONG' ? '#4ade80' : '#f87171'
+  return (
+    <motion.div className="pulse-signal"
+      initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}
+      style={{ borderColor: color }}>
+      <div className="pulse-signal__top">
+        <span className="pulse-signal__ticker mono">{sig.ticker}</span>
+        <span className="pulse-signal__score mono" style={{ color }}>
+          {sig.score > 0 ? '+' : ''}{sig.score.toFixed(2)}
+        </span>
+      </div>
+      <div className="pulse-signal__price mono">${sig.price.toFixed(2)} · intraday {sig.intraday_ret >= 0 ? '+' : ''}{(sig.intraday_ret * 100).toFixed(2)}%</div>
+      <div className="pulse-signal__action">
+        <span style={{ color, fontWeight: 700 }}>
+          {sig.side === 'LONG' ? '↑' : '↓'} {sig.side} · ${sig.suggested_size.toLocaleString()}
+        </span>
+      </div>
+      <div className="pulse-signal__factors-mini">
+        {sig.factors.slice(0, 3).map((f, i) => (
+          <span key={i} className="pulse-signal__chip">
+            {f.label}
+            <b style={{ color: f.value >= 0 ? '#4ade80' : '#f87171' }}> {f.value >= 0 ? '+' : ''}{f.value.toFixed(2)}</b>
+          </span>
+        ))}
+        {sig.factors.length > 3 && <span className="pulse-signal__chip pulse-signal__chip--more">+{sig.factors.length - 3}</span>}
+      </div>
+    </motion.div>
+  )
+}
 
 function HeatMap({ tickers }: { tickers: Ticker[] }) {
-  const cellColor = (ret: number) => {
-    const intensity = Math.min(1, Math.abs(ret) / 0.04)
-    if (ret > 0) return `rgba(74, 222, 128, ${0.1 + intensity * 0.55})`
-    return `rgba(248, 113, 113, ${0.1 + intensity * 0.55})`
+  const color = (r: number) => {
+    const i = Math.min(1, Math.abs(r) / 0.04)
+    return r > 0 ? `rgba(74,222,128,${0.1 + i * 0.55})` : `rgba(248,113,113,${0.1 + i * 0.55})`
   }
   return (
-    <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
-      <div className="mc-panel__title">
-        <Flame size={14} /> HEAT MAP
-        <span className="mc-panel__sub">intraday performance · cell brightness = magnitude · click for details</span>
-      </div>
+    <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}>
+      <div className="mc-panel__title"><Flame size={14} /> HEAT MAP
+        <span className="mc-panel__sub">intraday performance · score badges show conviction</span></div>
       <div className="pulse-heat">
         {tickers.map((t, i) => (
           <motion.div key={t.ticker} className="pulse-heat__cell"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.015 }}
-            style={{ background: cellColor(t.intraday_ret) }}>
-            <div className="pulse-heat__ticker mono">{t.ticker}</div>
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.012 }}
+            style={{ background: color(t.intraday_ret) }}>
+            <div className="pulse-heat__top">
+              <span className="pulse-heat__ticker mono">{t.ticker}</span>
+              {Math.abs(t.score) >= 0.5 && (
+                <span className="pulse-heat__badge mono"
+                  style={{ color: t.score >= 0 ? '#4ade80' : '#f87171', borderColor: t.score >= 0 ? '#4ade80' : '#f87171' }}>
+                  {t.score > 0 ? '+' : ''}{t.score.toFixed(2)}
+                </span>
+              )}
+            </div>
             <div className="pulse-heat__pct mono" style={{ color: t.intraday_ret >= 0 ? '#4ade80' : '#f87171' }}>
               {t.intraday_ret >= 0 ? '+' : ''}{(t.intraday_ret * 100).toFixed(2)}%
             </div>
@@ -227,9 +300,7 @@ function HeatMap({ tickers }: { tickers: Ticker[] }) {
             </svg>
             <div className="pulse-heat__meta mono">
               <span>${t.price.toFixed(2)}</span>
-              <span style={{ color: t.rsi > 70 ? '#f87171' : t.rsi < 30 ? '#4ade80' : 'var(--text-tertiary)' }}>
-                RSI {t.rsi.toFixed(0)}
-              </span>
+              <span style={{ color: t.rsi > 70 ? '#f87171' : t.rsi < 30 ? '#4ade80' : 'var(--text-tertiary)' }}>RSI {t.rsi.toFixed(0)}</span>
             </div>
           </motion.div>
         ))}
@@ -238,16 +309,13 @@ function HeatMap({ tickers }: { tickers: Ticker[] }) {
   )
 }
 
-
-function PortfolioPanel({ portfolio: p }: { portfolio: Portfolio }) {
+function PortfolioPanel({ portfolio: p }: { portfolio: PulseData['portfolio'] }) {
   const eq = useCountUp(p.final_equity, 900)
   const ret = useCountUp(p.total_return * 100, 900)
   return (
-    <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}>
-      <div className="mc-panel__title">
-        <Activity size={14} /> SCANNER PORTFOLIO
-        <span className="mc-panel__sub">$1M virtual book trading every signal · 1-hour hold · last 5 days</span>
-      </div>
+    <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.24 }}>
+      <div className="mc-panel__title"><Activity size={14} /> SCANNER PORTFOLIO
+        <span className="mc-panel__sub">$1M book · multi-factor signals · size scales with |score| · 1-hr hold · 5d</span></div>
       <div className="pulse-port">
         <div className="pulse-port__lcd">
           <div className="pulse-port__lcd-label">EQUITY</div>
@@ -283,7 +351,6 @@ function PortfolioPanel({ portfolio: p }: { portfolio: Portfolio }) {
           )}
         </div>
       </div>
-
       {p.trade_log.length > 0 && (
         <div className="pulse-trades">
           <div style={{ fontSize: '0.65rem', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', color: 'var(--text-tertiary)', margin: '0.5rem 0' }}>RECENT TRADES</div>
@@ -293,56 +360,16 @@ function PortfolioPanel({ portfolio: p }: { portfolio: Portfolio }) {
                 <span className="mc-log__time mono">{t.exit_time.slice(5, 16).replace('T', ' ')}</span>
                 <span className="mono" style={{ color: '#38bdf8', fontWeight: 700 }}>{t.ticker}</span>
                 <span style={{ color: t.side === 'LONG' ? '#4ade80' : '#f87171', fontWeight: 700, fontSize: '0.7rem' }}>{t.side}</span>
-                <span className="mono" style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)' }}>{t.type.replace('_', ' ')}</span>
+                <span className="mono" style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)' }}>score {t.score >= 0 ? '+' : ''}{t.score.toFixed(2)}</span>
                 <span className="mono" style={{ color: t.win ? '#4ade80' : '#f87171', fontWeight: 700, textAlign: 'right' }}>
                   {t.pnl >= 0 ? '+' : ''}${Math.round(t.pnl).toLocaleString()}
                 </span>
-                <span className="mono" style={{ color: t.win ? '#4ade80' : '#f87171', textAlign: 'right' }}>
-                  {(t.return_pct * 100).toFixed(2)}%
-                </span>
+                <span className="mono" style={{ color: t.win ? '#4ade80' : '#f87171', textAlign: 'right' }}>{(t.return_pct * 100).toFixed(2)}%</span>
               </div>
             ))}
           </div>
         </div>
       )}
-    </motion.div>
-  )
-}
-
-
-function SectorBars({ sectors }: { sectors: Sector[] }) {
-  const maxAbs = Math.max(...sectors.map(s => Math.abs(s.avg_ret)), 0.005)
-  return (
-    <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.24 }}>
-      <div className="mc-panel__title">
-        <Gauge size={14} /> SECTOR ROTATION
-        <span className="mc-panel__sub">average intraday return by sector</span>
-      </div>
-      <div className="pulse-sectors">
-        {sectors.map((s, i) => {
-          const isUp = s.avg_ret >= 0
-          const w = (Math.abs(s.avg_ret) / maxAbs) * 50
-          return (
-            <motion.div key={s.sector} className="pulse-sector"
-              initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}>
-              <div className="pulse-sector__name">{s.sector}</div>
-              <div className="pulse-sector__bar-wrap">
-                <div className="pulse-sector__center" />
-                <div className="pulse-sector__bar"
-                  style={{
-                    background: isUp ? '#4ade80' : '#f87171',
-                    width: `${w}%`,
-                    [isUp ? 'left' : 'right']: '50%',
-                  }}/>
-              </div>
-              <div className="pulse-sector__val mono" style={{ color: isUp ? '#4ade80' : '#f87171' }}>
-                {isUp ? '+' : ''}{(s.avg_ret * 100).toFixed(2)}%
-              </div>
-              <div className="pulse-sector__count mono">{s.count}</div>
-            </motion.div>
-          )
-        })}
-      </div>
     </motion.div>
   )
 }

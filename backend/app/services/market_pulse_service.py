@@ -1,18 +1,21 @@
-"""Market Pulse — real-time intraday anomaly scanner.
+"""Market Pulse — multi-factor intraday scanner.
 
-Continuously monitors top S&P 500 names on 5-min bars. Detects 5 classes of
-signal: RSI extremes, volume surges, momentum breakouts, mean reversion,
-opening gap reversals. Simulates a $1M portfolio that trades these signals
-with 1-hour holding periods.
+Each ticker gets a composite conviction score from 5 independent factors:
+  • RSI (mean reversion)
+  • 20-MA distance (mean reversion)
+  • 5-min momentum
+  • Volume z-score (confirmation)
+  • Opening gap behavior
 
-Uses file-based 5-min cache to avoid hammering yfinance.
+Score in [-1, +1]. Trade only when |score| > 0.5. Position size scales
+with conviction. High-conviction signals (|score| > 0.65) are pushed to
+Telegram if configured.
 """
 from __future__ import annotations
 
 import os
 import pickle
 import time
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from math import sqrt
 from typing import Any
@@ -20,6 +23,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yfinance as yf
+
+from backend.app.services.notification_service import send_signal as send_telegram
 
 
 UNIVERSE = [
@@ -41,11 +46,15 @@ SECTORS = {
 }
 
 CACHE_PATH = "/tmp/pulse_cache.pkl"
-CACHE_TTL = 300  # 5 minutes
+CACHE_TTL = 300
+
+# Trading thresholds
+SIGNAL_THRESHOLD = 0.50    # min |score| to enter a trade
+NOTIFY_THRESHOLD = 0.65    # min |score| to send Telegram alert
+BASE_POSITION = 50_000     # base $ size; actual = base * |score|
 
 
 def _fetch_bars() -> pd.DataFrame:
-    """Fetch 5-min bars for the universe, cached for 5 min."""
     if os.path.exists(CACHE_PATH):
         age = time.time() - os.path.getmtime(CACHE_PATH)
         if age < CACHE_TTL:
@@ -54,15 +63,10 @@ def _fetch_bars() -> pd.DataFrame:
                     return pickle.load(f)
             except Exception:
                 pass
-    # Fresh fetch — single batch call
     df = yf.download(
         tickers=" ".join(UNIVERSE),
-        period="5d",
-        interval="5m",
-        group_by="ticker",
-        progress=False,
-        threads=True,
-        auto_adjust=True,
+        period="5d", interval="5m", group_by="ticker",
+        progress=False, threads=True, auto_adjust=True,
     )
     try:
         with open(CACHE_PATH, "wb") as f:
@@ -80,8 +84,7 @@ def _rsi(close: pd.Series, length: int = 14) -> pd.Series:
     return 100 - (100 / (1 + rs))
 
 
-def _compute_ticker_indicators(df: pd.DataFrame, ticker: str) -> dict[str, Any] | None:
-    """Compute current indicators + recent bars for one ticker."""
+def _compute_indicators(df: pd.DataFrame, ticker: str) -> dict[str, Any] | None:
     try:
         if ticker not in df.columns.levels[0]:
             return None
@@ -90,9 +93,6 @@ def _compute_ticker_indicators(df: pd.DataFrame, ticker: str) -> dict[str, Any] 
             return None
         close = sub["Close"]
         vol = sub["Volume"]
-        high = sub["High"]
-        low = sub["Low"]
-        opn = sub["Open"]
 
         rsi = _rsi(close, 14)
         ma20 = close.rolling(20).mean()
@@ -106,20 +106,16 @@ def _compute_ticker_indicators(df: pd.DataFrame, ticker: str) -> dict[str, Any] 
         last_ma = float(ma20.iloc[-1]) if pd.notna(ma20.iloc[-1]) else last_close
         last_std = float(std20.iloc[-1]) if pd.notna(std20.iloc[-1]) else 0.01
         avg_vol = float(vol_ma.iloc[-1]) if pd.notna(vol_ma.iloc[-1]) else last_vol
-        vol_z = (last_vol - avg_vol) / float(vol_std.iloc[-1]) if pd.notna(vol_std.iloc[-1]) and vol_std.iloc[-1] > 0 else 0.0
+        vstd = float(vol_std.iloc[-1]) if pd.notna(vol_std.iloc[-1]) else 1
+        vol_z = (last_vol - avg_vol) / vstd if vstd > 0 else 0.0
 
-        # Distance from MA in standard deviations
         dist_ma = (last_close - last_ma) / last_std if last_std > 0 else 0.0
 
-        # Intraday return (since first bar today)
         today_start = sub.index[-1].normalize()
         today_bars = sub[sub.index >= today_start]
         intraday_ret = (last_close / float(today_bars["Open"].iloc[0]) - 1) if len(today_bars) > 0 else 0.0
-
-        # 5-min recent return
         ret_5m = (last_close / float(close.iloc[-2]) - 1) if len(close) >= 2 else 0.0
 
-        # Opening gap
         if len(today_bars) > 0 and len(sub) > len(today_bars):
             prev_close = float(close.iloc[-len(today_bars) - 1])
             today_open = float(today_bars["Open"].iloc[0])
@@ -127,19 +123,14 @@ def _compute_ticker_indicators(df: pd.DataFrame, ticker: str) -> dict[str, Any] 
         else:
             gap_pct = 0.0
 
-        # Mini bar history for sparkline (last 78 bars = full trading day if avail)
         spark = close.iloc[-78:].tolist() if len(close) >= 78 else close.tolist()
 
         return {
-            "ticker": ticker,
-            "sector": SECTORS.get(ticker, "—"),
+            "ticker": ticker, "sector": SECTORS.get(ticker, "—"),
             "price": round(last_close, 2),
-            "rsi": round(last_rsi, 1),
-            "vol_z": round(vol_z, 2),
-            "dist_ma": round(dist_ma, 2),
-            "intraday_ret": round(intraday_ret, 4),
-            "ret_5m": round(ret_5m, 4),
-            "gap_pct": round(gap_pct, 4),
+            "rsi": round(last_rsi, 1), "vol_z": round(vol_z, 2),
+            "dist_ma": round(dist_ma, 2), "intraday_ret": round(intraday_ret, 4),
+            "ret_5m": round(ret_5m, 4), "gap_pct": round(gap_pct, 4),
             "spark": [round(s, 2) for s in spark],
             "last_ts": sub.index[-1].isoformat() if hasattr(sub.index[-1], "isoformat") else str(sub.index[-1]),
         }
@@ -147,59 +138,67 @@ def _compute_ticker_indicators(df: pd.DataFrame, ticker: str) -> dict[str, Any] 
         return None
 
 
-SIGNAL_TYPES = {
-    "RSI_OVERSOLD":   {"emoji": "📉", "label": "RSI Oversold",     "side": "LONG",  "color": "#4ade80"},
-    "RSI_OVERBOUGHT": {"emoji": "📈", "label": "RSI Overbought",   "side": "SHORT", "color": "#f87171"},
-    "VOL_SURGE":      {"emoji": "🔥", "label": "Volume Surge",     "side": "LONG",  "color": "#fbbf24"},
-    "BREAKOUT_UP":    {"emoji": "🚀", "label": "Momentum Breakout","side": "LONG",  "color": "#38bdf8"},
-    "BREAKDOWN":      {"emoji": "💥", "label": "Momentum Breakdown","side": "SHORT","color": "#fb7185"},
-    "GAP_FADE_UP":    {"emoji": "🔄", "label": "Gap Fade (down)",  "side": "SHORT", "color": "#a78bfa"},
-    "GAP_FADE_DN":    {"emoji": "🔄", "label": "Gap Fade (up)",    "side": "LONG",  "color": "#2dd4bf"},
-}
+def _compute_conviction(ind: dict, sector_ret: float = 0.0) -> tuple[float, list[dict]]:
+    """Compute composite conviction score from 5 factors. Returns (score, factors_list)."""
+    factors = []
+
+    # 1) RSI (mean reversion): low RSI = bullish bias
+    if ind["rsi"] < 30:
+        v = round(0.30 * (30 - ind["rsi"]) / 30, 3)
+        factors.append({"label": f"RSI oversold ({ind['rsi']:.0f})", "value": v})
+    elif ind["rsi"] > 70:
+        v = round(-0.30 * (ind["rsi"] - 70) / 30, 3)
+        factors.append({"label": f"RSI overbought ({ind['rsi']:.0f})", "value": v})
+
+    # 2) Distance from 20-MA (mean reversion): far above = bearish bias
+    if abs(ind["dist_ma"]) > 1.2:
+        sign = -1 if ind["dist_ma"] > 0 else 1
+        v = round(sign * 0.25 * min(1.0, abs(ind["dist_ma"]) / 3.0), 3)
+        side = "above" if ind["dist_ma"] > 0 else "below"
+        factors.append({"label": f"{abs(ind['dist_ma']):.1f}σ {side} 20-MA", "value": v})
+
+    # 3) 5-min momentum (trend): vote with direction
+    if abs(ind["ret_5m"]) > 0.003:
+        sign = 1 if ind["ret_5m"] > 0 else -1
+        v = round(sign * 0.20 * min(1.0, abs(ind["ret_5m"]) / 0.01), 3)
+        factors.append({"label": f"5m momentum {ind['ret_5m']*100:+.2f}%", "value": v})
+
+    # 4) Volume confirmation: amplifies the dominant direction
+    if ind["vol_z"] > 1.8:
+        # Volume confirms whatever direction the 5-min move shows
+        if ind["ret_5m"] > 0:
+            v = round(0.20 * min(1.0, ind["vol_z"] / 5.0), 3)
+            factors.append({"label": f"Volume surge +{ind['vol_z']:.1f}σ", "value": v})
+        elif ind["ret_5m"] < 0:
+            v = round(-0.20 * min(1.0, ind["vol_z"] / 5.0), 3)
+            factors.append({"label": f"Volume surge +{ind['vol_z']:.1f}σ", "value": v})
+
+    # 5) Gap behavior
+    if ind["gap_pct"] > 0.015:
+        if ind["intraday_ret"] < ind["gap_pct"] * 0.5:
+            # Gap up that's already fading — bearish
+            factors.append({"label": f"Fading gap-up ({ind['gap_pct']*100:+.1f}%)", "value": -0.25})
+    elif ind["gap_pct"] < -0.015:
+        if ind["intraday_ret"] > ind["gap_pct"] * 0.5:
+            factors.append({"label": f"Reversing gap-down ({ind['gap_pct']*100:+.1f}%)", "value": 0.25})
+
+    # 6) Sector tailwind/headwind
+    if abs(sector_ret) > 0.005:
+        sign = 1 if sector_ret > 0 else -1
+        v = round(sign * 0.10, 3)
+        factors.append({"label": f"Sector {sector_ret*100:+.2f}%", "value": v})
+
+    score = round(sum(f["value"] for f in factors), 3)
+    return score, factors
 
 
-def _detect_signals(ind: dict[str, Any]) -> list[dict[str, Any]]:
-    """Run signal rules on one ticker's indicators."""
-    sigs = []
-    if ind["rsi"] < 22 and ind["intraday_ret"] < -0.015:
-        sigs.append("RSI_OVERSOLD")
-    if ind["rsi"] > 78 and ind["intraday_ret"] > 0.015:
-        sigs.append("RSI_OVERBOUGHT")
-    if ind["vol_z"] > 3.5 and ind["intraday_ret"] > 0:
-        sigs.append("VOL_SURGE")
-    if ind["dist_ma"] > 2.0 and ind["ret_5m"] > 0.003:
-        sigs.append("BREAKOUT_UP")
-    if ind["dist_ma"] < -2.0 and ind["ret_5m"] < -0.003:
-        sigs.append("BREAKDOWN")
-    if ind["gap_pct"] > 0.02 and ind["intraday_ret"] < ind["gap_pct"] * 0.5:
-        sigs.append("GAP_FADE_UP")
-    if ind["gap_pct"] < -0.02 and ind["intraday_ret"] > ind["gap_pct"] * 0.5:
-        sigs.append("GAP_FADE_DN")
-    return [{
-        "ticker": ind["ticker"],
-        "sector": ind["sector"],
-        "type": t,
-        "type_label": SIGNAL_TYPES[t]["label"],
-        "emoji": SIGNAL_TYPES[t]["emoji"],
-        "side": SIGNAL_TYPES[t]["side"],
-        "color": SIGNAL_TYPES[t]["color"],
-        "price": ind["price"],
-        "rsi": ind["rsi"],
-        "vol_z": ind["vol_z"],
-        "intraday_ret": ind["intraday_ret"],
-        "timestamp": ind["last_ts"],
-    } for t in sigs]
-
-
-def _simulate_portfolio(df: pd.DataFrame, hold_bars: int = 12, position_size: float = 50_000) -> dict[str, Any]:
-    """Walk through every bar over the data window. When a signal fires,
-    open a $50k position and close `hold_bars` (1 hour) later. Track P&L."""
+def _simulate_portfolio(df: pd.DataFrame, hold_bars: int = 12, sector_lookup: dict = None) -> dict:
+    """Walk through bars; trade when |conviction| > threshold; hold 1 hr."""
     initial = 1_000_000
     cash = initial
-    closed_trades = []
+    closed = []
     equity_curve = []
 
-    # Build per-ticker bar series with timestamp index aligned
     ticker_bars = {}
     for ticker in UNIVERSE:
         try:
@@ -210,186 +209,229 @@ def _simulate_portfolio(df: pd.DataFrame, hold_bars: int = 12, position_size: fl
                 continue
             close = sub["Close"]
             ticker_bars[ticker] = {
-                "close": close,
+                "close": close, "vol": sub["Volume"],
                 "rsi": _rsi(close, 14),
                 "ma20": close.rolling(20).mean(),
                 "std20": close.rolling(20).std(),
-                "vol": sub["Volume"],
                 "vol_ma": sub["Volume"].rolling(60).mean(),
                 "vol_std": sub["Volume"].rolling(60).std(),
+                "open": sub["Open"],
+                "sector": SECTORS.get(ticker, "—"),
             }
         except Exception:
             continue
 
     if not ticker_bars:
-        return {"final_equity": initial, "total_return": 0.0, "trades": 0,
+        return {"final_equity": initial, "total_return": 0.0, "trades": 0, "wins": 0,
                 "win_rate": 0.0, "sharpe": 0.0, "equity_curve": [], "trade_log": []}
 
-    # Get common timeline
     all_times = sorted(set().union(*[v["close"].index for v in ticker_bars.values()]))
-    open_positions = []  # list of dicts
+    open_pos = []
 
     for t_idx, t in enumerate(all_times):
-        # Close any expiring positions
+        # Close expiring
         keep = []
-        for pos in open_positions:
+        for pos in open_pos:
             if t >= pos["exit_time"]:
                 tb = ticker_bars.get(pos["ticker"])
                 if tb is not None and t in tb["close"].index:
-                    exit_price = float(tb["close"].loc[t])
-                    pnl = pos["size"] * (exit_price / pos["entry_price"] - 1) * (1 if pos["side"] == "LONG" else -1)
+                    exit_p = float(tb["close"].loc[t])
+                    pnl = pos["size"] * (exit_p / pos["entry"] - 1) * (1 if pos["side"] == "LONG" else -1)
                     cash += pos["size"] + pnl
-                    closed_trades.append({
-                        "ticker": pos["ticker"], "side": pos["side"], "type": pos["type"],
-                        "entry_time": pos["entry_time"].isoformat() if hasattr(pos["entry_time"], "isoformat") else str(pos["entry_time"]),
-                        "exit_time": t.isoformat() if hasattr(t, "isoformat") else str(t),
-                        "entry_price": round(pos["entry_price"], 2),
-                        "exit_price": round(exit_price, 2),
+                    closed.append({
+                        "ticker": pos["ticker"], "side": pos["side"], "score": pos["score"],
+                        "entry_time": pos["entry_time"].isoformat(),
+                        "exit_time": t.isoformat(),
+                        "entry_price": round(pos["entry"], 2),
+                        "exit_price": round(exit_p, 2),
                         "pnl": round(pnl, 2),
                         "return_pct": round(pnl / pos["size"], 4),
                         "win": pnl > 0,
                     })
                 else:
-                    cash += pos["size"]  # close at entry, no data
+                    cash += pos["size"]
             else:
                 keep.append(pos)
-        open_positions = keep
+        open_pos = keep
 
-        # Check for new signals on each ticker
+        # Compute sector returns at this bar
+        sector_rets = {}
+        if t_idx % 4 == 0:  # update every 20 min to save compute
+            by_sec = {}
+            for ticker, tb in ticker_bars.items():
+                try:
+                    if t in tb["close"].index:
+                        opn = tb["open"].loc[tb["open"].index >= t.normalize()]
+                        if len(opn) > 0:
+                            ret = float(tb["close"].loc[t]) / float(opn.iloc[0]) - 1
+                            by_sec.setdefault(tb["sector"], []).append(ret)
+                except Exception:
+                    pass
+            sector_rets = {s: float(np.mean(r)) for s, r in by_sec.items()}
+
+        # Check signals
         for ticker, tb in ticker_bars.items():
             if t not in tb["close"].index:
+                continue
+            if any(p["ticker"] == ticker for p in open_pos):
                 continue
             try:
                 close = float(tb["close"].loc[t])
                 rsi = tb["rsi"].loc[t]
-                if pd.isna(rsi):
-                    continue
                 ma = tb["ma20"].loc[t]
                 std = tb["std20"].loc[t]
-                if pd.isna(ma) or pd.isna(std) or std == 0:
+                vol_ma = tb["vol_ma"].loc[t]
+                vol_std = tb["vol_std"].loc[t]
+                if pd.isna(rsi) or pd.isna(ma) or pd.isna(std) or std == 0:
                     continue
-                dist_ma = (close - ma) / std
+                vol = float(tb["vol"].loc[t])
+                avgv = float(vol_ma) if pd.notna(vol_ma) else vol
+                vstd = float(vol_std) if pd.notna(vol_std) and vol_std > 0 else 1
+                opn = tb["open"].loc[tb["open"].index >= t.normalize()]
+                intraday = (close / float(opn.iloc[0]) - 1) if len(opn) > 0 else 0.0
+                prev_close_idx = tb["close"].index.get_loc(t) - 1
+                ret_5m = (close / float(tb["close"].iloc[prev_close_idx]) - 1) if prev_close_idx >= 0 else 0.0
+                if len(opn) > 0:
+                    bars_today = (tb["open"].index >= t.normalize()).sum()
+                    if bars_today < len(tb["close"]):
+                        prev_close_day = float(tb["close"].iloc[-bars_today - 1]) if bars_today < len(tb["close"]) else float(opn.iloc[0])
+                        gap = float(opn.iloc[0]) / prev_close_day - 1
+                    else:
+                        gap = 0
+                else:
+                    gap = 0
 
-                # Skip if already have open position on this ticker
-                if any(p["ticker"] == ticker for p in open_positions):
-                    continue
+                ind = {
+                    "ticker": ticker, "rsi": float(rsi),
+                    "dist_ma": (close - float(ma)) / float(std),
+                    "ret_5m": ret_5m, "vol_z": (vol - avgv) / vstd if vstd > 0 else 0,
+                    "intraday_ret": intraday, "gap_pct": gap,
+                }
+                sect_ret = sector_rets.get(tb["sector"], 0.0)
+                score, _ = _compute_conviction(ind, sect_ret)
 
-                # Need cash
-                if cash < position_size:
-                    continue
-
-                side = None
-                stype = None
-                if rsi < 22 and dist_ma < -1.5:
-                    side, stype = "LONG", "RSI_OVERSOLD"
-                elif rsi > 78 and dist_ma > 1.5:
-                    side, stype = "SHORT", "RSI_OVERBOUGHT"
-                elif dist_ma > 2.0:
-                    side, stype = "LONG", "BREAKOUT_UP"
-                elif dist_ma < -2.0:
-                    side, stype = "SHORT", "BREAKDOWN"
-
-                if side is not None:
+                if abs(score) >= SIGNAL_THRESHOLD and cash >= BASE_POSITION * abs(score):
+                    side = "LONG" if score > 0 else "SHORT"
+                    size = BASE_POSITION * abs(score)
                     exit_idx = min(t_idx + hold_bars, len(all_times) - 1)
-                    open_positions.append({
-                        "ticker": ticker, "side": side, "type": stype,
-                        "entry_time": t, "entry_price": close,
-                        "exit_time": all_times[exit_idx], "size": position_size,
+                    open_pos.append({
+                        "ticker": ticker, "side": side, "score": round(score, 3),
+                        "entry_time": t, "entry": close,
+                        "exit_time": all_times[exit_idx], "size": size,
                     })
-                    cash -= position_size
+                    cash -= size
             except Exception:
                 continue
 
-        # Mark equity once per bar (downsample for performance)
         if t_idx % 20 == 0 or t_idx == len(all_times) - 1:
-            pos_value = sum(p["size"] for p in open_positions)
+            pos_value = sum(p["size"] for p in open_pos)
             equity_curve.append({
-                "ts": t.isoformat() if hasattr(t, "isoformat") else str(t),
+                "ts": t.isoformat(),
                 "equity": round(cash + pos_value, 2),
             })
 
-    # Force-close any remaining at last available price
-    for pos in open_positions:
-        cash += pos["size"]
+    for p in open_pos:
+        cash += p["size"]
 
-    final_equity = cash
-    n_trades = len(closed_trades)
-    wins = sum(1 for t in closed_trades if t["win"])
-    win_rate = wins / n_trades if n_trades else 0.0
-    rets = [t["return_pct"] for t in closed_trades]
-    if len(rets) > 1 and np.std(rets) > 0:
-        sharpe = float(np.mean(rets) / np.std(rets) * sqrt(78 * 5 / hold_bars))  # ~78 bars/day
-    else:
-        sharpe = 0.0
+    final = cash
+    n = len(closed)
+    wins = sum(1 for t in closed if t["win"])
+    win_rate = wins / n if n else 0.0
+    rets = [t["return_pct"] for t in closed]
+    sharpe = float(np.mean(rets) / np.std(rets) * sqrt(78 * 5 / hold_bars)) if len(rets) > 1 and np.std(rets) > 0 else 0.0
 
     return {
-        "final_equity": round(final_equity, 2),
-        "total_return": round(final_equity / initial - 1, 4),
-        "trades": n_trades,
-        "wins": wins,
+        "final_equity": round(final, 2),
+        "total_return": round(final / initial - 1, 4),
+        "trades": n, "wins": wins,
         "win_rate": round(win_rate, 4),
         "sharpe": round(sharpe, 3),
         "equity_curve": equity_curve,
-        "trade_log": sorted(closed_trades, key=lambda x: x["exit_time"], reverse=True)[:20],
+        "trade_log": sorted(closed, key=lambda x: x["exit_time"], reverse=True)[:20],
     }
 
 
 def scan_market() -> dict[str, Any]:
-    """Main entry point. Returns full pulse state."""
     df = _fetch_bars()
     if df is None or df.empty:
-        return {"error": "no_data", "tickers": [], "signals": [],
-                "portfolio": {"final_equity": 1_000_000, "total_return": 0.0,
-                              "trades": 0, "wins": 0, "win_rate": 0.0, "sharpe": 0.0,
-                              "equity_curve": [], "trade_log": []},
+        return {"error": "no_data", "tickers": [], "signals": [], "sectors": [],
+                "market": {}, "portfolio": {}, "notifications": {"configured": False},
                 "as_of": datetime.utcnow().isoformat()}
 
+    # Pass 1: indicators
     indicators = []
-    all_signals = []
     for ticker in UNIVERSE:
-        ind = _compute_ticker_indicators(df, ticker)
+        ind = _compute_indicators(df, ticker)
         if ind is not None:
             indicators.append(ind)
-            all_signals.extend(_detect_signals(ind))
 
-    # Sort tickers by intraday return for heat map
-    indicators.sort(key=lambda x: -x["intraday_ret"])
+    # Pass 2: sector aggregates
+    by_sec = {}
+    for i in indicators:
+        by_sec.setdefault(i["sector"], []).append(i["intraday_ret"])
+    sector_rets = {s: float(np.mean(r)) for s, r in by_sec.items()}
 
-    # Compute aggregate market metrics
+    # Pass 3: conviction scores
+    enriched = []
+    signals = []
+    for ind in indicators:
+        score, factors = _compute_conviction(ind, sector_rets.get(ind["sector"], 0))
+        ind["score"] = score
+        ind["factors"] = factors
+        enriched.append(ind)
+
+        if abs(score) >= SIGNAL_THRESHOLD:
+            side = "LONG" if score > 0 else "SHORT"
+            size = int(BASE_POSITION * abs(score))
+            sig = {
+                "ticker": ind["ticker"], "sector": ind["sector"],
+                "score": score, "side": side, "factors": factors,
+                "price": ind["price"], "rsi": ind["rsi"], "vol_z": ind["vol_z"],
+                "intraday_ret": ind["intraday_ret"],
+                "suggested_size": size,
+                "exit_clock": (datetime.utcnow() + timedelta(hours=1)).strftime("%H:%M ET"),
+                "timestamp": ind["last_ts"],
+                "high_conviction": abs(score) >= NOTIFY_THRESHOLD,
+                "notified": False,
+            }
+            # Push high-conviction to Telegram
+            if sig["high_conviction"]:
+                sig["notified"] = send_telegram(sig)
+            signals.append(sig)
+
+    enriched.sort(key=lambda x: -x["intraday_ret"])
+    signals.sort(key=lambda x: -abs(x["score"]))
+
+    sectors = [{"sector": s, "avg_ret": round(r, 4), "count": len(by_sec[s])}
+               for s, r in sector_rets.items()]
+    sectors.sort(key=lambda x: -x["avg_ret"])
+
     if indicators:
         market_ret = float(np.mean([i["intraday_ret"] for i in indicators]))
-        market_breadth = sum(1 for i in indicators if i["intraday_ret"] > 0) / len(indicators)
+        breadth = sum(1 for i in indicators if i["intraday_ret"] > 0) / len(indicators)
         avg_vol_z = float(np.mean([i["vol_z"] for i in indicators]))
         avg_rsi = float(np.mean([i["rsi"] for i in indicators]))
     else:
-        market_ret = market_breadth = avg_vol_z = 0
+        market_ret = breadth = avg_vol_z = 0
         avg_rsi = 50
 
-    # Sector aggregates
-    sector_data = {}
-    for ind in indicators:
-        sec = ind["sector"]
-        sector_data.setdefault(sec, []).append(ind["intraday_ret"])
-    sectors = [{
-        "sector": sec, "avg_ret": round(float(np.mean(rets)), 4),
-        "count": len(rets),
-    } for sec, rets in sector_data.items()]
-    sectors.sort(key=lambda x: -x["avg_ret"])
-
-    # Portfolio simulation
-    portfolio = _simulate_portfolio(df)
-
+    from backend.app.services.notification_service import notification_status
     return {
-        "tickers": indicators,
-        "signals": sorted(all_signals, key=lambda x: x["timestamp"], reverse=True),
+        "tickers": enriched,
+        "signals": signals,
         "sectors": sectors,
         "market": {
             "avg_return": round(market_ret, 4),
-            "breadth": round(market_breadth, 3),
+            "breadth": round(breadth, 3),
             "avg_vol_z": round(avg_vol_z, 2),
             "avg_rsi": round(avg_rsi, 1),
             "n_tickers": len(indicators),
         },
-        "portfolio": portfolio,
+        "portfolio": _simulate_portfolio(df, sector_lookup=sector_rets),
+        "notifications": notification_status(),
+        "thresholds": {
+            "signal": SIGNAL_THRESHOLD,
+            "notify": NOTIFY_THRESHOLD,
+        },
         "as_of": datetime.utcnow().isoformat(),
     }
