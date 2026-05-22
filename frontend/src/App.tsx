@@ -8,6 +8,7 @@ import { EarningsCalendarPage } from './pages/EarningsCalendarPage'
 import { PerformanceTrackerPage } from './pages/PerformanceTrackerPage'
 import { TrackRecordPage } from './pages/TrackRecordPage'
 import { ShowdownPage } from './pages/ShowdownPage'
+import { PulsePage } from './pages/PulsePage'
 import { PredictionDeepDivePage } from './pages/PredictionDeepDivePage'
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
         <Route path="/simulator" element={<SimulatorPage />} />
         <Route path="/track-record" element={<TrackRecordPage />} />
         <Route path="/showdown" element={<ShowdownPage />} />
+        <Route path="/pulse" element={<PulsePage />} />
         <Route path="/contact" element={<ContactPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

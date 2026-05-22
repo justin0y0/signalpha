@@ -3361,3 +3361,72 @@ input, select { font: inherit; color: inherit; }
   .mc-hero__title { font-size: 1.5rem; }
   .mc-next__time { font-size: 1.5rem; }
 }
+
+/* ═══ Pulse Page additions ═══ */
+.pulse-gauges { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.85rem; }
+@media (max-width: 900px) { .pulse-gauges { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 540px) { .pulse-gauges { grid-template-columns: 1fr 1fr; } }
+
+.pulse-gauge { position: relative; padding: 1rem 1.1rem; background: linear-gradient(180deg, rgba(13,24,41,0.7), rgba(13,24,41,0.45)); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.pulse-gauge::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--accent); opacity: 0.7; }
+.pulse-gauge__label { font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700; letter-spacing: 0.12em; color: var(--text-tertiary); }
+.pulse-gauge__value { font-size: 1.7rem; font-weight: 800; line-height: 1.05; letter-spacing: -0.02em; margin: 0.35rem 0 0.2rem; font-variant-numeric: tabular-nums; text-shadow: 0 0 12px var(--accent); }
+.pulse-gauge__sub { font-size: 0.66rem; color: var(--text-tertiary); }
+.pulse-gauge__bar { position: absolute; bottom: 0; left: 0; height: 1px; width: 100%; background: linear-gradient(90deg, transparent, var(--accent), transparent); opacity: 0.4; }
+
+/* Active Signals */
+.pulse-signals { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.65rem; }
+.pulse-signal { padding: 0.85rem 0.9rem; background: linear-gradient(180deg, rgba(13,24,41,0.7), rgba(13,24,41,0.4)); border: 1px solid; border-radius: 8px; display: flex; flex-direction: column; gap: 0.35rem; }
+.pulse-signal__top { display: flex; align-items: center; gap: 0.4rem; }
+.pulse-signal__emoji { font-size: 1.05rem; line-height: 1; }
+.pulse-signal__type { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.pulse-signal__ticker { font-size: 1.15rem; font-weight: 800; color: #38bdf8; letter-spacing: -0.01em; }
+.pulse-signal__price { font-size: 0.78rem; color: var(--text-secondary); }
+.pulse-signal__action { display: flex; justify-content: space-between; align-items: center; padding-top: 0.4rem; border-top: 1px solid var(--border); font-size: 0.75rem; }
+.pulse-signal__action > span:first-child { display: inline-flex; align-items: center; gap: 0.2rem; }
+.pulse-signal__ret { font-weight: 700; }
+.pulse-signal__meta { font-size: 0.66rem; color: var(--text-tertiary); letter-spacing: 0.04em; }
+
+/* Heat Map */
+.pulse-heat { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 0.4rem; }
+.pulse-heat__cell { padding: 0.55rem 0.65rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04); transition: transform 0.15s; cursor: default; display: flex; flex-direction: column; gap: 0.25rem; }
+.pulse-heat__cell:hover { transform: translateY(-2px) scale(1.02); border-color: rgba(255,255,255,0.15); z-index: 2; position: relative; }
+.pulse-heat__ticker { font-size: 0.78rem; font-weight: 800; color: var(--text-primary); }
+.pulse-heat__pct { font-size: 0.85rem; font-weight: 700; line-height: 1; }
+.pulse-heat__spark { width: 100%; height: 18px; opacity: 0.7; }
+.pulse-heat__meta { display: flex; justify-content: space-between; font-size: 0.62rem; color: var(--text-tertiary); }
+
+/* Portfolio Panel */
+.pulse-port { display: grid; grid-template-columns: 1.2fr 1fr 1.5fr; gap: 1rem; align-items: center; }
+@media (max-width: 900px) { .pulse-port { grid-template-columns: 1fr; } }
+
+.pulse-port__lcd { padding: 1rem 1.25rem; background: rgba(0,0,0,0.4); border-radius: 8px; border: 1px solid rgba(255,255,255,0.04); position: relative; overflow: hidden; }
+.pulse-port__lcd::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, transparent 0px, transparent 2px, rgba(255,255,255,0.02) 2px, rgba(255,255,255,0.02) 3px); pointer-events: none; }
+.pulse-port__lcd-label { position: relative; font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.15em; font-weight: 700; color: var(--text-tertiary); }
+.pulse-port__lcd-val { position: relative; font-size: 1.8rem; font-weight: 800; letter-spacing: -0.025em; margin-top: 0.25rem; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.pulse-port__ret { position: relative; font-size: 0.95rem; font-weight: 700; margin-top: 0.15rem; }
+.pulse-port__ret.up { color: #4ade80; }
+.pulse-port__ret.down { color: #f87171; }
+
+.pulse-port__stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.pulse-port__stats > div { display: flex; justify-content: space-between; padding: 0.4rem 0.6rem; background: rgba(255,255,255,0.025); border-radius: 5px; font-size: 0.74rem; }
+.pulse-port__stats span { color: var(--text-tertiary); font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.06em; }
+.pulse-port__stats b { color: var(--text-primary); font-weight: 700; }
+
+.pulse-port__curve { height: 120px; min-width: 0; }
+
+.pulse-trades { padding-top: 0.75rem; border-top: 1px solid var(--border); margin-top: 0.75rem; }
+
+/* Sector Bars */
+.pulse-sectors { display: flex; flex-direction: column; gap: 0.5rem; }
+.pulse-sector { display: grid; grid-template-columns: 120px 1fr 70px 40px; gap: 0.75rem; align-items: center; padding: 0.45rem 0.65rem; background: rgba(255,255,255,0.015); border-radius: 5px; font-size: 0.75rem; }
+.pulse-sector__name { font-weight: 600; color: var(--text-primary); }
+.pulse-sector__bar-wrap { position: relative; height: 14px; background: rgba(255,255,255,0.04); border-radius: 2px; overflow: hidden; }
+.pulse-sector__center { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.15); }
+.pulse-sector__bar { position: absolute; top: 0; bottom: 0; transition: width 0.6s ease; }
+.pulse-sector__val { font-weight: 700; text-align: right; }
+.pulse-sector__count { font-size: 0.66rem; color: var(--text-tertiary); text-align: right; }
+@media (max-width: 600px) {
+  .pulse-sector { grid-template-columns: 90px 1fr 60px; }
+  .pulse-sector__count { display: none; }
+}

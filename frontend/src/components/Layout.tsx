@@ -20,6 +20,7 @@ export function Layout() {
     { to: '/simulator', label: 'Simulator' },
     { to: '/track-record', label: 'Track Record' },
     { to: '/showdown', label: 'Showdown' },
+    { to: '/pulse', label: 'Pulse' },
     { to: '/about', label: 'About' },
     { to: '/contact', label: 'Contact' },
   ]
