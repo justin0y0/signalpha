@@ -249,3 +249,27 @@ def run_simulator_step() -> None:
         logger.error("simulator auto-step failed: %s", e)
     finally:
         db.close()
+
+
+def run_pulse_scan() -> None:
+    """Run market pulse scan every 5 min, fires Telegram alerts including
+    pre-market and after-hours sessions. Skips deep night hours to save API calls."""
+    from datetime import datetime
+    try:
+        from zoneinfo import ZoneInfo
+        et = datetime.now(ZoneInfo("America/New_York"))
+    except Exception:
+        et = datetime.utcnow()
+    # Run 4 AM ET (pre-market) through 8 PM ET (after-hours close), Mon-Fri
+    if et.weekday() >= 5:
+        return
+    if et.hour < 4 or et.hour >= 20:
+        return
+    try:
+        from backend.app.services.market_pulse_service import scan_market
+        result = scan_market()
+        logger.info("Pulse scan: %d signals, %d high-conviction",
+                    len(result.get("signals", [])),
+                    sum(1 for s in result.get("signals", []) if s.get("high_conviction")))
+    except Exception as e:
+        logger.error("Pulse scan failed: %s", e)

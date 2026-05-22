@@ -45,21 +45,43 @@ def send_signal(signal: dict) -> bool:
         return False
 
     arrow = "🟢↑" if signal["side"] == "LONG" else "🔴↓"
+    session = signal.get("session", "market").upper().replace("_", "-")
     factors_text = "\n".join(f"  • {f['label']:<28} {f['value']:+.2f}" for f in signal.get("factors", []))
-    msg = f"""🚨 *SIGNALPHA HIGH-CONVICTION SIGNAL*
+
+    # News block
+    news = signal.get("news") or []
+    if news:
+        news_text = "\n*📰 RECENT NEWS:*\n" + "\n".join(
+            f"  • _{n['title'][:90]}_" for n in news[:3]
+        ) + "\n"
+    else:
+        news_text = ""
+
+    # AI block
+    ai = signal.get("ai") or {}
+    if ai and "why" in ai:
+        ai_text = (f"\n*🧠 AI ANALYSIS:*\n"
+                   f"  *Why:* {ai.get('why', '—')}\n"
+                   f"  *Action:* `{ai.get('action', '—')}` — {ai.get('rationale', '—')}\n"
+                   f"  *Risk:* {ai.get('risk', '—')}\n")
+    elif ai and "error" in ai:
+        ai_text = f"\n_AI: {ai.get('error', 'unavailable')}_\n"
+    else:
+        ai_text = ""
+
+    msg = f"""🚨 *SIGNALPHA · {session} SIGNAL*
 
 {arrow} *{signal['side']}* `{signal['ticker']}`  @ ${signal['price']:.2f}
 
 Conviction: *{signal['score']:+.2f}*   ({'★' * min(5, int(abs(signal['score']) * 5 + 1))})
 Suggested size: *${signal['suggested_size']:,}*
-Hold: ~1 hour
-Target exit: ~{signal['exit_clock']}
+Hold: ~1h · Exit ~{signal['exit_clock']}
 
-Contributing factors:
+*Factors:*
 {factors_text}
 
 Intraday: {signal['intraday_ret']*100:+.2f}%  |  RSI {signal['rsi']:.0f}  |  Vol {signal['vol_z']:+.1f}σ
-
+{news_text}{ai_text}
 [https://signalpha.app/pulse]"""
 
     try:

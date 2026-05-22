@@ -14,7 +14,9 @@ type Signal = {
   ticker: string; sector: string; score: number; side: string;
   factors: Factor[]; price: number; rsi: number; vol_z: number;
   intraday_ret: number; suggested_size: number; exit_clock: string;
-  timestamp: string; high_conviction: boolean; notified: boolean;
+  timestamp: string; session: string; high_conviction: boolean; notified: boolean;
+  news?: { title: string; publisher: string; url: string; minutes_ago: number | null }[];
+  ai?: { why?: string; action?: string; rationale?: string; risk?: string; error?: string } | null;
 }
 type Trade = {
   ticker: string; side: string; score: number;
@@ -205,6 +207,9 @@ function HighConvCard({ sig }: { sig: Signal }) {
       style={{ borderColor: color, boxShadow: `0 0 32px -10px ${color}` }}>
       <div className="pulse-hi-card__top">
         <div className="pulse-hi-card__stars">{'★'.repeat(stars)}{'☆'.repeat(5 - stars)}</div>
+        {sig.session !== 'market' && (
+          <div className="pulse-hi-card__session">{sig.session.replace('_', '-').toUpperCase()}</div>
+        )}
         {sig.notified && <div className="pulse-hi-card__notif"><Bell size={10} /> SENT</div>}
       </div>
       <div className="pulse-hi-card__ticker mono">{sig.ticker}</div>
@@ -233,6 +238,40 @@ function HighConvCard({ sig }: { sig: Signal }) {
           </div>
         ))}
       </div>
+
+      {sig.ai && sig.ai.why && (
+        <div className="pulse-hi-card__ai">
+          <div className="pulse-hi-card__ai-l">🧠 AI ANALYSIS</div>
+          <div className="pulse-hi-card__ai-why">{sig.ai.why}</div>
+          <div className="pulse-hi-card__ai-grid">
+            <div className="pulse-hi-card__ai-act">
+              <span className="pulse-hi-card__ai-act-l">ACTION</span>
+              <span className="pulse-hi-card__ai-act-v" style={{
+                color: sig.ai.action === 'LONG' ? '#4ade80' :
+                       sig.ai.action === 'SHORT' || sig.ai.action === 'FADE' ? '#f87171' : '#fbbf24'
+              }}>{sig.ai.action}</span>
+            </div>
+            <div className="pulse-hi-card__ai-rat">{sig.ai.rationale}</div>
+          </div>
+          <div className="pulse-hi-card__ai-risk">
+            <span style={{ color: '#fbbf24' }}>⚠ Risk:</span> {sig.ai.risk}
+          </div>
+        </div>
+      )}
+
+      {sig.news && sig.news.length > 0 && (
+        <div className="pulse-hi-card__news">
+          <div className="pulse-hi-card__news-l">📰 RECENT NEWS</div>
+          {sig.news.slice(0, 3).map((n, i) => (
+            <a key={i} href={n.url} target="_blank" rel="noopener noreferrer" className="pulse-hi-card__news-item">
+              <div className="pulse-hi-card__news-title">{n.title}</div>
+              <div className="pulse-hi-card__news-meta">
+                {n.publisher} {n.minutes_ago !== null && `· ${n.minutes_ago}min ago`}
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
     </motion.div>
   )
 }

@@ -3467,3 +3467,24 @@ input, select { font: inherit; color: inherit; }
 
 .pulse-heat__top { display: flex; justify-content: space-between; align-items: center; }
 .pulse-heat__badge { font-size: 0.6rem; font-weight: 700; padding: 0.05rem 0.3rem; border: 1px solid; border-radius: 3px; }
+
+
+/* ═══ AI Analysis + News blocks ═══ */
+.pulse-hi-card__session { font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700; letter-spacing: 0.1em; padding: 0.15rem 0.4rem; background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.35); color: #fbbf24; border-radius: 3px; }
+
+.pulse-hi-card__ai { padding-top: 0.55rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.4rem; }
+.pulse-hi-card__ai-l { font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 0.12em; color: #a78bfa; font-weight: 700; }
+.pulse-hi-card__ai-why { font-size: 0.78rem; line-height: 1.45; color: var(--text-primary); font-style: italic; }
+.pulse-hi-card__ai-grid { display: flex; align-items: flex-start; gap: 0.5rem; }
+.pulse-hi-card__ai-act { display: flex; flex-direction: column; padding: 0.25rem 0.55rem; background: rgba(0,0,0,0.35); border-radius: 4px; min-width: 60px; }
+.pulse-hi-card__ai-act-l { font-family: var(--font-mono); font-size: 0.52rem; letter-spacing: 0.1em; color: var(--text-tertiary); font-weight: 700; }
+.pulse-hi-card__ai-act-v { font-family: var(--font-mono); font-size: 0.85rem; font-weight: 800; }
+.pulse-hi-card__ai-rat { font-size: 0.72rem; color: var(--text-secondary); line-height: 1.4; flex: 1; }
+.pulse-hi-card__ai-risk { font-size: 0.7rem; color: var(--text-tertiary); line-height: 1.4; padding-top: 0.25rem; border-top: 1px dashed var(--border); }
+
+.pulse-hi-card__news { padding-top: 0.55rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.35rem; }
+.pulse-hi-card__news-l { font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 0.12em; color: #38bdf8; font-weight: 700; margin-bottom: 0.1rem; }
+.pulse-hi-card__news-item { display: block; padding: 0.4rem 0.55rem; background: rgba(56,189,248,0.04); border-radius: 4px; text-decoration: none; color: inherit; transition: background 0.15s; }
+.pulse-hi-card__news-item:hover { background: rgba(56,189,248,0.08); }
+.pulse-hi-card__news-title { font-size: 0.74rem; line-height: 1.35; color: var(--text-primary); }
+.pulse-hi-card__news-meta { font-size: 0.62rem; color: var(--text-tertiary); margin-top: 0.15rem; font-family: var(--font-mono); }

@@ -25,6 +25,40 @@ import pandas as pd
 import yfinance as yf
 
 from backend.app.services.notification_service import send_signal as send_telegram
+from backend.app.services.news_service import fetch_news
+from backend.app.services.ai_explain_service import explain_signal as ai_explain
+
+from datetime import time as _dt_time
+try:
+    from zoneinfo import ZoneInfo
+    _ET = ZoneInfo("America/New_York")
+except Exception:
+    _ET = None
+
+
+def _session_of(ts) -> str:
+    try:
+        if _ET is not None:
+            if hasattr(ts, "tz_convert"):
+                et = ts.tz_convert(_ET)
+            elif hasattr(ts, "astimezone"):
+                et = ts.astimezone(_ET) if ts.tzinfo else ts.tz_localize("UTC").tz_convert(_ET)
+            else:
+                return "market"
+        else:
+            return "market"
+        if et.weekday() >= 5:
+            return "closed"
+        t = et.time()
+        if t < _dt_time(4, 0) or t >= _dt_time(20, 0): return "closed"
+        if t < _dt_time(9, 30): return "pre_market"
+        if t < _dt_time(16, 0): return "market"
+        return "after_hours"
+    except Exception:
+        return "market"
+
+
+
 
 
 UNIVERSE = [
@@ -66,7 +100,7 @@ def _fetch_bars() -> pd.DataFrame:
     df = yf.download(
         tickers=" ".join(UNIVERSE),
         period="5d", interval="5m", group_by="ticker",
-        progress=False, threads=True, auto_adjust=True,
+        progress=False, threads=True, auto_adjust=True, prepost=True,
     )
     try:
         with open(CACHE_PATH, "wb") as f:
@@ -133,6 +167,7 @@ def _compute_indicators(df: pd.DataFrame, ticker: str) -> dict[str, Any] | None:
             "ret_5m": round(ret_5m, 4), "gap_pct": round(gap_pct, 4),
             "spark": [round(s, 2) for s in spark],
             "last_ts": sub.index[-1].isoformat() if hasattr(sub.index[-1], "isoformat") else str(sub.index[-1]),
+            "session": _session_of(sub.index[-1]),
         }
     except Exception:
         return None
@@ -391,11 +426,15 @@ def scan_market() -> dict[str, Any]:
                 "suggested_size": size,
                 "exit_clock": (datetime.utcnow() + timedelta(hours=1)).strftime("%H:%M ET"),
                 "timestamp": ind["last_ts"],
+                "session": ind.get("session", "market"),
                 "high_conviction": abs(score) >= NOTIFY_THRESHOLD,
                 "notified": False,
+                "news": [], "ai": None,
             }
-            # Push high-conviction to Telegram
+            # High-conviction: fetch news + AI explanation + push to Telegram
             if sig["high_conviction"]:
+                sig["news"] = fetch_news(ind["ticker"], hours=24, limit=5)
+                sig["ai"] = ai_explain(sig, sig["news"])
                 sig["notified"] = send_telegram(sig)
             signals.append(sig)
 

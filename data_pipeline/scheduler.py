@@ -11,6 +11,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from backend.app.core.config import get_settings
 from backend.app.core.logging import configure_logging, get_logger
 from data_pipeline.jobs import (
+    run_pulse_scan,
     run_simulator_step,
     collect_earnings_calendar,
     collect_macro_data,
@@ -66,3 +67,11 @@ if __name__ == "__main__":
     scheduler.start()
     while True:
         time.sleep(5)
+
+scheduler.add_job(
+    run_pulse_scan,
+    IntervalTrigger(minutes=5),
+    id="run_pulse_scan",
+    max_instances=1,
+    coalesce=True,
+)
