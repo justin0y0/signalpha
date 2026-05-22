@@ -1,18 +1,19 @@
-"""Strategy Showdown — multi-strategy backtest comparison.
+"""Strategy Showdown — LIVE TRADING FLOOR.
 
-Five distinct trading philosophies, $1M each, run on the same historical
-earnings event set. Each strategy is academically documented with citations.
+Five strategies running in parallel since launch (default 90 days ago).
+Computes on-the-fly but presents as live: current open positions,
+pending signals on upcoming earnings, recent closed trades.
 """
 from __future__ import annotations
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta
 from math import sqrt
 from typing import Callable
 import pandas as pd
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
-from backend.app.db.models import Outcome, Prediction
+from backend.app.db.models import EarningsEvent, Outcome, Prediction
 
 
 @dataclass
@@ -33,48 +34,45 @@ STRATEGIES: list[StrategyDef] = [
     StrategyDef("SNIPER", "The Sniper", "🎯", "Wait for the fat pitch",
         "Buffett-inspired selectivity",
         "#fbbf24",
-        "Only trade when the model is highly confident (≥75%) AND the expected move is large (≥4%). Quality over quantity."),
+        "Only trade when the model is highly confident (\u226575%) AND the expected move is large (\u22654%). Quality over quantity."),
     StrategyDef("TREND_LORD", "The Trend Lord", "🐢", "The trend is your friend",
         "Richard Dennis & The Turtle Traders (1983)",
         "#fb923c",
-        "Pure mechanical trend-following. Trade every gap regardless of size — the legendary Turtles proved simple rule-based trend systems beat most discretionary trading."),
+        "Pure mechanical trend-following. Trade every gap regardless of size."),
     StrategyDef("COMPOUNDER", "The Compounder", "🌱", "Long-only, never shorts",
-        "Buffett — Rule #1: Don't lose money",
+        "Buffett \u2014 Rule #1: Don\u2019t lose money",
         "#2dd4bf",
-        "Long-only quality. Enters when the model says UP with confidence ≥ 55%. Never shorts, even when the algorithm screams DOWN — Buffett's principle that shorting is asymmetric risk."),
+        "Long-only quality. Never shorts, even when the algorithm screams DOWN."),
 ]
 
 
-# ── Strategy entry rules: return +1 (LONG), -1 (SHORT), 0 (skip) ─────────────
-def _quant(row) -> int:
-    if (row["confidence"] or 0) < 0.55: return 0
-    if row["prob_up"] > row["prob_down"] and row["prob_up"] > row["prob_flat"]: return 1
-    if row["prob_down"] > row["prob_up"] and row["prob_down"] > row["prob_flat"]: return -1
+# Strategy entry rules
+def _quant(r) -> int:
+    if (r["confidence"] or 0) < 0.55: return 0
+    if r["prob_up"] > r["prob_down"] and r["prob_up"] > r["prob_flat"]: return 1
+    if r["prob_down"] > r["prob_up"] and r["prob_down"] > r["prob_flat"]: return -1
     return 0
 
-def _drifter(row) -> int:
-    if row["gap_pct"] > 0.03: return 1
-    if row["gap_pct"] < -0.03: return -1
+def _drifter(r) -> int:
+    if r["gap_pct"] > 0.03: return 1
+    if r["gap_pct"] < -0.03: return -1
     return 0
 
-def _sniper(row) -> int:
-    if (row["confidence"] or 0) < 0.75: return 0
-    if (row["expected_move"] or 0) < 0.04: return 0
-    if row["prob_up"] > row["prob_down"] and row["prob_up"] > row["prob_flat"]: return 1
-    if row["prob_down"] > row["prob_up"] and row["prob_down"] > row["prob_flat"]: return -1
+def _sniper(r) -> int:
+    if (r["confidence"] or 0) < 0.75: return 0
+    if (r["expected_move"] or 0) < 0.04: return 0
+    if r["prob_up"] > r["prob_down"] and r["prob_up"] > r["prob_flat"]: return 1
+    if r["prob_down"] > r["prob_up"] and r["prob_down"] > r["prob_flat"]: return -1
     return 0
 
-def _trendlord(row) -> int:
-    """Pure trend-following — any gap triggers a trade in its direction."""
-    if row["gap_pct"] > 0: return 1
-    if row["gap_pct"] < 0: return -1
+def _trendlord(r) -> int:
+    if r["gap_pct"] > 0: return 1
+    if r["gap_pct"] < 0: return -1
     return 0
 
-def _compounder(row) -> int:
-    """Long-only — never shorts, even when ML predicts DOWN."""
-    if (row["confidence"] or 0) < 0.55: return 0
-    if row["prob_up"] > row["prob_down"] and row["prob_up"] > row["prob_flat"]:
-        return 1
+def _compounder(r) -> int:
+    if (r["confidence"] or 0) < 0.55: return 0
+    if r["prob_up"] > r["prob_down"] and r["prob_up"] > r["prob_flat"]: return 1
     return 0
 
 
@@ -82,6 +80,27 @@ SIGNALS: dict[str, Callable] = {
     "QUANT": _quant, "DRIFTER": _drifter, "SNIPER": _sniper,
     "TREND_LORD": _trendlord, "COMPOUNDER": _compounder,
 }
+
+# Pre-earnings strategies (use ML predictions only, can signal in advance)
+PRE_EARNINGS = {"QUANT", "SNIPER", "COMPOUNDER"}
+# Post-earnings strategies (need gap_pct, signal at T+1)
+POST_EARNINGS = {"DRIFTER", "TREND_LORD"}
+
+
+def _to_dict(p, o):
+    return {
+        "date": p.earnings_date,
+        "ticker": p.ticker,
+        "sector": p.sector or "—",
+        "prob_up": p.direction_prob_up or 0.0,
+        "prob_down": p.direction_prob_down or 0.0,
+        "prob_flat": p.direction_prob_flat or 0.0,
+        "confidence": p.confidence_score or 0.0,
+        "expected_move": p.expected_move_pct or 0.0,
+        "gap_pct": (o.actual_t1_gap_pct if o else 0.0) or 0.0,
+        "t5_return": (o.actual_t5_return if o else None),
+        "outcome_known": (o is not None and o.actual_t5_return is not None),
+    }
 
 
 def run_showdown(
@@ -91,100 +110,189 @@ def run_showdown(
     initial_capital: float = 1_000_000,
     position_size_pct: float = 0.05,
 ) -> dict:
-    """Run all five strategies on the same historical window."""
+    """Run the full showdown — both historical equity curve AND live state."""
+    today = date.today()
+
+    # Pull events from launch to today (need both with and without outcomes)
     rows = db.execute(
         select(Prediction, Outcome)
-        .join(Outcome, and_(
+        .outerjoin(Outcome, and_(
             Outcome.ticker == Prediction.ticker,
             Outcome.earnings_date == Prediction.earnings_date,
         ))
         .where(
             Prediction.earnings_date >= start_date,
             Prediction.earnings_date <= end_date,
-            Outcome.actual_t5_return.is_not(None),
         )
         .order_by(Prediction.earnings_date.asc())
     ).all()
 
-    if not rows:
-        return {"strategies": [], "events": 0, "initial_capital": initial_capital,
-                "start_date": start_date.isoformat(), "end_date": end_date.isoformat()}
+    # Upcoming earnings for pending signals (next 14 days)
+    upcoming_rows = db.execute(
+        select(Prediction)
+        .where(
+            Prediction.earnings_date > today,
+            Prediction.earnings_date <= today + timedelta(days=14),
+        )
+        .order_by(Prediction.earnings_date.asc())
+    ).scalars().all()
 
-    df = pd.DataFrame([{
-        "date": p.earnings_date, "ticker": p.ticker, "sector": p.sector or "—",
-        "prob_up": p.direction_prob_up or 0.0,
-        "prob_down": p.direction_prob_down or 0.0,
-        "prob_flat": p.direction_prob_flat or 0.0,
-        "confidence": p.confidence_score or 0.0,
-        "expected_move": p.expected_move_pct or 0.0,
-        "gap_pct": o.actual_t1_gap_pct or 0.0,
-        "t5_return": o.actual_t5_return or 0.0,
-    } for p, o in rows])
+    if not rows and not upcoming_rows:
+        return {"strategies": [], "events": 0, "launch_date": start_date.isoformat(),
+                "as_of": datetime.utcnow().isoformat(), "initial_capital": initial_capital}
+
+    df_rows = [_to_dict(p, o) for p, o in rows]
+    df = pd.DataFrame(df_rows) if df_rows else pd.DataFrame()
 
     results = []
+    live_feed = []  # Cross-strategy ticker tape
+
     for strat in STRATEGIES:
-        sig = df.apply(SIGNALS[strat.code], axis=1)
-        # SHORT (-1) profits when t5_return is negative → multiply
-        trade_ret = sig * df["t5_return"]
-        equity = (1.0 + position_size_pct * trade_ret).cumprod() * initial_capital
-        running_max = equity.cummax()
-        drawdown = (equity - running_max) / running_max
+        sig_fn = SIGNALS[strat.code]
+        equity = initial_capital
+        cash = initial_capital
+        equity_curve = [{"date": start_date.isoformat(), "equity": equity}]
+        closed_trades = []
+        currently_open = []
+        n_trades = wins = 0
+        trade_returns = []
 
-        taken_mask = sig != 0
-        n_trades = int(taken_mask.sum())
-        wins = int((taken_mask & (trade_ret > 0)).sum())
+        for r in df_rows:
+            s = sig_fn(r)
+            if s == 0:
+                continue
+            # Decide if this trade is "currently open" or already "closed"
+            # Pre-earnings strategies enter on earnings day, exit at T+5
+            # Post-earnings enter at T+1, exit at T+6
+            exit_offset = 5 if strat.code in PRE_EARNINGS else 6
+            entry_offset = 0 if strat.code in PRE_EARNINGS else 1
+            entry_date = r["date"] + timedelta(days=entry_offset)
+            exit_date = r["date"] + timedelta(days=exit_offset)
+
+            if r["outcome_known"]:
+                # Trade closes — compute realized P&L
+                ret = s * r["t5_return"]
+                pnl = equity * position_size_pct * ret
+                equity += pnl
+                n_trades += 1
+                if ret > 0: wins += 1
+                trade_returns.append(ret)
+                closed_trades.append({
+                    "date": entry_date.isoformat(),
+                    "exit_date": exit_date.isoformat(),
+                    "ticker": r["ticker"],
+                    "sector": r["sector"],
+                    "side": "LONG" if s == 1 else "SHORT",
+                    "return_pct": round(ret * 100, 3),
+                    "pnl": round(pnl, 2),
+                    "win": ret > 0,
+                })
+                equity_curve.append({"date": exit_date.isoformat(), "equity": round(equity, 2)})
+                # Add to live feed (recent closes only)
+                if exit_date >= today - timedelta(days=14):
+                    live_feed.append({
+                        "type": "close",
+                        "timestamp": exit_date.isoformat(),
+                        "strategy": strat.code,
+                        "ticker": r["ticker"],
+                        "side": "LONG" if s == 1 else "SHORT",
+                        "return_pct": round(ret * 100, 2),
+                        "win": ret > 0,
+                    })
+            else:
+                # Currently open — outcome not yet known
+                if exit_date > today and r["date"] >= today - timedelta(days=exit_offset):
+                    currently_open.append({
+                        "entry_date": entry_date.isoformat(),
+                        "exit_date": exit_date.isoformat(),
+                        "ticker": r["ticker"],
+                        "sector": r["sector"],
+                        "side": "LONG" if s == 1 else "SHORT",
+                        "confidence": round(r["confidence"] * 100, 1),
+                        "expected_move": round(r["expected_move"] * 100, 1) if r["expected_move"] else None,
+                        "notional": round(equity * position_size_pct, 2),
+                        "days_held": (today - entry_date).days,
+                    })
+                    live_feed.append({
+                        "type": "open",
+                        "timestamp": entry_date.isoformat(),
+                        "strategy": strat.code,
+                        "ticker": r["ticker"],
+                        "side": "LONG" if s == 1 else "SHORT",
+                    })
+
+        # Pending signals from upcoming earnings (ML strategies only)
+        pending_signals = []
+        if strat.code in PRE_EARNINGS:
+            for p in upcoming_rows:
+                row = {
+                    "prob_up": p.direction_prob_up or 0,
+                    "prob_down": p.direction_prob_down or 0,
+                    "prob_flat": p.direction_prob_flat or 0,
+                    "confidence": p.confidence_score or 0,
+                    "expected_move": p.expected_move_pct or 0,
+                    "gap_pct": 0.0,
+                }
+                s = sig_fn(row)
+                if s != 0:
+                    pending_signals.append({
+                        "ticker": p.ticker,
+                        "earnings_date": p.earnings_date.isoformat(),
+                        "side": "LONG" if s == 1 else "SHORT",
+                        "confidence": round((p.confidence_score or 0) * 100, 1),
+                        "expected_move": round((p.expected_move_pct or 0) * 100, 1) if p.expected_move_pct else None,
+                        "sector": p.sector or "—",
+                        "days_until": (p.earnings_date - today).days,
+                    })
+
+        # Stats
+        ret_pct = (equity / initial_capital) - 1
         win_rate = wins / n_trades if n_trades else 0
-        tr = trade_ret[taken_mask]
-        # ~50 events/year on this dataset (5400 events / ~10 years)
-        ann = sqrt(50)
-        sharpe = float(tr.mean() / tr.std() * ann) if (n_trades > 1 and tr.std() > 1e-9) else 0
-        # Sortino (downside only)
-        downside = tr[tr < 0]
-        sortino = float(tr.mean() / downside.std() * ann) if (len(downside) > 1 and downside.std() > 1e-9) else 0
+        # Downsample equity curve to ~150 points
+        if len(equity_curve) > 150:
+            step = max(1, len(equity_curve) // 150)
+            ec = equity_curve[::step] + [equity_curve[-1]]
+        else:
+            ec = equity_curve
 
-        # Downsample equity curve to ~200 points
-        n = len(df)
-        step = max(1, n // 200)
-        idxs = list(range(0, n, step))
-        if idxs[-1] != n - 1: idxs.append(n - 1)
-        curve = [{
-            "date": df["date"].iloc[i].isoformat(),
-            "equity": float(equity.iloc[i]),
-            "drawdown": float(drawdown.iloc[i]),
-        } for i in idxs]
+        # Sharpe
+        sharpe = 0
+        if len(trade_returns) > 1:
+            tr = pd.Series(trade_returns)
+            if tr.std() > 1e-9:
+                sharpe = float(tr.mean() / tr.std() * sqrt(50))
 
-        # Most recent 20 trades for attribution
-        trades = []
-        for i in reversed(df.index):
-            if sig.iloc[i] == 0: continue
-            trades.append({
-                "date": df["date"].iloc[i].isoformat(),
-                "ticker": df["ticker"].iloc[i],
-                "sector": df["sector"].iloc[i],
-                "side": "LONG" if sig.iloc[i] == 1 else "SHORT",
-                "return_pct": round(float(trade_ret.iloc[i]) * 100, 3),
-                "win": bool(trade_ret.iloc[i] > 0),
-            })
-            if len(trades) >= 20: break
+        # Max drawdown
+        eq_series = pd.Series([e["equity"] for e in equity_curve])
+        running_max = eq_series.cummax()
+        dd = ((eq_series - running_max) / running_max).min()
 
         results.append({
             "code": strat.code, "name": strat.name, "emoji": strat.emoji,
             "tagline": strat.tagline, "citation": strat.citation,
             "color": strat.color, "description": strat.description,
-            "final_equity": round(float(equity.iloc[-1]), 2),
-            "total_return": round(float(equity.iloc[-1] / initial_capital - 1), 4),
+            "final_equity": round(equity, 2),
+            "total_return": round(ret_pct, 4),
             "trades": n_trades, "wins": wins,
             "win_rate": round(win_rate, 4),
-            "sharpe": round(sharpe, 3), "sortino": round(sortino, 3),
-            "max_drawdown": round(float(drawdown.min()), 4),
-            "equity_curve": curve, "recent_trades": trades,
+            "sharpe": round(sharpe, 3),
+            "max_drawdown": round(float(dd) if pd.notna(dd) else 0.0, 4),
+            "equity_curve": ec,
+            "recent_closes": sorted(closed_trades, key=lambda x: x["exit_date"], reverse=True)[:8],
+            "currently_open": currently_open,
+            "pending_signals": pending_signals[:5],
         })
 
     results.sort(key=lambda x: -x["final_equity"])
+    live_feed.sort(key=lambda x: x["timestamp"], reverse=True)
+
     return {
         "strategies": results,
-        "events": int(len(df)),
+        "events": len(df_rows),
         "initial_capital": initial_capital,
-        "start_date": start_date.isoformat(),
+        "launch_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
+        "as_of": datetime.utcnow().isoformat(),
+        "live_feed": live_feed[:25],
+        "days_since_launch": (today - start_date).days,
     }
