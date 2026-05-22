@@ -91,8 +91,17 @@ export type BacktestResponse = {
   direction_stats: { direction: string; signals: number; hits: number; hit_rate: number; avg_return_pct: number }[]
 }
 
+export type ConfidenceTier = {
+  threshold: number
+  n_samples: number
+  accuracy: number
+  n_directional: number
+  directional_accuracy: number
+}
+
 export type PerformanceResponse = {
   model_version?: string | null
+  confidence_tiers?: ConfidenceTier[]
   by_sector: {
     sector: string
     accuracy?: number | null
