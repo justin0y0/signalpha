@@ -131,7 +131,6 @@ export function PulsePage() {
       {data.signals.length === 0 && (
         <div className="mc-panel"><div className="mc-empty">Market is quiet. No signals above threshold.</div></div>
       )}
-      <HeatMap tickers={data.tickers} onSelect={(t) => setSelectedTicker(t)} />
       <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.21 }}>
         <div className="mc-panel__title">
           🗺️ SECTOR TREEMAP
@@ -359,7 +358,7 @@ function SignalCard({ sig, onClick }: { sig: Signal; onClick?: () => void }) {
   )
 }
 
-function HeatMap({ tickers, onSelect }: { tickers: Ticker[]; onSelect?: (t: string) => void }) {
+: { tickers: Ticker[]; onSelect?: (t: string) => void }) {
   const color = (r: number) => {
     const i = Math.min(1, Math.abs(r) / 0.04)
     return r > 0 ? `rgba(74,222,128,${0.1 + i * 0.55})` : `rgba(248,113,113,${0.1 + i * 0.55})`
