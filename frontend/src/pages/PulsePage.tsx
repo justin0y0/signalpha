@@ -5,24 +5,31 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceL
 
 type Factor = { label: string; value: number }
 type Ticker = {
-  ticker: string; sector: string; price: number; rsi: number; vol_z: number;
-  dist_ma: number; intraday_ret: number; ret_5m: number; gap_pct: number;
-  spark: number[]; last_ts: string;
-  score: number; factors: Factor[];
+  ticker: string; sector: string; sector_etf: string; price: number;
+  atr20: number; sigma_bar: number; rsi2: number; regime_up: boolean; vol_z: number;
+  s_score: number | null; kappa_ann: number | null; half_life_bars: number | null;
+  beta_market: number | null; beta_sector: number | null;
+  gao_r1: number | null; gao_eligible: boolean; gao_side: string | null;
+  session: string; last_ts: string; spark: number[];
+  score: number; factors: Factor[]; primary: string | null;
 }
 type Signal = {
-  ticker: string; sector: string; score: number; side: string;
-  factors: Factor[]; price: number; rsi: number; vol_z: number;
-  intraday_ret: number; suggested_size: number; exit_clock: string;
-  timestamp: string; session: string; high_conviction: boolean; notified: boolean;
+  ticker: string; sector: string; score: number; side: string; primary: string;
+  factors: Factor[]; price: number; rsi2: number; s_score: number | null;
+  half_life_bars: number | null; atr20: number; vol_z: number;
+  intraday_ret: number; suggested_size: number; estimated_prob: number;
+  exit_clock: string; timestamp: string; session: string;
+  high_conviction: boolean; notified: boolean;
   news?: { title: string; publisher: string; url: string; minutes_ago: number | null }[];
   ai?: { why?: string; action?: string; rationale?: string; risk?: string; error?: string } | null;
 }
 type Trade = {
-  ticker: string; side: string; score: number;
+  ticker: string; side: string; score: number; primary: string;
   entry_time: string; exit_time: string;
   entry_price: number; exit_price: number;
-  pnl: number; return_pct: number; win: boolean;
+  bars_held: number; minutes_held: number;
+  size: number; pnl: number; return_pct: number;
+  exit_reason: string; win: boolean;
 }
 type PulseData = {
   tickers: Ticker[]; signals: Signal[];
@@ -30,7 +37,8 @@ type PulseData = {
   market: { avg_return: number; breadth: number; avg_vol_z: number; avg_rsi: number; n_tickers: number };
   portfolio: { final_equity: number; total_return: number; trades: number; wins: number;
                win_rate: number; sharpe: number;
-               equity_curve: { ts: string; equity: number }[]; trade_log: Trade[] };
+               equity_curve: { ts: string; equity: number }[]; trade_log: Trade[];
+               by_engine: { [k: string]: { trades: number; wins: number; pnl: number; win_rate: number } } };
   notifications: { configured: boolean; has_token: boolean; has_chat_id: boolean; sent_last_hour: number };
   thresholds: { signal: number; notify: number };
   as_of: string;
@@ -170,19 +178,22 @@ function NotifBanner({ status, sent }: { status: PulseData['notifications']; sen
 }
 
 function MarketGauges({ data }: { data: PulseData }) {
-  const m = data.market, b = m.breadth * 100
+  const m = data.market as any
   return (
     <div className="pulse-gauges">
-      <Gauge label="MARKET" value={`${m.avg_return >= 0 ? '+' : ''}${(m.avg_return * 100).toFixed(2)}%`}
-        accent={m.avg_return >= 0 ? '#4ade80' : '#f87171'} sub="avg intraday return" />
-      <Gauge label="BREADTH" value={`${b.toFixed(0)}%`}
-        accent={b >= 50 ? '#4ade80' : '#f87171'} sub={`${Math.round(b / 100 * m.n_tickers)}/${m.n_tickers} advancing`} />
-      <Gauge label="VOLUME" value={`${m.avg_vol_z >= 0 ? '+' : ''}${m.avg_vol_z.toFixed(1)}σ`}
-        accent={m.avg_vol_z > 1 ? '#fbbf24' : '#38bdf8'} sub="z vs 60-bar avg" />
-      <Gauge label="AVG RSI" value={m.avg_rsi.toFixed(1)}
-        accent={m.avg_rsi > 70 ? '#f87171' : m.avg_rsi < 30 ? '#4ade80' : '#38bdf8'} sub="14-period" />
+      <Gauge label="SPY" value={`$${(m.spy_price || 0).toFixed(2)}`}
+        accent="#38bdf8" sub="market factor anchor" />
+      <Gauge label="AVG |s|" value={(m.avg_abs_s_score || 0).toFixed(2)}
+        accent={(m.avg_abs_s_score || 0) > 1.0 ? '#fbbf24' : '#38bdf8'}
+        sub="mean residual deviation" />
+      <Gauge label="AVG RSI(2)" value={(m.avg_rsi2 || 0).toFixed(1)}
+        accent={(m.avg_rsi2 || 50) > 70 ? '#f87171' : (m.avg_rsi2 || 50) < 30 ? '#4ade80' : '#38bdf8'}
+        sub="Connors short-term" />
+      <Gauge label="UPTREND" value={`${m.n_uptrend || 0}/${m.n_tickers || 0}`}
+        accent={(m.n_uptrend || 0) > (m.n_tickers || 1) / 2 ? '#4ade80' : '#f87171'}
+        sub="above 200-SMA" />
       <Gauge label="SIGNALS" value={data.signals.length.toString()}
-        accent="#a78bfa" sub={`thr ≥ ${data.thresholds.signal}`} />
+        accent="#a78bfa" sub={`|score| ≥ ${data.thresholds.signal}`} />
     </div>
   )
 }
@@ -201,6 +212,11 @@ function Gauge({ label, value, accent, sub }: { label: string; value: string; ac
 function HighConvCard({ sig }: { sig: Signal }) {
   const stars = Math.min(5, Math.max(1, Math.round(Math.abs(sig.score) * 6)))
   const color = sig.side === 'LONG' ? '#4ade80' : '#f87171'
+  const engineLabel: { [k: string]: string } = {
+    AL_REVERSION: 'Avellaneda-Lee',
+    GAO_MOMENTUM: 'Gao 2018 intraday',
+    CONNORS: 'Connors RSI(2)',
+  }
   return (
     <motion.div className="pulse-hi-card"
       initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
@@ -213,7 +229,14 @@ function HighConvCard({ sig }: { sig: Signal }) {
         {sig.notified && <div className="pulse-hi-card__notif"><Bell size={10} /> SENT</div>}
       </div>
       <div className="pulse-hi-card__ticker mono">{sig.ticker}</div>
-      <div className="pulse-hi-card__price mono">${sig.price.toFixed(2)}</div>
+      <div className="pulse-hi-card__price mono">${sig.price.toFixed(2)} · {sig.sector}</div>
+      <div className="pulse-hi-card__engine" style={{ color }}>
+        ENGINE: {engineLabel[sig.primary] || sig.primary}
+        {sig.s_score !== null && <span style={{ marginLeft: '0.5rem', color: 'var(--text-tertiary)' }}>
+          s = <b style={{ color }}>{sig.s_score >= 0 ? '+' : ''}{sig.s_score.toFixed(2)}</b>
+          {sig.half_life_bars !== null && ` · HL ${sig.half_life_bars.toFixed(0)}b`}
+        </span>}
+      </div>
       <div className="pulse-hi-card__lcd">
         <div className="pulse-hi-card__score-l">CONVICTION</div>
         <div className="pulse-hi-card__score mono" style={{ color }}>
@@ -226,7 +249,10 @@ function HighConvCard({ sig }: { sig: Signal }) {
         </span>
         <span className="mono pulse-hi-card__size">${sig.suggested_size.toLocaleString()}</span>
       </div>
-      <div className="pulse-hi-card__exit mono">exit ~{sig.exit_clock}</div>
+      <div className="pulse-hi-card__exit mono">
+        target {sig.exit_clock} · est P(win) {(sig.estimated_prob * 100).toFixed(0)}%
+        <span style={{ float: 'right', color: 'var(--text-tertiary)' }}>±1σ barriers</span>
+      </div>
       <div className="pulse-hi-card__factors">
         <div className="pulse-hi-card__factors-l">FACTORS</div>
         {sig.factors.map((f, i) => (
@@ -390,20 +416,76 @@ function PortfolioPanel({ portfolio: p }: { portfolio: PulseData['portfolio'] })
           )}
         </div>
       </div>
+      {Object.keys(p.by_engine || {}).length > 0 && (
+        <div className="pulse-by-engine">
+          <div style={{ fontSize: '0.65rem', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', color: 'var(--text-tertiary)', margin: '0.8rem 0 0.4rem' }}>PERFORMANCE BY ENGINE</div>
+          <div className="pulse-engine-grid">
+            {Object.entries(p.by_engine).map(([eng, d]) => (
+              <div key={eng} className="pulse-engine-card">
+                <div className="pulse-engine-card__name">
+                  {eng === 'AL_REVERSION' ? 'Avellaneda-Lee' :
+                   eng === 'GAO_MOMENTUM' ? 'Gao 2018' :
+                   eng === 'CONNORS' ? 'Connors RSI(2)' : eng}
+                </div>
+                <div className="pulse-engine-card__row">
+                  <span>Trades</span><b className="mono">{d.trades}</b>
+                </div>
+                <div className="pulse-engine-card__row">
+                  <span>Win rate</span>
+                  <b className="mono" style={{ color: d.win_rate > 0.55 ? '#4ade80' : d.win_rate > 0.50 ? '#fbbf24' : '#f87171' }}>
+                    {(d.win_rate * 100).toFixed(0)}%
+                  </b>
+                </div>
+                <div className="pulse-engine-card__row">
+                  <span>P&amp;L</span>
+                  <b className="mono" style={{ color: d.pnl >= 0 ? '#4ade80' : '#f87171' }}>
+                    {d.pnl >= 0 ? '+' : ''}${Math.round(d.pnl).toLocaleString()}
+                  </b>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {p.trade_log.length > 0 && (
         <div className="pulse-trades">
           <div style={{ fontSize: '0.65rem', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', color: 'var(--text-tertiary)', margin: '0.5rem 0' }}>RECENT TRADES</div>
           <div className="mc-log">
             {p.trade_log.map((t, i) => (
-              <div key={i} className="mc-log__row">
-                <span className="mc-log__time mono">{t.exit_time.slice(5, 16).replace('T', ' ')}</span>
-                <span className="mono" style={{ color: '#38bdf8', fontWeight: 700 }}>{t.ticker}</span>
-                <span style={{ color: t.side === 'LONG' ? '#4ade80' : '#f87171', fontWeight: 700, fontSize: '0.7rem' }}>{t.side}</span>
-                <span className="mono" style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)' }}>score {t.score >= 0 ? '+' : ''}{t.score.toFixed(2)}</span>
-                <span className="mono" style={{ color: t.win ? '#4ade80' : '#f87171', fontWeight: 700, textAlign: 'right' }}>
-                  {t.pnl >= 0 ? '+' : ''}${Math.round(t.pnl).toLocaleString()}
+              <div key={i} className="mc-log__row pulse-trade-row">
+                <span className="mc-log__time mono pulse-trade-row__time">
+                  IN  {t.entry_time.slice(5, 16).replace('T', ' ')}<br/>
+                  OUT {t.exit_time.slice(5, 16).replace('T', ' ')}
                 </span>
-                <span className="mono" style={{ color: t.win ? '#4ade80' : '#f87171', textAlign: 'right' }}>{(t.return_pct * 100).toFixed(2)}%</span>
+                <span className="mono pulse-trade-row__tkr" style={{ color: '#38bdf8' }}>
+                  {t.ticker}<br/>
+                  <span style={{ fontSize: '0.6rem', color: 'var(--text-tertiary)' }}>
+                    {t.primary === 'AL_REVERSION' ? 'AL' : t.primary === 'GAO_MOMENTUM' ? 'GAO' : t.primary === 'CONNORS' ? 'CON' : '?'}
+                  </span>
+                </span>
+                <span className="pulse-trade-row__side" style={{
+                  color: t.side === 'LONG' ? '#4ade80' : '#f87171', fontWeight: 700, fontSize: '0.7rem'
+                }}>{t.side}</span>
+                <span className="mono pulse-trade-row__hold" style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>
+                  ${(t.size / 1000).toFixed(0)}k<br/>
+                  {t.minutes_held}min
+                </span>
+                <span className="mono pulse-trade-row__exit" style={{
+                  fontSize: '0.6rem', fontWeight: 700,
+                  color: t.exit_reason === 'PROFIT' ? '#4ade80' :
+                         t.exit_reason === 'STOP' ? '#f87171' : '#fbbf24'
+                }}>{t.exit_reason}</span>
+                <span className="mono pulse-trade-row__price" style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>
+                  ${t.entry_price.toFixed(2)} →<br/>${t.exit_price.toFixed(2)}
+                </span>
+                <span className="mono pulse-trade-row__pnl" style={{
+                  color: t.win ? '#4ade80' : '#f87171', fontWeight: 700, textAlign: 'right'
+                }}>
+                  {t.pnl >= 0 ? '+' : ''}${Math.round(t.pnl).toLocaleString()}<br/>
+                  <span style={{ fontWeight: 400, fontSize: '0.62rem' }}>
+                    {(t.return_pct * 100).toFixed(2)}%
+                  </span>
+                </span>
               </div>
             ))}
           </div>

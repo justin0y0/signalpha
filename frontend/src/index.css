@@ -3488,3 +3488,23 @@ input, select { font: inherit; color: inherit; }
 .pulse-hi-card__news-item:hover { background: rgba(56,189,248,0.08); }
 .pulse-hi-card__news-title { font-size: 0.74rem; line-height: 1.35; color: var(--text-primary); }
 .pulse-hi-card__news-meta { font-size: 0.62rem; color: var(--text-tertiary); margin-top: 0.15rem; font-family: var(--font-mono); }
+
+
+/* ═══ Pulse v2 additions ═══ */
+.pulse-hi-card__engine { font-family: var(--font-mono); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em; padding-top: 0.15rem; }
+
+.pulse-trade-row { display: grid !important; grid-template-columns: 1.2fr 0.7fr 0.5fr 0.7fr 0.55fr 1fr 1fr !important; gap: 0.5rem !important; align-items: center !important; padding: 0.45rem 0.3rem !important; border-bottom: 1px solid var(--border) !important; font-size: 0.72rem; }
+.pulse-trade-row__time { font-size: 0.6rem !important; line-height: 1.3 !important; }
+.pulse-trade-row__tkr { font-weight: 700; line-height: 1.2; }
+.pulse-trade-row__side { text-align: center; }
+.pulse-trade-row__hold { line-height: 1.3; }
+.pulse-trade-row__exit { text-align: center; padding: 0.1rem 0.2rem; background: rgba(255,255,255,0.04); border-radius: 3px; }
+.pulse-trade-row__price { line-height: 1.3; }
+.pulse-trade-row__pnl { line-height: 1.3; }
+
+.pulse-by-engine { padding-top: 0.5rem; border-top: 1px solid var(--border); }
+.pulse-engine-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.5rem; }
+.pulse-engine-card { padding: 0.6rem 0.8rem; background: rgba(13,24,41,0.5); border: 1px solid var(--border); border-radius: 6px; }
+.pulse-engine-card__name { font-family: var(--font-mono); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; color: #38bdf8; margin-bottom: 0.4rem; }
+.pulse-engine-card__row { display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; padding: 0.15rem 0; }
+.pulse-engine-card__row span { color: var(--text-tertiary); }
