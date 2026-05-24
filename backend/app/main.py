@@ -52,6 +52,8 @@ app.include_router(performance_router, prefix=settings.api_v1_prefix)
 app.include_router(track_record_router, prefix=settings.api_v1_prefix)
 app.include_router(showdown_router, prefix=settings.api_v1_prefix)
 app.include_router(pulse_router, prefix=settings.api_v1_prefix)
+app.include_router(pulse_detail_router)
+app.include_router(logos_router)
 app.include_router(simulator_router, prefix=settings.api_v1_prefix)
 
 

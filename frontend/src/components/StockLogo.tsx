@@ -5,7 +5,7 @@ const COLORS = ['#38bdf8','#a78bfa','#4ade80','#fbbf24','#f87171','#ec4899','#06
 
 export function StockLogo({ ticker, size = 36, className = '' }: Props) {
   const [failed, setFailed] = useState(false)
-  const sym = ticker.replace('-', '.').toUpperCase()
+  const sym = (ticker || '?').replace('-', '.').toUpperCase()
   const hash = sym.split('').reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0)
   const bg = COLORS[Math.abs(hash) % COLORS.length]
   if (failed) {
