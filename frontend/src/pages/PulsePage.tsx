@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { TickerDetailModal } from '../components/TickerDetailModal'
+import { SectorTreemap } from '../components/SectorTreemap'
+import { StockLogo } from '../components/StockLogo'
 import { motion } from 'framer-motion'
 import { Activity, Flame, Zap, TrendingUp, TrendingDown, Bell, BellOff, Star } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
@@ -74,6 +77,7 @@ export function PulsePage() {
   const [data, setData] = useState<PulseData | null>(null)
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(new Date())
+  const [selectedTicker, setSelectedTicker] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try { setData(await (await fetch('/api/v1/pulse')).json()) }
@@ -109,7 +113,7 @@ export function PulsePage() {
             </span>
           </div>
           <div className="pulse-hi">
-            {highConv.map((s, i) => <HighConvCard key={i} sig={s} />)}
+            {highConv.map((s, i) => <HighConvCard key={i} sig={s} onClick={() => setSelectedTicker(s.ticker)} />)}
           </div>
         </motion.div>
       )}
@@ -120,15 +124,29 @@ export function PulsePage() {
             <span className="mc-panel__sub">|score| ≥ {data.thresholds.signal} · traded but not notified</span>
           </div>
           <div className="pulse-signals">
-            {medConv.map((s, i) => <SignalCard key={i} sig={s} />)}
+            {medConv.map((s, i) => <SignalCard key={i} sig={s} onClick={() => setSelectedTicker(s.ticker)} />)}
           </div>
         </motion.div>
       )}
       {data.signals.length === 0 && (
         <div className="mc-panel"><div className="mc-empty">Market is quiet. No signals above threshold.</div></div>
       )}
-      <HeatMap tickers={data.tickers} />
+      <HeatMap tickers={data.tickers} onSelect={(t) => setSelectedTicker(t)} />
+      <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.21 }}>
+        <div className="mc-panel__title">
+          🗺️ SECTOR TREEMAP
+          <span className="mc-panel__sub">click any stock for full details · color = conviction</span>
+        </div>
+        <SectorTreemap
+          tickers={data.tickers}
+          onSelect={(t) => setSelectedTicker(t)}
+        />
+      </motion.div>
       <PortfolioPanel portfolio={data.portfolio} />
+      <TickerDetailModal
+        ticker={selectedTicker}
+        onClose={() => setSelectedTicker(null)}
+      />
     </div>
   )
 }
@@ -210,7 +228,7 @@ function Gauge({ label, value, accent, sub }: { label: string; value: string; ac
   )
 }
 
-function HighConvCard({ sig }: { sig: Signal }) {
+function HighConvCard({ sig, onClick }: { sig: Signal; onClick?: () => void }) {
   const stars = Math.min(5, Math.max(1, Math.round(Math.abs(sig.score) * 6)))
   const color = sig.side === 'LONG' ? '#4ade80' : '#f87171'
   const engineLabel: { [k: string]: string } = {
@@ -219,8 +237,9 @@ function HighConvCard({ sig }: { sig: Signal }) {
     CONNORS: 'Connors RSI(2)',
   }
   return (
-    <motion.div className="pulse-hi-card"
+    <motion.div className="pulse-hi-card pulse-clickable"
       initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+      onClick={onClick}
       style={{ borderColor: color, boxShadow: `0 0 32px -10px ${color}` }}>
       <div className="pulse-hi-card__top">
         <div className="pulse-hi-card__stars">{'★'.repeat(stars)}{'☆'.repeat(5 - stars)}</div>
@@ -229,8 +248,13 @@ function HighConvCard({ sig }: { sig: Signal }) {
         )}
         {sig.notified && <div className="pulse-hi-card__notif"><Bell size={10} /> SENT</div>}
       </div>
-      <div className="pulse-hi-card__ticker mono">{sig.ticker}</div>
-      <div className="pulse-hi-card__price mono">${sig.price.toFixed(2)} · {sig.sector}</div>
+      <div className="pulse-hi-card__id">
+        <StockLogo ticker={sig.ticker} size={30} />
+        <div>
+          <div className="pulse-hi-card__ticker mono">{sig.ticker}</div>
+          <div className="pulse-hi-card__price mono">${sig.price.toFixed(2)} · {sig.sector}</div>
+        </div>
+      </div>
       <div className="pulse-hi-card__engine" style={{ color }}>
         ENGINE: {engineLabel[sig.primary] || sig.primary}
         {sig.s_score !== null && <span style={{ marginLeft: '0.5rem', color: 'var(--text-tertiary)' }}>
@@ -303,11 +327,12 @@ function HighConvCard({ sig }: { sig: Signal }) {
   )
 }
 
-function SignalCard({ sig }: { sig: Signal }) {
+function SignalCard({ sig, onClick }: { sig: Signal; onClick?: () => void }) {
   const color = sig.side === 'LONG' ? '#4ade80' : '#f87171'
   return (
-    <motion.div className="pulse-signal"
+    <motion.div className="pulse-signal pulse-clickable"
       initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}
+      onClick={onClick}
       style={{ borderColor: color }}>
       <div className="pulse-signal__top">
         <span className="pulse-signal__ticker mono">{sig.ticker}</span>
@@ -334,7 +359,7 @@ function SignalCard({ sig }: { sig: Signal }) {
   )
 }
 
-function HeatMap({ tickers }: { tickers: Ticker[] }) {
+function HeatMap({ tickers, onSelect }: { tickers: Ticker[]; onSelect?: (t: string) => void }) {
   const color = (r: number) => {
     const i = Math.min(1, Math.abs(r) / 0.04)
     return r > 0 ? `rgba(74,222,128,${0.1 + i * 0.55})` : `rgba(248,113,113,${0.1 + i * 0.55})`
@@ -345,7 +370,7 @@ function HeatMap({ tickers }: { tickers: Ticker[] }) {
         <span className="mc-panel__sub">intraday performance · score badges show conviction</span></div>
       <div className="pulse-heat">
         {tickers.map((t, i) => (
-          <motion.div key={t.ticker} className="pulse-heat__cell"
+          <motion.div key={t.ticker} className="pulse-heat__cell pulse-clickable" onClick={() => onSelect && onSelect(t.ticker)}
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.012 }}
             style={{ background: color(t.score) }}>
             <div className="pulse-heat__top">
