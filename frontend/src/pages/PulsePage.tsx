@@ -38,7 +38,8 @@ type PulseData = {
   portfolio: { final_equity: number; total_return: number; trades: number; wins: number;
                win_rate: number; sharpe: number;
                equity_curve: { ts: string; equity: number }[]; trade_log: Trade[];
-               by_engine: { [k: string]: { trades: number; wins: number; pnl: number; win_rate: number } } };
+               by_engine: { [k: string]: { trades: number; wins: number; pnl: number; win_rate: number } };
+               status?: string };
   notifications: { configured: boolean; has_token: boolean; has_chat_id: boolean; sent_last_hour: number };
   thresholds: { signal: number; notify: number };
   as_of: string;
@@ -382,6 +383,12 @@ function PortfolioPanel({ portfolio: p }: { portfolio: PulseData['portfolio'] })
       <div className="mc-panel__title"><Activity size={14} /> SCANNER PORTFOLIO
         <span className="mc-panel__sub">$1M book · multi-factor signals · size scales with |score| · 1-hr hold · 5d</span></div>
       <div className="pulse-port">
+        {p.status && (p.status === 'computing' || p.status === 'refreshing') && (
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#fbbf24',
+            padding: '0.4rem 0', borderBottom: '1px solid var(--border)', marginBottom: '0.5rem' }}>
+            ⟳ Portfolio simulation running in background ({p.trades === 0 ? 'first load ~2min' : 'refreshing'})
+          </div>
+        )}
         <div className="pulse-port__lcd">
           <div className="pulse-port__lcd-label">EQUITY</div>
           <div className="pulse-port__lcd-val mono" style={{ color: p.total_return >= 0 ? '#4ade80' : '#f87171' }}>

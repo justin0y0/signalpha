@@ -573,6 +573,47 @@ def _simulate_portfolio(df: pd.DataFrame, spy_ret: pd.Series,
     }
 
 
+_portfolio_cache: dict = {}
+_portfolio_cache_ts: float = 0.0
+PORTFOLIO_CACHE_TTL = 1800  # 30 min — heavy computation, run infrequently
+
+
+def _get_portfolio_cached(df, spy_ret, sector_ret_lookup) -> dict:
+    """Return cached portfolio result; recompute in background if stale."""
+    global _portfolio_cache, _portfolio_cache_ts
+    import threading
+    now = time.time()
+    if _portfolio_cache and (now - _portfolio_cache_ts) < PORTFOLIO_CACHE_TTL:
+        return _portfolio_cache
+
+    def _run():
+        global _portfolio_cache, _portfolio_cache_ts
+        try:
+            result = _simulate_portfolio(df, spy_ret, sector_ret_lookup)
+            _portfolio_cache = result
+            _portfolio_cache_ts = time.time()
+        except Exception as e:
+            pass  # keep old cache on error
+
+    if not _portfolio_cache:
+        # First call: return stub immediately, compute in background
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return {
+            "final_equity": 1_000_000, "total_return": 0.0,
+            "trades": 0, "wins": 0, "win_rate": 0.0, "sharpe": 0.0,
+            "equity_curve": [], "trade_log": [], "by_engine": {},
+            "status": "computing",
+        }
+    else:
+        # Stale: return old data, refresh async
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        _portfolio_cache["status"] = "refreshing"
+        return _portfolio_cache
+
+
+
 def scan_market() -> dict[str, Any]:
     df = _fetch_bars()
     if df is None or df.empty:
@@ -673,7 +714,7 @@ def scan_market() -> dict[str, Any]:
             "n_tickers": len(indicators),
             "spy_price": round(float(spy_close.iloc[-1]), 2) if len(spy_close) > 0 else 0,
         },
-        "portfolio": _simulate_portfolio(df, spy_ret, sector_ret_lookup),
+        "portfolio": _get_portfolio_cached(df, spy_ret, sector_ret_lookup),
         "notifications": notification_status(),
         "thresholds": {
             "signal": 0.50, "notify": NOTIFY_THRESHOLD,
