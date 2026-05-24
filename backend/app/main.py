@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.routes.pulse_detail import router as pulse_detail_router
+from backend.app.api.routes.logos import router as logos_router
 from backend.app.api.routes.backtest import router as backtest_router
 from backend.app.api.routes.calendar import router as calendar_router
 from backend.app.api.routes.features import router as features_router

@@ -15,6 +15,8 @@ router = APIRouter(prefix="/api/v1/pulse", tags=["pulse"])
 @router.get("/ticker/{ticker}")
 def get_ticker_detail(ticker: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     ticker = ticker.upper().strip()
+    # Alias: GOOG (Class C, non-voting) has no separate earnings, use GOOGL
+    earnings_ticker = "GOOGL" if ticker == "GOOG" else ticker
 
     # 1) Current pulse signal for this ticker (use cached scan)
     pulse = scan_market()
@@ -27,7 +29,7 @@ def get_ticker_detail(ticker: str, db: Session = Depends(get_db)) -> dict[str, A
         from backend.app.models.earnings import EarningsEvent
         events = (
             db.query(EarningsEvent)
-            .filter(EarningsEvent.ticker == ticker)
+            .filter(EarningsEvent.ticker == earnings_ticker)
             .order_by(EarningsEvent.scheduled_time.desc())
             .limit(6)
             .all()

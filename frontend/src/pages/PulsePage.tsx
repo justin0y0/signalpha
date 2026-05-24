@@ -13,7 +13,7 @@ type Ticker = {
   s_score: number | null; kappa_ann: number | null; half_life_bars: number | null;
   beta_market: number | null; beta_sector: number | null;
   gao_r1: number | null; gao_eligible: boolean; gao_side: string | null;
-  session: string; last_ts: string; spark: number[];
+  session: string; last_ts: string; spark: number[]; market_cap?: number;
   score: number; factors: Factor[]; primary: string | null;
 }
 type Signal = {

@@ -112,6 +112,28 @@ def _to_native(obj):
     return obj
 
 
+
+# Approximate market caps in billions USD (mid-2025). Used for treemap sizing.
+MARKET_CAP = {
+    "AAPL": 3500, "MSFT": 3300, "NVDA": 4400, "GOOGL": 2200, "GOOG": 2200,
+    "AMZN": 2400, "META": 1500, "TSLA": 1100, "BRK-B": 1100, "JPM": 750,
+    "V": 650, "JNJ": 400, "WMT": 730, "PG": 400, "MA": 510, "HD": 380,
+    "CVX": 300, "ABBV": 340, "LLY": 700, "MRK": 250, "KO": 280, "PEP": 220,
+    "AVGO": 1400, "COST": 460, "BAC": 360, "ADBE": 220, "TMO": 200,
+    "NFLX": 480, "CSCO": 280, "ORCL": 600, "AMD": 250, "CRM": 270,
+    "ACN": 200, "MCD": 230, "ABT": 230, "WFC": 250, "DHR": 150, "VZ": 180,
+    "TXN": 170, "QCOM": 200, "INTC": 150, "INTU": 180, "NKE": 100, "PM": 200,
+    "DIS": 180, "PFE": 160, "RTX": 180, "T": 230, "LOW": 150, "UPS": 120,
+    "AMGN": 170, "HON": 140, "GS": 220, "IBM": 250, "CAT": 180, "SPGI": 170,
+    "AXP": 230, "ELV": 100, "DE": 160, "BLK": 180, "ISRG": 200, "GE": 230,
+    "PLD": 100, "SYK": 150, "BKNG": 200, "MDLZ": 90, "AMAT": 200, "GILD": 130,
+    "TJX": 150, "ADI": 130, "C": 170, "VRTX": 130, "ETN": 170, "PANW": 170,
+    "REGN": 80, "SCHW": 140, "ADP": 130, "LMT": 140, "MO": 100, "CB": 130,
+    "CI": 100, "ZTS": 80, "BSX": 150, "MU": 130, "SO": 100, "DUK": 100,
+    "BMY": 130, "PYPL": 90, "ICE": 100, "AON": 90, "CL": 90, "EQIX": 80,
+    "WM": 100, "SHW": 90, "CME": 90, "MCO": 100, "ITW": 90, "USB": 80, "PNC": 80,
+}
+
 CACHE_PATH = "/tmp/pulse_cache_v2.pkl"
 CACHE_TTL = 300
 
@@ -275,6 +297,7 @@ def _compute_signals_for_ticker(df: pd.DataFrame, ticker: str,
             "gao_eligible": bool(gao["eligible"]) if gao else False,
             "gao_side": gao["side"] if gao else None,
             "session": _session_of(last_ts),
+            "market_cap": MARKET_CAP.get(ticker, 50),
             "last_ts": last_ts.isoformat() if hasattr(last_ts, "isoformat") else str(last_ts),
             "spark": [round(s, 2) for s in spark],
         }
