@@ -90,6 +90,28 @@ SECTORS = {
     "PNC": "Financial",
 }
 
+
+
+def _to_native(obj):
+    """Recursively convert numpy types to Python natives for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: _to_native(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_native(v) for v in obj]
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        v = float(obj)
+        if np.isnan(v) or np.isinf(v):
+            return None
+        return v
+    if isinstance(obj, np.ndarray):
+        return _to_native(obj.tolist())
+    return obj
+
+
 CACHE_PATH = "/tmp/pulse_cache_v2.pkl"
 CACHE_TTL = 300
 
@@ -703,7 +725,7 @@ def scan_market() -> dict[str, Any]:
         n_uptrend = 0
 
     from backend.app.services.notification_service import notification_status
-    return {
+    _result = {
         "tickers": indicators,
         "signals": signals,
         "sectors": sectors,
@@ -723,3 +745,4 @@ def scan_market() -> dict[str, Any]:
         },
         "as_of": datetime.utcnow().isoformat(),
     }
+    return _to_native(_result)
