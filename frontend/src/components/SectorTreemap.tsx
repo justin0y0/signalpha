@@ -37,7 +37,7 @@ export function SectorTreemap({ tickers, onSelect }: Props) {
     tickers.forEach(t => { const s = t.sector || 'Other'; if (!bySector[s]) bySector[s] = []; bySector[s].push(t) })
     const sectorList = SECTOR_ORDER.filter(s => bySector[s]).concat(Object.keys(bySector).filter(s => !SECTOR_ORDER.includes(s)))
     const data: any = { name: 'root', children: sectorList.map(sec => ({ name: sec, children: (bySector[sec] || []).map(t => ({ ...t, name: t.ticker, value: Math.max(20, t.market_cap || 50) })) })) }
-    const root = hierarchy(data).sum((d: any) => d.value || 0).sort((a, b) => (b.value || 0) - (a.value || 0))
+    const root = hierarchy(data).sum((d: any) => d.value || 0).sort((a: any, b: any) => (b.value || 0) - (a.value || 0))
     treemap().tile(treemapSquarify.ratio(1.3)).size([size.w, size.h]).paddingOuter(3).paddingTop((d: any) => d.depth === 0 ? 0 : 22).paddingInner(2).round(true)(root)
     return root
   }, [tickers, size])
