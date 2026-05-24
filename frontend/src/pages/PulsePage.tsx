@@ -358,16 +358,6 @@ function SignalCard({ sig, onClick }: { sig: Signal; onClick?: () => void }) {
   )
 }
 
-: { tickers: Ticker[]; onSelect?: (t: string) => void }) {
-  const color = (r: number) => {
-    const i = Math.min(1, Math.abs(r) / 0.04)
-    return r > 0 ? `rgba(74,222,128,${0.1 + i * 0.55})` : `rgba(248,113,113,${0.1 + i * 0.55})`
-  }
-  return (
-    
-  )
-}
-
 function PortfolioPanel({ portfolio: p }: { portfolio: PulseData['portfolio'] }) {
   const eq = useCountUp(p.final_equity, 900)
   const ret = useCountUp(p.total_return * 100, 900)
