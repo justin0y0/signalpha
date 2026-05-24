@@ -80,7 +80,7 @@ Hold: ~1h · Exit ~{signal['exit_clock']}
 *Factors:*
 {factors_text}
 
-Intraday: {signal['intraday_ret']*100:+.2f}%  |  RSI {signal['rsi']:.0f}  |  Vol {signal['vol_z']:+.1f}σ
+Intraday: {signal['intraday_ret']*100:+.2f}%  |  RSI {signal.get('rsi2', signal.get('rsi', 50)):.0f}  |  Vol {signal['vol_z']:+.1f}σ
 {news_text}{ai_text}
 [https://signalpha.app/pulse]"""
 
