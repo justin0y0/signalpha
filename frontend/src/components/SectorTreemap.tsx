@@ -113,7 +113,7 @@ export function SectorTreemap({ tickers, onSelect }: Props) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.35, delay: Math.min(0.6, idx * 0.004) }}>
-              <div xmlns="http://www.w3.org/1999/xhtml" style={{ width: '100%', height: '100%' }}>
+              <div style={{ width: '100%', height: '100%' }}>
                 <TmCell w={w} h={h} ticker={ticker} score={score}
                   sScore={sScore} price={price} mcap={mcap}
                   onClick={() => onSelect(ticker)} />
