@@ -365,38 +365,7 @@ function HeatMap({ tickers, onSelect }: { tickers: Ticker[]; onSelect?: (t: stri
     return r > 0 ? `rgba(74,222,128,${0.1 + i * 0.55})` : `rgba(248,113,113,${0.1 + i * 0.55})`
   }
   return (
-    <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}>
-      <div className="mc-panel__title"><Flame size={14} /> HEAT MAP
-        <span className="mc-panel__sub">intraday performance · score badges show conviction</span></div>
-      <div className="pulse-heat">
-        {tickers.map((t, i) => (
-          <motion.div key={t.ticker} className="pulse-heat__cell pulse-clickable" onClick={() => onSelect && onSelect(t.ticker)}
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.012 }}
-            style={{ background: color(t.score) }}>
-            <div className="pulse-heat__top">
-              <span className="pulse-heat__ticker mono">{t.ticker}</span>
-              {Math.abs(t.score) >= 0.5 && (
-                <span className="pulse-heat__badge mono"
-                  style={{ color: t.score >= 0 ? '#4ade80' : '#f87171', borderColor: t.score >= 0 ? '#4ade80' : '#f87171' }}>
-                  {t.score > 0 ? '+' : ''}{t.score.toFixed(2)}
-                </span>
-              )}
-            </div>
-            <div className="pulse-heat__pct mono" style={{ color: t.score >= 0 ? '#4ade80' : '#f87171' }}>
-              {t.s_score !== null ? `s ${t.s_score >= 0 ? '+' : ''}${t.s_score.toFixed(2)}` : `score ${t.score >= 0 ? '+' : ''}${t.score.toFixed(2)}`}
-            </div>
-            <svg className="pulse-heat__spark" viewBox="0 0 60 16" preserveAspectRatio="none">
-              <path d={spark(t.spark, 60, 16)} fill="none"
-                stroke={t.score >= 0 ? '#4ade80' : '#f87171'} strokeWidth="1" />
-            </svg>
-            <div className="pulse-heat__meta mono">
-              <span>${t.price.toFixed(2)}</span>
-              <span style={{ color: t.rsi2 > 70 ? '#f87171' : t.rsi2 < 30 ? '#4ade80' : 'var(--text-tertiary)' }}>RSI2 {t.rsi2.toFixed(0)}</span>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-    </motion.div>
+    
   )
 }
 

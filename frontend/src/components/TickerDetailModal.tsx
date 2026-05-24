@@ -1,4 +1,11 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
+class ErrorBoundary extends React.Component<{children: React.ReactNode; fallback: React.ReactNode}, {hasError: boolean}> {
+  constructor(props: any) { super(props); this.state = { hasError: false } }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(err: any) { console.error('TickerDetailModal Body crashed:', err) }
+  render() { return this.state.hasError ? this.props.fallback : this.props.children }
+}
+
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, TrendingUp, TrendingDown, Check, AlertTriangle, ExternalLink } from 'lucide-react'
 import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis } from 'recharts'
@@ -47,7 +54,19 @@ export function TickerDetailModal({ ticker, onClose }: Props) {
               <X size={18} />
             </button>
             {loading && !data && <div className="tdp-loading">Loading {ticker}…</div>}
-            {data && <Body data={data} />}
+            {!loading && !data && (
+              <div className="tdp-loading">
+                <div>Failed to load {ticker}</div>
+                <div style={{ fontSize: '0.7rem', marginTop: '0.5rem', color: 'var(--text-tertiary)' }}>
+                  Press Esc or click outside to close
+                </div>
+              </div>
+            )}
+            {data && (
+              <ErrorBoundary fallback={<div className="tdp-loading">Error rendering {ticker}</div>}>
+                <Body data={data} />
+              </ErrorBoundary>
+            )}
           </motion.aside>
         </>
       )}
@@ -175,11 +194,11 @@ function Body({ data }: { data: Detail }) {
       <motion.div className="tdp-card"
         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
         <div className="tdp-label">EARNINGS HISTORY · LAST 6</div>
-        {data.earnings_history.length === 0 ? (
+        {(data.earnings_history?.length || 0) === 0 ? (
           <div className="tdp-empty">No earnings history in our database for {data.ticker}.</div>
         ) : (
           <div className="tdp-eh">
-            {data.earnings_history.map((e: any, i: number) => (
+            {(data.earnings_history || []).map((e: any, i: number) => (
               <div key={i} className="tdp-eh__row">
                 <div className="tdp-eh__period mono">{e.period || '—'}</div>
                 <div className="tdp-eh__pred">
