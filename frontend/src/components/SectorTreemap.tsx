@@ -1,32 +1,42 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { hierarchy, treemap, treemapSquarify } from 'd3-hierarchy'
 import { motion } from 'framer-motion'
+import { StockLogo } from './StockLogo'
 
 interface Ticker {
   ticker: string; sector: string; price: number
   score: number; s_score: number | null; market_cap?: number
 }
-interface Props { tickers: Ticker[]; onSelect: (ticker: string) => void }
+interface Props { tickers: Ticker[]; onSelect: (t: string) => void }
 
 const SECTOR_ORDER = ['Technology','Communication','Consumer','Healthcare','Financial','Industrials','Staples','Energy','Utilities','Materials','Real Estate']
-const SECTOR_COLOR: Record<string,string> = { Technology:'#38bdf8', Communication:'#a78bfa', Consumer:'#fb923c', Healthcare:'#4ade80', Financial:'#fbbf24', Industrials:'#94a3b8', Staples:'#ec4899', Energy:'#f87171', Utilities:'#06b6d4', Materials:'#84cc16', 'Real Estate':'#c084fc' }
+const SECTOR_COLOR: Record<string,string> = {
+  Technology:'#38bdf8', Communication:'#a78bfa', Consumer:'#fb923c',
+  Healthcare:'#4ade80', Financial:'#fbbf24', Industrials:'#94a3b8',
+  Staples:'#ec4899', Energy:'#f87171', Utilities:'#06b6d4',
+  Materials:'#84cc16', 'Real Estate':'#c084fc'
+}
 
-function colorFor(score: number): string {
-  if (Math.abs(score) < 0.05) return 'rgba(56, 90, 130, 0.25)'
-  const a = Math.min(0.75, Math.abs(score) * 0.85 + 0.20)
-  return score > 0 ? `rgba(74, 222, 128, ${a})` : `rgba(248, 113, 113, ${a})`
+function cellGradient(score: number): string {
+  if (Math.abs(score) < 0.05) {
+    return 'linear-gradient(135deg, rgba(38,58,86,0.55), rgba(22,38,60,0.7))'
+  }
+  const a = Math.min(0.85, Math.abs(score) * 0.95 + 0.25)
+  const b = Math.max(0.20, Math.abs(score) * 0.55 + 0.18)
+  return score > 0
+    ? `linear-gradient(135deg, rgba(74,222,128,${a}), rgba(22,163,74,${b}))`
+    : `linear-gradient(135deg, rgba(248,113,113,${a}), rgba(185,28,28,${b}))`
 }
 
 export function SectorTreemap({ tickers, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [size, setSize] = useState({ w: 1200, h: 720 })
-  const [hovered, setHovered] = useState<string | null>(null)
+  const [size, setSize] = useState({ w: 1200, h: 800 })
 
   useEffect(() => {
     if (!containerRef.current) return
     const ro = new ResizeObserver(entries => {
       const r = entries[0].contentRect
-      setSize({ w: Math.max(600, r.width), h: Math.max(500, Math.min(900, r.width * 0.62)) })
+      setSize({ w: Math.max(600, r.width), h: Math.max(600, Math.min(950, r.width * 0.66)) })
     })
     ro.observe(containerRef.current)
     return () => ro.disconnect()
@@ -34,11 +44,31 @@ export function SectorTreemap({ tickers, onSelect }: Props) {
 
   const layout = useMemo(() => {
     const bySector: Record<string, Ticker[]> = {}
-    tickers.forEach(t => { const s = t.sector || 'Other'; if (!bySector[s]) bySector[s] = []; bySector[s].push(t) })
-    const sectorList = SECTOR_ORDER.filter(s => bySector[s]).concat(Object.keys(bySector).filter(s => !SECTOR_ORDER.includes(s)))
-    const data: any = { name: 'root', children: sectorList.map(sec => ({ name: sec, children: (bySector[sec] || []).map(t => ({ ...t, name: t.ticker, value: Math.max(20, t.market_cap || 50) })) })) }
-    const root = hierarchy(data).sum((d: any) => d.value || 0).sort((a: any, b: any) => (b.value || 0) - (a.value || 0))
-    treemap().tile(treemapSquarify.ratio(1.3)).size([size.w, size.h]).paddingOuter(3).paddingTop((d: any) => d.depth === 0 ? 0 : 22).paddingInner(2).round(true)(root)
+    tickers.forEach(t => {
+      const s = t.sector || 'Other'
+      ;(bySector[s] = bySector[s] || []).push(t)
+    })
+    const sectorList = SECTOR_ORDER.filter(s => bySector[s])
+      .concat(Object.keys(bySector).filter(s => !SECTOR_ORDER.includes(s)))
+    const data: any = {
+      name: 'root',
+      children: sectorList.map(sec => ({
+        name: sec,
+        children: (bySector[sec] || []).map(t => ({
+          ...t, name: t.ticker, value: Math.max(25, t.market_cap || 50)
+        }))
+      }))
+    }
+    const root = hierarchy(data)
+      .sum((d: any) => d.value || 0)
+      .sort((a: any, b: any) => (b.value || 0) - (a.value || 0))
+    treemap()
+      .tile(treemapSquarify.ratio(1.4))
+      .size([size.w, size.h])
+      .paddingOuter(4)
+      .paddingTop((d: any) => d.depth === 0 ? 0 : 26)
+      .paddingInner(3)
+      .round(true)(root)
     return root
   }, [tickers, size])
 
@@ -47,72 +77,89 @@ export function SectorTreemap({ tickers, onSelect }: Props) {
 
   return (
     <div ref={containerRef} className="stm-wrap">
-      <svg width={size.w} height={size.h} style={{ display: 'block', width: '100%', height: 'auto' }}>
+      <svg width={size.w} height={size.h} className="stm-svg">
         {sectors.map((sec: any) => {
           const w = sec.x1 - sec.x0, h = sec.y1 - sec.y0
           const color = SECTOR_COLOR[sec.data.name] || '#94a3b8'
           return (
             <g key={sec.data.name}>
-              <rect x={sec.x0} y={sec.y0} width={w} height={h} fill="rgba(13,24,41,0.4)" stroke={color} strokeOpacity={0.4} strokeWidth={1.5} rx={6} />
-              {w > 50 && <text x={sec.x0+7} y={sec.y0+15} fill={color} fontSize={10} fontWeight={700} fontFamily="JetBrains Mono,monospace" letterSpacing={1}>{sec.data.name.toUpperCase()}</text>}
+              <rect x={sec.x0} y={sec.y0} width={w} height={h}
+                fill="rgba(6,14,28,0.85)"
+                stroke={color} strokeOpacity={0.65} strokeWidth={1}
+                rx={8} />
+              {w > 60 && (
+                <text x={sec.x0 + 10} y={sec.y0 + 17}
+                  fill={color} fontSize={11} fontWeight={800}
+                  fontFamily="JetBrains Mono, monospace"
+                  letterSpacing={1.8}>
+                  {sec.data.name.toUpperCase()}
+                </text>
+              )}
             </g>
           )
         })}
-        {leaves.map((leaf: any) => {
+        {leaves.map((leaf: any, idx: number) => {
           const w = leaf.x1 - leaf.x0, h = leaf.y1 - leaf.y0
-          if (w < 6 || h < 6) return null
-          const score = leaf.data.score || 0
+          if (w < 8 || h < 8) return null
           const ticker: string = leaf.data.ticker
-          const isHov = hovered === ticker
-          const showLogo = w > 48 && h > 48
-          const logoSize = Math.min(Math.min(w,h)*0.36, 44)
-          const cx = leaf.x0 + w / 2
-          const labelSize = Math.max(8, Math.min(15, Math.sqrt(w*h)/9))
-          const mcap = leaf.data.market_cap || 0
+          const score: number = leaf.data.score || 0
+          const sScore: number | null = leaf.data.s_score
+          const price: number = leaf.data.price || 0
+          const mcap: number = leaf.data.market_cap || 0
           return (
-            <motion.g key={ticker} style={{ cursor: 'pointer' }} onClick={() => onSelect(ticker)}
-              onMouseEnter={() => setHovered(ticker)} onMouseLeave={() => setHovered(null)}
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>
-              <rect x={leaf.x0+1} y={leaf.y0+1} width={w-2} height={h-2} fill={colorFor(score)}
-                stroke={isHov ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.07)'} strokeWidth={isHov ? 1.5 : 0.5} rx={3} />
-              {showLogo && <image href={`/api/v1/logos/${ticker}.png`} x={cx-logoSize/2} y={leaf.y0+6} width={logoSize} height={logoSize} preserveAspectRatio="xMidYMid meet" />}
-              <text x={cx} y={showLogo ? leaf.y0+6+logoSize+labelSize+1 : leaf.y0+h/2+(Math.abs(score)>=0.05?-4:labelSize/3)}
-                textAnchor="middle" fill="#fff" fontSize={labelSize} fontWeight={700}
-                fontFamily="JetBrains Mono,monospace" style={{ pointerEvents:'none' }}>
-                {ticker}
-              </text>
-              {w > 55 && h > 50 && mcap > 0 && (
-                <text x={cx} y={(showLogo ? leaf.y0+6+logoSize+labelSize+1 : leaf.y0+h/2-3)+labelSize*0.9}
-                  textAnchor="middle" fill="rgba(255,255,255,0.45)" fontSize={labelSize*0.62}
-                  fontFamily="JetBrains Mono,monospace" style={{ pointerEvents:'none' }}>
-                  {mcap>=1000 ? `$${(mcap/1000).toFixed(1)}T` : `$${mcap}B`}
-                </text>
-              )}
-              {Math.abs(score)>=0.05 && w>45 && h>36 && (
-                <text x={cx} y={leaf.y1-6} textAnchor="middle"
-                  fill={score>0 ? '#4ade80' : '#f87171'} fontSize={labelSize*0.72} fontWeight={700}
-                  fontFamily="JetBrains Mono,monospace" style={{ pointerEvents:'none' }}>
-                  {score>0?'+':''}{score.toFixed(2)}
-                </text>
-              )}
-            </motion.g>
+            <motion.foreignObject
+              key={ticker}
+              x={leaf.x0} y={leaf.y0} width={w} height={h}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.35, delay: Math.min(0.6, idx * 0.004) }}>
+              <div xmlns="http://www.w3.org/1999/xhtml" style={{ width: '100%', height: '100%' }}>
+                <TmCell w={w} h={h} ticker={ticker} score={score}
+                  sScore={sScore} price={price} mcap={mcap}
+                  onClick={() => onSelect(ticker)} />
+              </div>
+            </motion.foreignObject>
           )
         })}
       </svg>
-      {hovered && (() => {
-        const t = tickers.find(x => x.ticker === hovered)
-        if (!t) return null
-        return (
-          <div className="stm-hover">
-            <div className="stm-hover__head"><b>{t.ticker}</b><span style={{color: SECTOR_COLOR[t.sector]||'#94a3b8'}}>{t.sector}</span></div>
-            <div className="stm-hover__body">
-              <span>${t.price.toFixed(2)} · {(t.market_cap||0)>=1000?`$${((t.market_cap||0)/1000).toFixed(1)}T`:`$${t.market_cap||0}B`}</span>
-              <span style={{color:t.score>0?'#4ade80':t.score<0?'#f87171':'#94a3b8'}}>score {t.score>=0?'+':''}{(t.score||0).toFixed(2)}{t.s_score!==null?` · s ${t.s_score>=0?'+':''}${t.s_score.toFixed(2)}`:''}</span>
-              <span style={{fontSize:'0.65rem',color:'#94a3b8'}}>click for full details →</span>
-            </div>
-          </div>
-        )
-      })()}
+    </div>
+  )
+}
+
+function TmCell({ w, h, ticker, score, sScore, price, mcap, onClick }: any) {
+  const minDim = Math.min(w, h)
+  const showLogo = minDim >= 56
+  const showMcap = w >= 68 && h >= 60
+  const showScore = Math.abs(score) >= 0.05 && w >= 48 && h >= 42
+  const showSScore = sScore !== null && Math.abs(sScore) >= 1.0 && w >= 75 && h >= 75
+  const logoSize = showLogo ? Math.min(minDim * 0.38, 60) : 0
+  const tickerSize = Math.max(10, Math.min(18, Math.sqrt(w * h) / 8.5))
+
+  return (
+    <div className="tmc" onClick={onClick}
+      style={{ background: cellGradient(score) }}
+      title={`${ticker}  ·  $${price.toFixed(2)}  ·  score ${score >= 0 ? '+' : ''}${score.toFixed(2)}`}>
+      <div className="tmc__shine" />
+      {showLogo && (
+        <div className="tmc__logo">
+          <StockLogo ticker={ticker} size={logoSize} />
+        </div>
+      )}
+      <div className="tmc__name" style={{ fontSize: `${tickerSize}px` }}>{ticker}</div>
+      {showMcap && mcap > 0 && (
+        <div className="tmc__mcap" style={{ fontSize: `${tickerSize * 0.58}px` }}>
+          {mcap >= 1000 ? `$${(mcap/1000).toFixed(1)}T` : `$${mcap}B`}
+        </div>
+      )}
+      {showScore && (
+        <div className={`tmc__score ${score > 0 ? 'pos' : 'neg'}`}
+          style={{ fontSize: `${tickerSize * 0.78}px` }}>
+          {score > 0 ? '+' : ''}{score.toFixed(2)}
+        </div>
+      )}
+      {showSScore && (
+        <div className="tmc__sscore">s {sScore >= 0 ? '+' : ''}{sScore.toFixed(2)}</div>
+      )}
     </div>
   )
 }
