@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { TickerDetailModal } from '../components/TickerDetailModal'
+import { PulseTrackRecordDetail } from '../components/PulseTrackRecordDetail'
+import { PulseTrackRecord } from '../components/PulseTrackRecord'
+import { ActiveSignalsBanner } from '../components/ActiveSignalsBanner'
 import { SectorTreemap } from '../components/SectorTreemap'
 import { StockLogo } from '../components/StockLogo'
 import { motion } from 'framer-motion'
@@ -78,6 +81,8 @@ export function PulsePage() {
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(new Date())
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null)
+  const [selectedSector, setSelectedSector] = useState<string | null>(null)
+  const [hoveredCell, setHoveredCell] = useState<any>(null)
 
   const load = useCallback(async () => {
     try { setData(await (await fetch('/api/v1/pulse')).json()) }
@@ -136,10 +141,83 @@ export function PulsePage() {
           🗺️ SECTOR TREEMAP
           <span className="mc-panel__sub">click any stock for full details · color = conviction</span>
         </div>
+        {/* ACTIVE SIGNALS BANNER */}
+      <PulseTrackRecord />
+      <PulseTrackRecordDetail />
+      <ActiveSignalsBanner signals={data.signals || []} onSelect={(t) => setSelectedTicker(t)} />
+
+      {/* SECTOR TREEMAP WITH FILTER + LEGEND + HOVER DETAIL */}
+      <div className="treemap-legend">
+        <div className="treemap-legend__item">
+          <span className="treemap-legend__dot" style={{ background: '#4ade80' }} />
+          <span>Bullish</span>
+        </div>
+        <div className="treemap-legend__scale">
+          <span className="treemap-legend__num">-2</span>
+          <div className="treemap-legend__bar" />
+          <span className="treemap-legend__num">+2</span>
+        </div>
+        <div className="treemap-legend__item">
+          <span className="treemap-legend__dot" style={{ background: '#f87171' }} />
+          <span>Bearish</span>
+        </div>
+        <div className="treemap-legend__hint">
+          <b>Σ-Score</b> = Avellaneda-Lee + Gao 2018 + Connors RSI(2) · |≥1.0| high conviction
+        </div>
+      </div>
+
+      <div className="sector-tabs">
+        <button className={`sector-tab ${!selectedSector ? 'sector-tab--active' : ''}`} onClick={() => setSelectedSector(null)}>
+          All <span className="sector-tab__count">{data.tickers.length}</span>
+        </button>
+        {Array.from(new Set(data.tickers.map(t => t.sector))).filter(Boolean).sort().map(s => {
+          const count = data.tickers.filter(t => t.sector === s).length
+          const avgScore = data.tickers.filter(t => t.sector === s).reduce((a, t) => a + (t.score || 0), 0) / count
+          return (
+            <button key={s} className={`sector-tab ${selectedSector === s ? 'sector-tab--active' : ''}`}
+              onClick={() => setSelectedSector(selectedSector === s ? null : s)}>
+              {s} <span className="sector-tab__count">{count}</span>
+              <span className={`sector-tab__avg ${avgScore >= 0 ? 'pos' : 'neg'}`}>
+                {avgScore >= 0 ? '+' : ''}{avgScore.toFixed(2)}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="treemap-shell">
         <SectorTreemap
           tickers={data.tickers}
           onSelect={(t) => setSelectedTicker(t)}
+          selectedSector={selectedSector}
+          onHover={setHoveredCell}
         />
+        {hoveredCell && (
+          <motion.div className="treemap-hovercard"
+            initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.12 }}>
+            <div className="treemap-hovercard__head">
+              <StockLogo ticker={hoveredCell.ticker} size={32} />
+              <div>
+                <div className="treemap-hovercard__ticker">{hoveredCell.ticker}</div>
+                <div className="treemap-hovercard__price mono">${(hoveredCell.price || 0).toFixed(2)}</div>
+              </div>
+              <div className={`treemap-hovercard__score ${hoveredCell.score >= 0 ? 'pos' : 'neg'}`}>
+                Σ {hoveredCell.score >= 0 ? '+' : ''}{(hoveredCell.score || 0).toFixed(2)}
+              </div>
+            </div>
+            {hoveredCell.sScore !== null && hoveredCell.sScore !== undefined && (
+              <div className="treemap-hovercard__row">
+                <span>s-score</span><b className="mono">{(hoveredCell.sScore || 0) >= 0 ? '+' : ''}{(hoveredCell.sScore || 0).toFixed(2)}</b>
+              </div>
+            )}
+            <div className="treemap-hovercard__row">
+              <span>Market Cap</span><b className="mono">{hoveredCell.mcap >= 1000 ? `$${(hoveredCell.mcap/1000).toFixed(1)}T` : `$${hoveredCell.mcap}B`}</b>
+            </div>
+            <div className="treemap-hovercard__cta">click for full details →</div>
+          </motion.div>
+        )}
+      </div>
       </motion.div>
       <PortfolioPanel portfolio={data.portfolio} />
       <TickerDetailModal

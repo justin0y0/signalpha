@@ -29,6 +29,8 @@ services:
       retries: 5
 
   backend:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     build:
       context: .
       dockerfile: backend/Dockerfile

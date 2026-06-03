@@ -257,18 +257,19 @@ export function TrackRecordPage() {
 
   const fetchRecent = useCallback(async (v: string, conf: number = 0) => {
     const r = await fetch(`${API}/recent?limit=100&verdict=${v}&min_confidence=${conf}`)
+    if (!r.ok) { setRecent([]); setTotalFiltered(0); return }
     const d = await r.json()
-    setRecent(d.items)
-    setTotalFiltered(d.total_filtered)
+    setRecent(d.items || [])
+    setTotalFiltered(d.total_filtered || 0)
   }, [])
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/summary`).then(r => r.json()).then(setSummary),
-      fetch(`${API}/confusion`).then(r => r.json()).then(setConfusion),
-      fetch(`${API}/calibration`).then(r => r.json()).then(d => setCalib(d.points)),
-      fetch(`${API}/rolling`).then(r => r.json()).then(d => setRolling(d.points)),
-      fetch(`${API}/confidence-breakdown`).then(r => r.json()).then(d => setConfBreak(d.rows)),
+      fetch(`${API}/summary`).then(r => r.ok ? r.json() : null).then(setSummary),
+      fetch(`${API}/confusion`).then(r => r.ok ? r.json() : null).then(setConfusion),
+      fetch(`${API}/calibration`).then(r => r.ok ? r.json() : null).then(d => setCalib(d?.points || [])),
+      fetch(`${API}/rolling`).then(r => r.ok ? r.json() : null).then(d => setRolling(d?.points || [])),
+      fetch(`${API}/confidence-breakdown`).then(r => r.ok ? r.json() : null).then(d => setConfBreak(d?.rows || [])),
       fetchRecent('all'),
     ]).finally(() => setLoading(false))
   }, [fetchRecent])
@@ -277,6 +278,30 @@ export function TrackRecordPage() {
     <div className="tr-loading">
       <div className="tr-loading__spinner" />
       <div>Loading track record…</div>
+    </div>
+  )
+
+  if (!summary || typeof summary.total !== 'number') return (
+    <div className="tr-page">
+      <div className="tr-hero">
+        <h1 className="tr-hero__title">Track Record</h1>
+        <p className="tr-hero__sub">
+          ML prediction tracking isn't wired up on the backend yet.
+          Live signal performance is on the Pulse page.
+        </p>
+      </div>
+    </div>
+  )
+
+  if (!summary || typeof summary.total !== 'number') return (
+    <div className="tr-page">
+      <div className="tr-hero">
+        <h1 className="tr-hero__title">Track Record</h1>
+        <p className="tr-hero__sub">
+          ML prediction tracking isn't wired up on the backend yet.
+          Live signal performance is on the Pulse page.
+        </p>
+      </div>
     </div>
   )
 

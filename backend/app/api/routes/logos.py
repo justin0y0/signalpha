@@ -14,11 +14,46 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-SOURCES = [
-    lambda t: f"https://financialmodelingprep.com/image-stock/{t}.png",
-    lambda t: f"https://assets.parqet.com/logos/symbol/{t}",
-    lambda t: f"https://eodhd.com/img/logos/US/{t}.png",
-]
+TICKER_DOMAINS = {
+    "AAPL":"apple.com","MSFT":"microsoft.com","GOOGL":"abc.xyz","GOOG":"abc.xyz",
+    "NVDA":"nvidia.com","AMZN":"amazon.com","META":"meta.com","TSLA":"tesla.com",
+    "AVGO":"broadcom.com","ORCL":"oracle.com","CRM":"salesforce.com","ADBE":"adobe.com",
+    "AMD":"amd.com","IBM":"ibm.com","CSCO":"cisco.com","INTC":"intel.com",
+    "QCOM":"qualcomm.com","TXN":"ti.com","AMAT":"appliedmaterials.com","MU":"micron.com",
+    "PANW":"paloaltonetworks.com","ADI":"analog.com","INTU":"intuit.com",
+    "ACN":"accenture.com","ADP":"adp.com","NFLX":"netflix.com","DIS":"disney.com",
+    "T":"att.com","VZ":"verizon.com",
+    "JPM":"jpmorganchase.com","BAC":"bankofamerica.com","WFC":"wellsfargo.com",
+    "GS":"goldmansachs.com","MS":"morganstanley.com","C":"citigroup.com",
+    "USB":"usbank.com","PNC":"pnc.com","AXP":"americanexpress.com",
+    "V":"visa.com","MA":"mastercard.com","PYPL":"paypal.com",
+    "BLK":"blackrock.com","SCHW":"schwab.com","CB":"chubb.com","MCO":"moodys.com",
+    "ICE":"ice.com","CME":"cmegroup.com","SPGI":"spglobal.com","AON":"aon.com",
+    "BRK-B":"berkshirehathaway.com","BRK.B":"berkshirehathaway.com",
+    "JNJ":"jnj.com","LLY":"lilly.com","MRK":"merck.com","ABBV":"abbvie.com",
+    "ABT":"abbott.com","TMO":"thermofisher.com","PFE":"pfizer.com","AMGN":"amgen.com",
+    "ISRG":"intuitive.com","SYK":"stryker.com","BMY":"bms.com","DHR":"danaher.com",
+    "GILD":"gilead.com","REGN":"regeneron.com","VRTX":"vrtx.com",
+    "ELV":"elevancehealth.com","CI":"cigna.com","BSX":"bostonscientific.com","ZTS":"zoetis.com",
+    "WMT":"walmart.com","HD":"homedepot.com","MCD":"mcdonalds.com",
+    "NKE":"nike.com","LOW":"lowes.com","BKNG":"booking.com","TJX":"tjx.com",
+    "COST":"costco.com","PG":"pg.com","KO":"coca-cola.com","PEP":"pepsico.com",
+    "PM":"pmi.com","MO":"altria.com","MDLZ":"mondelezinternational.com","CL":"colgatepalmolive.com",
+    "CVX":"chevron.com","XOM":"exxonmobil.com","SO":"southerncompany.com","DUK":"duke-energy.com",
+    "GE":"ge.com","RTX":"rtx.com","CAT":"caterpillar.com","DE":"deere.com",
+    "ETN":"eaton.com","HON":"honeywell.com","UPS":"ups.com","WM":"wm.com",
+    "LMT":"lockheedmartin.com","ITW":"itw.com",
+    "PLD":"prologis.com","EQIX":"equinix.com","SHW":"sherwin-williams.com",
+}
+
+def _sources_for(t):
+    urls = []
+    if t in TICKER_DOMAINS:
+        urls.append(f"https://logo.clearbit.com/{TICKER_DOMAINS[t]}")
+    urls.append(f"https://financialmodelingprep.com/image-stock/{t}.png")
+    urls.append(f"https://assets.parqet.com/logos/symbol/{t}")
+    urls.append(f"https://eodhd.com/img/logos/US/{t}.png")
+    return urls
 
 PALETTE = ['#38bdf8', '#a78bfa', '#4ade80', '#fbbf24', '#f87171', '#ec4899', '#06b6d4', '#fb923c', '#22d3ee', '#84cc16']
 
@@ -57,9 +92,9 @@ def get_logo(ticker: str):
 
     # 3) Try external sources
     headers = {"User-Agent": UA, "Accept": "image/png,image/webp,image/*,*/*"}
-    for src in SOURCES:
+    for src_url in _sources_for(t):
         try:
-            r = httpx.get(src(t), timeout=8, follow_redirects=True, headers=headers)
+            r = httpx.get(src_url, timeout=8, follow_redirects=True, headers=headers)
             ct = r.headers.get("content-type", "").lower()
             if r.status_code == 200 and len(r.content) > 500 and "image" in ct and "html" not in ct:
                 png_path.write_bytes(r.content)

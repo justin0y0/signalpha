@@ -7,7 +7,7 @@ interface Ticker {
   ticker: string; sector: string; price: number
   score: number; s_score: number | null; market_cap?: number
 }
-interface Props { tickers: Ticker[]; onSelect: (t: string) => void }
+interface Props { tickers: Ticker[]; onSelect: (t: string) => void; selectedSector?: string | null; onHover?: (t: any) => void }
 
 const SECTOR_ORDER = ['Technology','Communication','Consumer','Healthcare','Financial','Industrials','Staples','Energy','Utilities','Materials','Real Estate']
 const SECTOR_COLOR: Record<string,string> = {
@@ -28,7 +28,8 @@ function cellGradient(score: number): string {
     : `linear-gradient(135deg, rgba(248,113,113,${a}), rgba(185,28,28,${b}))`
 }
 
-export function SectorTreemap({ tickers, onSelect }: Props) {
+export function SectorTreemap({ tickers, onSelect, selectedSector, onHover }: Props) {
+  const visible = selectedSector ? tickers.filter(t => t.sector === selectedSector) : tickers
   const containerRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ w: 1200, h: 800 })
 
@@ -44,7 +45,7 @@ export function SectorTreemap({ tickers, onSelect }: Props) {
 
   const layout = useMemo(() => {
     const bySector: Record<string, Ticker[]> = {}
-    tickers.forEach(t => {
+    visible.forEach(t => {
       const s = t.sector || 'Other'
       ;(bySector[s] = bySector[s] || []).push(t)
     })
@@ -70,7 +71,7 @@ export function SectorTreemap({ tickers, onSelect }: Props) {
       .paddingInner(3)
       .round(true)(root)
     return root
-  }, [tickers, size])
+  }, [visible, size])
 
   const leaves = layout.leaves() as any[]
   const sectors = layout.descendants().filter((d: any) => d.depth === 1)
@@ -116,7 +117,7 @@ export function SectorTreemap({ tickers, onSelect }: Props) {
               <div style={{ width: '100%', height: '100%' }}>
                 <TmCell w={w} h={h} ticker={ticker} score={score}
                   sScore={sScore} price={price} mcap={mcap}
-                  onClick={() => onSelect(ticker)} />
+                  onClick={() => onSelect(ticker)} onHover={onHover} />
               </div>
             </motion.foreignObject>
           )
@@ -126,17 +127,17 @@ export function SectorTreemap({ tickers, onSelect }: Props) {
   )
 }
 
-function TmCell({ w, h, ticker, score, sScore, price, mcap, onClick }: any) {
+function TmCell({ w, h, ticker, score, sScore, price, mcap, onClick, onHover }: any) {
   const minDim = Math.min(w, h)
   const showLogo = minDim >= 56
   const showMcap = w >= 68 && h >= 60
-  const showScore = Math.abs(score) >= 0.05 && w >= 48 && h >= 42
+  const showScore = w >= 42 && h >= 38
   const showSScore = sScore !== null && Math.abs(sScore) >= 1.0 && w >= 75 && h >= 75
   const logoSize = showLogo ? Math.min(minDim * 0.38, 60) : 0
   const tickerSize = Math.max(10, Math.min(18, Math.sqrt(w * h) / 8.5))
 
   return (
-    <div className="tmc" onClick={onClick}
+    <div className={`tmc ${Math.abs(score) > 0.8 ? (score > 0 ? "tmc--pulse-pos" : "tmc--pulse-neg") : ""}`} onClick={onClick} onMouseEnter={() => onHover && onHover({ticker, score, sScore, price, mcap})} onMouseLeave={() => onHover && onHover(null)}
       style={{ background: cellGradient(score) }}
       title={`${ticker}  ·  $${price.toFixed(2)}  ·  score ${score >= 0 ? '+' : ''}${score.toFixed(2)}`}>
       <div className="tmc__shine" />

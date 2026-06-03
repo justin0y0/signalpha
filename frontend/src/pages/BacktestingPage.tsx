@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Play, RotateCcw, TrendingUp, TrendingDown, Minus, ChevronDown } from 'lucide-react'
-import { ComposedChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts'
+import { ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts'
 import { api } from '../api/client'
 import type { BacktestResponse } from '../types'
 
@@ -73,6 +73,26 @@ const CustomTooltip=({active,payload,label}:any)=>{
   )
 }
 
+
+type SubRow = [string, string]
+function MetricGroup({title, hero, heroSub, subs, accent, heroColor}: {
+  title: string; hero: string; heroSub?: string; subs: SubRow[]; accent: string; heroColor?: string
+}) {
+  return (
+    <motion.div className="bt-mg" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}}
+      style={{['--mg-accent' as any]: accent, ['--mg-hero' as any]: heroColor || '#fff'}}>
+      <div className="bt-mg__title"><span className="bt-mg__title-dot"/>{title}</div>
+      <div className="bt-mg__hero">{hero}</div>
+      {heroSub && <div className="bt-mg__hero-sub">{heroSub}</div>}
+      <div className="bt-mg__subs">
+        {subs.map(([l,v]) => (
+          <div key={l} className="bt-mg__sub-row"><span>{l}</span><b>{v}</b></div>
+        ))}
+      </div>
+    </motion.div>
+  )
+}
+
 export function BacktestingPage() {
   const [ticker,setTicker]=useState('')
   const [sector,setSector]=useState('')
@@ -94,11 +114,12 @@ export function BacktestingPage() {
     finally { setRunning(false) }
   }
 
-  const chartData=result?.equity_curve.map(p=>({
-    date:new Date(p.date).toLocaleDateString('en-US',{month:'short',year:'2-digit'}),
-    equity:+((p.equity-1)*100).toFixed(3),
-    drawdown:+(p.drawdown*100).toFixed(3),
-  }))??[]
+  const chartData = result?.equity_curve.map((p, i) => ({
+    date: new Date(p.date).toLocaleDateString('en-US',{month:'short',year:'2-digit'}),
+    equity: +((p.equity - 1) * 100).toFixed(3),
+    benchmark: ((result as any).benchmark_curve?.[i]) ? +(((result as any).benchmark_curve[i].equity - 1) * 100).toFixed(3) : null,
+    drawdown: +(p.drawdown * 100).toFixed(3),
+  })) ?? []
 
   const ret=result?.total_return??0
   const kpis:Kpi[]=result?[
@@ -167,7 +188,8 @@ export function BacktestingPage() {
 
             <motion.div className="bt-card" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:0.15}}>
               <div className="bt-card__title">
-                <TrendingUp size={13}/>Equity Curve & Drawdown
+                <TrendingUp size={13}/>Equity Curve vs SPY
+                <span className="bt-bench-legend"><span className="bt-bench-legend__dash"/>SPY benchmark</span>
                 <span className="bt-card__pill" style={{color:ret>=0?C.green:C.red,background:ret>=0?'rgba(74,222,128,0.1)':'rgba(248,113,113,0.1)'}}>{pct(ret)}</span>
               </div>
               <div style={{height:220}}>
@@ -185,6 +207,9 @@ export function BacktestingPage() {
                     <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" strokeDasharray="4 3"/>
                     <Tooltip content={<CustomTooltip/>}/>
                     <Area type="monotone" dataKey="equity" stroke={ret>=0?C.green:C.red} strokeWidth={2} fill="url(#eqGrad)" dot={false} activeDot={{r:3}}/>
+                    {chartData[0]?.benchmark !== null && chartData[0]?.benchmark !== undefined && (
+                      <Line type="monotone" dataKey="benchmark" stroke="rgba(148,163,184,0.75)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} />
+                    )}
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

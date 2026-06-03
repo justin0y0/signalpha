@@ -14,19 +14,14 @@ interface Detail {
   price_series: number[]
 }
 
-class ErrorBoundary extends React.Component
-  { children: React.ReactNode; fallback: React.ReactNode },
-  { hasError: boolean; msg: string }
-> {
-  constructor(props: any) { super(props); this.state = { hasError: false, msg: '' } }
-  static getDerivedStateFromError(err: any) { return { hasError: true, msg: String(err?.message || err) } }
+type EBProps = { children: React.ReactNode; fallback: React.ReactNode }
+type EBState = { hasError: boolean; msg: string }
+class ErrorBoundary extends React.Component<EBProps, EBState> {
+  constructor(props: EBProps) { super(props); this.state = { hasError: false, msg: '' } }
+  static getDerivedStateFromError(err: any) { return { hasError: true, msg: String((err && err.message) || err) } }
   componentDidCatch(err: any) { console.error('TickerDetailModal Body crashed:', err) }
   render() {
-    if (this.state.hasError) return (
-      <div className="tdp-loading">
-        <div>Error rendering — {this.state.msg.slice(0, 80)}</div>
-      </div>
-    )
+    if (this.state.hasError) return <div className="tdp-loading"><div>Error: {this.state.msg.slice(0, 80)}</div></div>
     return this.props.children
   }
 }

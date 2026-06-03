@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.routes.pulse_detail import router as pulse_detail_router
 from backend.app.api.routes.logos import router as logos_router
+from backend.app.api.routes.telegram_webhook import router as tg_webhook_router
 from backend.app.api.routes.backtest import router as backtest_router
 from backend.app.api.routes.calendar import router as calendar_router
 from backend.app.api.routes.features import router as features_router
@@ -15,6 +16,9 @@ from backend.app.api.routes.performance import router as performance_router
 from backend.app.api.routes.predict import router as predict_router
 from backend.app.api.routes.simulator import router as simulator_router
 from backend.app.api.routes.track_record import router as track_record_router
+from backend.app.api.routes.pulse_track_record import router as pulse_track_record_router
+from backend.app.api.routes.ibkr_status import router as ibkr_status_router
+from backend.app.api.routes.moomoo_status import router as broker_status_router
 from backend.app.api.routes.showdown import router as showdown_router
 from backend.app.api.routes.pulse import router as pulse_router
 from backend.app.api.routes.quote import router as quote_router
@@ -53,10 +57,25 @@ app.include_router(track_record_router, prefix=settings.api_v1_prefix)
 app.include_router(showdown_router, prefix=settings.api_v1_prefix)
 app.include_router(pulse_router, prefix=settings.api_v1_prefix)
 app.include_router(pulse_detail_router)
+app.include_router(pulse_track_record_router)
+app.include_router(ibkr_status_router)
+app.include_router(broker_status_router)
 app.include_router(logos_router)
+app.include_router(tg_webhook_router)
 app.include_router(simulator_router, prefix=settings.api_v1_prefix)
 
 
 @app.get("/")
 def root() -> dict[str, str]:
     return {"message": "Earnings Movement Platform API", "docs": "/docs"}
+
+
+# ═══ Start signal exit worker in background thread ═══
+import asyncio as _asyncio_w
+import threading as _threading_w
+def _start_signal_worker():
+    from backend.app.services.signal_tracker import signal_exit_worker
+    loop = _asyncio_w.new_event_loop()
+    _asyncio_w.set_event_loop(loop)
+    loop.run_until_complete(signal_exit_worker())
+_threading_w.Thread(target=_start_signal_worker, daemon=True).start()

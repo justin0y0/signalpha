@@ -1,129 +1,129 @@
-"""Per-ticker detail endpoint: combines current pulse signal + earnings history."""
+"""Ticker detail endpoint for the Pulse side panel.
+
+Returns: current pulse data + active signal + earnings history (predictions vs actuals).
+"""
 from __future__ import annotations
-from datetime import datetime, timezone
-from typing import Any
+from datetime import date
+from typing import Any, Dict, List
 
-from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy.orm import Session
+from fastapi import APIRouter
+from sqlalchemy import text
 
-from backend.app.db.session import get_db
+from backend.app.db.session import SessionLocal
 from backend.app.services.market_pulse_service import scan_market
 
-router = APIRouter(prefix="/api/v1/pulse", tags=["pulse"])
+router = APIRouter(prefix="/api/v1/pulse", tags=["pulse_detail"])
+
+# Aliases: tickers that need a different lookup in earnings_events
+TICKER_ALIASES = {"GOOG": "GOOGL", "BRK-B": "BRK.B"}
+
+
+def _predicted_label(up, down):
+    """Pick UP/DOWN/FLAT based on direction probabilities."""
+    if up is None or down is None:
+        return None
+    up_f, down_f = float(up), float(down)
+    flat_f = max(0.0, 1.0 - up_f - down_f)
+    return max({"UP": up_f, "DOWN": down_f, "FLAT": flat_f}.items(), key=lambda x: x[1])[0]
+
+
+def _actual_label(ret):
+    """Classify actual T+1 return as UP/DOWN/FLAT (±1.5% threshold)."""
+    if ret is None:
+        return None
+    r = float(ret)
+    if r > 0.015:
+        return "UP"
+    if r < -0.015:
+        return "DOWN"
+    return "FLAT"
+
+
+def _get_earnings_history(ticker: str, limit: int = 6) -> List[Dict[str, Any]]:
+    """Pull last N earnings with predictions + actual outcomes from real DB schema."""
+    db = SessionLocal()
+    try:
+        lookup = TICKER_ALIASES.get(ticker, ticker)
+        sql = text("""
+            SELECT
+                e.ticker,
+                e.earnings_date,
+                p.direction_prob_up,
+                p.direction_prob_down,
+                p.expected_move_pct,
+                p.confidence_score,
+                o.actual_t1_close_return,
+                o.actual_t1_gap_pct,
+                o.actual_t5_return,
+                o.max_intraday_move,
+                o.gap_direction
+            FROM earnings_events e
+            LEFT JOIN predictions p
+                ON p.ticker = e.ticker AND p.earnings_date = e.earnings_date
+            LEFT JOIN outcomes o
+                ON o.ticker = e.ticker AND o.earnings_date = e.earnings_date
+            WHERE e.ticker = :ticker
+            ORDER BY e.earnings_date DESC
+            LIMIT :limit
+        """)
+        rows = db.execute(sql, {"ticker": lookup, "limit": limit}).fetchall()
+        today = date.today()
+        history: List[Dict[str, Any]] = []
+        for r in rows:
+            ed = r.earnings_date
+            q = (ed.month - 1) // 3 + 1
+            period = f"Q{q} {ed.year}"
+
+            predicted = _predicted_label(r.direction_prob_up, r.direction_prob_down)
+            actual_ret = (
+                float(r.actual_t1_close_return)
+                if r.actual_t1_close_return is not None else None
+            )
+            actual = _actual_label(actual_ret)
+            is_past = ed < today
+            win = (
+                (predicted == actual)
+                if (predicted and actual and is_past)
+                else None
+            )
+
+            history.append({
+                "period": period,
+                "earnings_date": ed.isoformat(),
+                "predicted_label": predicted,
+                "actual_label": actual,
+                "actual_move_pct": actual_ret,
+                "expected_move_pct": (
+                    float(r.expected_move_pct)
+                    if r.expected_move_pct is not None else None
+                ),
+                "confidence_score": (
+                    float(r.confidence_score)
+                    if r.confidence_score is not None else None
+                ),
+                "is_past": is_past,
+                "win": win,
+            })
+        return history
+    finally:
+        db.close()
 
 
 @router.get("/ticker/{ticker}")
-def get_ticker_detail(ticker: str, db: Session = Depends(get_db)) -> dict[str, Any]:
-    ticker = ticker.upper().strip()
-    # Alias: GOOG (Class C, non-voting) has no separate earnings, use GOOGL
-    earnings_ticker = "GOOGL" if ticker == "GOOG" else ticker
-
-    # 1) Current pulse signal for this ticker (use cached scan)
-    pulse = scan_market()
-    ticker_data = next((t for t in pulse.get("tickers", []) if t["ticker"] == ticker), None)
-    active_signal = next((s for s in pulse.get("signals", []) if s["ticker"] == ticker), None)
-
-    # 2) Earnings history with predictions vs actuals
-    earnings_history: list[dict] = []
-    try:
-        from backend.app.models.earnings import EarningsEvent
-        events = (
-            db.query(EarningsEvent)
-            .filter(EarningsEvent.ticker == earnings_ticker)
-            .order_by(EarningsEvent.scheduled_time.desc())
-            .limit(6)
-            .all()
-        )
-        for ev in events:
-            row = {
-                "scheduled_time": ev.scheduled_time.isoformat() if ev.scheduled_time else None,
-                "period": _quarter_label(ev.scheduled_time) if ev.scheduled_time else None,
-                "eps_estimate": _safe_float(getattr(ev, "eps_estimate", None)),
-                "eps_actual": _safe_float(getattr(ev, "eps_actual", None)),
-                "predicted_label": None, "predicted_prob": None,
-                "actual_move_pct": None, "win": None,
-                "is_past": False,
-            }
-            # Past or future?
-            if ev.scheduled_time:
-                is_past = ev.scheduled_time.replace(tzinfo=None) < datetime.utcnow()
-                row["is_past"] = is_past
-
-            # Pull prediction if available
-            try:
-                from backend.app.models.predictions import Prediction
-                pred = (
-                    db.query(Prediction)
-                    .filter(Prediction.event_id == ev.id)
-                    .order_by(Prediction.created_at.desc())
-                    .first()
-                )
-                if pred:
-                    row["predicted_label"] = getattr(pred, "label", None) or getattr(pred, "predicted_label", None)
-                    row["predicted_prob"] = _safe_float(getattr(pred, "confidence", None) or getattr(pred, "probability", None))
-            except Exception:
-                pass
-
-            # Pull actual move from PriceFeature payload if any
-            try:
-                from backend.app.models.features import PriceFeature
-                pf = (
-                    db.query(PriceFeature)
-                    .filter(PriceFeature.event_id == ev.id)
-                    .order_by(PriceFeature.snapshot_at.desc())
-                    .first()
-                )
-                if pf:
-                    payload = getattr(pf, "feature_payload", {}) or {}
-                    move = (payload.get("event_return_pct")
-                            or payload.get("realized_move_pct")
-                            or payload.get("actual_move_pct"))
-                    row["actual_move_pct"] = _safe_float(move)
-            except Exception:
-                pass
-
-            # Compute win/loss if we have both
-            if row["predicted_label"] and row["actual_move_pct"] is not None:
-                actual_dir = "UP" if row["actual_move_pct"] > 0.005 else "DOWN" if row["actual_move_pct"] < -0.005 else "FLAT"
-                row["actual_label"] = actual_dir
-                row["win"] = row["predicted_label"].upper() == actual_dir
-            earnings_history.append(row)
-    except Exception as e:
-        earnings_history = []
-
-    # 3) Quick price series for chart (uses pulse spark data we already have)
-    price_series = ticker_data.get("spark", []) if ticker_data else []
-
-    if ticker_data is None and active_signal is None:
-        # Ticker not in pulse universe — return minimal
-        return {
-            "ticker": ticker, "in_universe": False,
-            "pulse": None, "active_signal": None,
-            "earnings_history": earnings_history,
-            "price_series": [],
-        }
-
+def get_ticker_detail(ticker: str):
+    t = ticker.upper().strip()
+    scan = scan_market()
+    tickers_list = scan.get("tickers", []) or []
+    signals_list = scan.get("signals", []) or []
+    ticker_data = next((x for x in tickers_list if x.get("ticker") == t), None)
+    active_signal = next((x for x in signals_list if x.get("ticker") == t), None)
+    earnings_history = _get_earnings_history(t, limit=6)
+    price_series = (ticker_data or {}).get("spark", []) if ticker_data else []
     return {
-        "ticker": ticker,
-        "in_universe": True,
+        "ticker": t,
+        "in_universe": ticker_data is not None,
         "pulse": ticker_data,
         "active_signal": active_signal,
         "earnings_history": earnings_history,
         "price_series": price_series,
     }
-
-
-def _safe_float(v) -> float | None:
-    try:
-        if v is None: return None
-        f = float(v)
-        if f != f or f == float("inf") or f == -float("inf"): return None
-        return round(f, 4)
-    except Exception:
-        return None
-
-
-def _quarter_label(dt: datetime) -> str:
-    if dt is None: return "—"
-    q = (dt.month - 1) // 3 + 1
-    return f"Q{q}'{str(dt.year)[2:]}"

@@ -22,3 +22,7 @@ python-dotenv>=1.0,<2.0
 transformers>=4.40,<5.0
 torch>=2.2,<3.0
 sentencepiece
+ddgs
+g4f
+ib_async
+moomoo-api
