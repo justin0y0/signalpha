@@ -15,3 +15,4 @@ data/raw/
 data/processed/
 .DS_Store
 artifacts/
+graphify-out/
