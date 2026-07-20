@@ -303,6 +303,11 @@ Intraday: {signal['intraday_ret']*100:+.2f}%  |  RSI {signal.get('rsi2', signal.
         )
         if r.status_code == 200:
             _sent[key] = time.time()
+            try:
+                from backend.app.services import auth_service as _auth
+                _auth.broadcast(msg)
+            except Exception:
+                pass
             _cooldown_set(signal["ticker"], signal["side"])
             _log_signal_db(signal)
             try:

@@ -60,6 +60,15 @@ def _shutdown(*_: object) -> None:
     sys.exit(0)
 
 
+scheduler.add_job(
+    run_pulse_scan,
+    IntervalTrigger(minutes=5),
+    id="run_pulse_scan",
+    max_instances=1,
+    coalesce=True,
+)
+
+
 if __name__ == "__main__":
     signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
@@ -68,10 +77,4 @@ if __name__ == "__main__":
     while True:
         time.sleep(5)
 
-scheduler.add_job(
-    run_pulse_scan,
-    IntervalTrigger(minutes=5),
-    id="run_pulse_scan",
-    max_instances=1,
-    coalesce=True,
-)
+

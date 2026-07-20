@@ -135,6 +135,25 @@ def collect_options_data() -> None:
     logger.info("Finished company feature collection for %s events", len(event_list))
 
 
+def _json_safe(o):
+    """Coerce pandas Timestamp / datetime / numpy / NaN to JSON-serializable types."""
+    if o is None or isinstance(o, (str, int, bool)):
+        return o
+    if isinstance(o, float):
+        return None if (o != o or o in (float("inf"), float("-inf"))) else o
+    if hasattr(o, "item"):
+        try: return _json_safe(o.item())
+        except Exception: pass
+    if hasattr(o, "isoformat"):
+        try: return o.isoformat()
+        except Exception: return str(o)
+    if isinstance(o, dict):
+        return {str(k): _json_safe(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple, set)):
+        return [_json_safe(v) for v in o]
+    return o
+
+
 def run_predictions() -> None:
     logger.info("Starting prediction generation job")
     with _session() as session:
@@ -168,10 +187,10 @@ def run_predictions() -> None:
                         "convergence_high": prediction["convergence_high"],
                         "model_version": model.model_version,
                         "feature_completeness": prediction["data_completeness"],
-                        "warning_flags": prediction.get("warnings", []),
-                        "key_drivers": key_drivers,
-                        "similar_cases": similar_cases,
-                        "feature_snapshot": price_feature.feature_payload,
+                        "warning_flags": _json_safe(prediction.get("warnings", [])),
+                        "key_drivers": _json_safe(key_drivers),
+                        "similar_cases": _json_safe(similar_cases),
+                        "feature_snapshot": _json_safe(price_feature.feature_payload),
                     },
                 )
             except Exception as exc:  # noqa: BLE001 - keep job moving across sectors

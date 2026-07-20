@@ -19,9 +19,11 @@ from backend.app.api.routes.track_record import router as track_record_router
 from backend.app.api.routes.pulse_track_record import router as pulse_track_record_router
 from backend.app.api.routes.ibkr_status import router as ibkr_status_router
 from backend.app.api.routes.moomoo_status import router as broker_status_router
+from backend.app.api.routes.oracle import router as oracle_router, oracle_worker
 from backend.app.api.routes.showdown import router as showdown_router
 from backend.app.api.routes.pulse import router as pulse_router
 from backend.app.api.routes.quote import router as quote_router
+from backend.app.api.routes.auth import router as auth_router
 from backend.app.core.config import get_settings
 from backend.app.core.logging import configure_logging
 from backend.app.db.base import Base
@@ -34,10 +36,31 @@ configure_logging()
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    try:
+        from backend.app.services.auth_service import ensure_tables
+        ensure_tables()
+    except Exception:
+        pass
     yield
 
 
-app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
+import math as _math
+from fastapi.responses import JSONResponse as _JSONResponse
+
+def _json_safe(o):
+    if isinstance(o, float):
+        return o if _math.isfinite(o) else None
+    if isinstance(o, dict):
+        return {k: _json_safe(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_json_safe(v) for v in o]
+    return o
+
+class SafeJSONResponse(_JSONResponse):
+    def render(self, content) -> bytes:
+        return super().render(_json_safe(content))
+
+app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan, default_response_class=SafeJSONResponse)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -60,9 +83,11 @@ app.include_router(pulse_detail_router)
 app.include_router(pulse_track_record_router)
 app.include_router(ibkr_status_router)
 app.include_router(broker_status_router)
+app.include_router(oracle_router)
 app.include_router(logos_router)
 app.include_router(tg_webhook_router)
 app.include_router(simulator_router, prefix=settings.api_v1_prefix)
+app.include_router(auth_router)
 
 
 @app.get("/")
@@ -77,5 +102,6 @@ def _start_signal_worker():
     from backend.app.services.signal_tracker import signal_exit_worker
     loop = _asyncio_w.new_event_loop()
     _asyncio_w.set_event_loop(loop)
+    loop.create_task(oracle_worker())
     loop.run_until_complete(signal_exit_worker())
 _threading_w.Thread(target=_start_signal_worker, daemon=True).start()

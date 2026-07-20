@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
+import { AuthWidget } from './AuthWidget'
 
 export function Layout() {
   const [open, setOpen] = useState(false)
@@ -21,6 +22,7 @@ export function Layout() {
     { to: '/track-record', label: 'Track Record' },
     { to: '/showdown', label: 'Showdown' },
     { to: '/pulse', label: 'Pulse' },
+    { to: '/oracle', label: 'Oracle' },
     { to: '/about', label: 'About' },
     { to: '/contact', label: 'Contact' },
   ]
@@ -53,6 +55,8 @@ export function Layout() {
             <NavLink key={l.to} to={l.to} end={l.end}>{l.label}</NavLink>
           ))}
         </nav>
+
+        <AuthWidget />
 
         {/* Mobile hamburger */}
         <button className="nav-burger" onClick={() => setOpen(o => !o)} aria-label="Menu">

@@ -467,6 +467,16 @@ async def process_update(update):
             msg = update["message"]
             chat_id = msg["chat"]["id"]
             text = (msg.get("text") or "").strip()
+            if text.startswith("/start") and len(text.split(maxsplit=1)) > 1:
+                import asyncio as _aio
+                from backend.app.services import auth_service as _auth
+                _res = await _aio.to_thread(_auth.bind_telegram, text.split(maxsplit=1)[1].strip(), chat_id)
+                if _res:
+                    _nm = _res.get("name") or "there"
+                    await send(chat_id, f"✅ Connected, {_nm}! Your SignAlpha account is linked — Oracle & Pulse signals will arrive here. Send /help for commands.")
+                else:
+                    await send(chat_id, "This connect link is invalid or expired. Sign up at https://signalpha.app to get a fresh one.")
+                return
             _allow = os.getenv("TELEGRAM_ALLOWED_CHATS","").strip()
             if _allow:
                 _set = {s.strip() for s in _allow.split(",") if s.strip()}
