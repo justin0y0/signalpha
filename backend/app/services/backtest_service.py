@@ -41,6 +41,31 @@ class BacktestService:
             log.warning(f"SPY fail: {e}")
             return None
 
+    @staticmethod
+    def _beta_vs_benchmark(f: pd.DataFrame, spy_cum: pd.Series) -> float:
+        """CAPM beta: OLS slope of strategy daily return on SPY daily return.
+
+        The strategy is event-driven (one row per earnings event) while SPY is a daily
+        series, so returns are first aggregated to a daily grid and joined on trading days
+        the strategy was actually active. Fewer than 3 overlapping days is not enough to
+        estimate a slope, so we report 0.0 rather than a spurious number.
+        """
+        try:
+            strat_daily = f.groupby(pd.to_datetime(f["date"]))["ret_on_eq"].sum()
+            spy_daily = (1.0 + spy_cum).pct_change().dropna()
+            joined = pd.concat([strat_daily, spy_daily], axis=1, join="inner").dropna()
+            joined.columns = ["strat", "bench"]
+            if len(joined) < 3:
+                return 0.0
+            var_b = float(joined["bench"].var(ddof=0))
+            if var_b < 1e-12:
+                return 0.0
+            cov = float(joined["strat"].cov(joined["bench"], ddof=0))
+            return round(cov / var_b, 4)
+        except Exception as e:  # noqa: BLE001 - beta is a nice-to-have, never fail the backtest
+            log.warning(f"beta calc failed: {e}")
+            return 0.0
+
     def _empty(self):
         return BacktestResponse(
             total_samples=0, total_trades=0, accuracy=0, precision_weighted=0,
@@ -126,7 +151,7 @@ class BacktestService:
         equity_curve = [EquityPoint(date=r.date, equity=float(1.0 + r.return_cum), drawdown=float(r.drawdown)) for r in f.itertuples()]
 
         spy = self._fetch_spy(req.start_date, req.end_date)
-        bench_curve, bench_ret, alpha = [], 0.0, 0.0
+        bench_curve, bench_ret, alpha, beta = [], 0.0, 0.0, 0.0
         if spy is not None and not spy.empty:
             spy_idx = spy.tz_localize(None) if spy.index.tz else spy
             for d in f["date"]:
@@ -135,7 +160,10 @@ class BacktestService:
                 val = float(prior.iloc[-1]) if prior is not None and len(prior) > 0 else 0.0
                 bench_curve.append(EquityPoint(date=d, equity=1.0 + val, drawdown=0.0))
             bench_ret = float(spy_idx.iloc[-1])
-            alpha = total_ret - bench_ret
+            beta = self._beta_vs_benchmark(f, spy_idx)
+            # CAPM alpha with rf = 0. Previously beta was hardcoded to 0.0, which silently
+            # reduced this to plain excess-return-vs-SPY while still being labelled "alpha".
+            alpha = total_ret - beta * bench_ret
 
         f["month"] = pd.to_datetime(f["date"]).dt.to_period("M").astype(str)
         m_agg = f.groupby("month").agg(pnl=("pnl_d", "sum"), n=("signal", lambda x: (x != 0).sum()))
@@ -170,7 +198,7 @@ class BacktestService:
             avg_loss_pct=round(avg_loss_pct, 3), profit_factor=round(min(pf, 99), 3),
             confusion_matrix=cm, equity_curve=equity_curve, direction_stats=dir_stats,
             benchmark_return=round(bench_ret, 4), benchmark_curve=bench_curve,
-            alpha=round(alpha, 4), beta=0.0, time_underwater_pct=round(time_uw, 4),
+            alpha=round(alpha, 4), beta=beta, time_underwater_pct=round(time_uw, 4),
             monthly_returns=monthly_returns, sector_attribution=sec_attr,
             trade_list=trade_list,
         )

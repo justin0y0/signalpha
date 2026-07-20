@@ -94,40 +94,6 @@ def leaderboard():
     board.sort(key=lambda x: x["avg_return"], reverse=True)
     return {"leaderboard": board}
 
-@router.get("/leaderboard")
-def leaderboard():
-    from backend.app.db.session import SessionLocal
-    from sqlalchemy import text
-    db = SessionLocal()
-    try:
-        rows = db.execute(text("""SELECT figure,figure_name,ticker,sentiment,price
-            FROM oracle_signals ORDER BY detected_at DESC LIMIT 400""")).fetchall()
-    finally:
-        db.close()
-    pxc = {}; agg = {}
-    for r in rows:
-        m = r._mapping; tk = m["ticker"]; entry = m["price"]
-        if not tk or not entry or entry <= 0: continue
-        if tk not in pxc: pxc[tk] = _price_now(tk)
-        pn = pxc[tk]
-        if not pn: continue
-        rs = (pn - entry) / entry * 100.0
-        if m["sentiment"] == "bearish": rs = -rs
-        fig = O.FIGURES.get(m["figure"], {})
-        a = agg.setdefault(m["figure"], {"figure_name": m["figure_name"],
-            "emoji": fig.get("emoji", "\U0001F52E"), "type": fig.get("type", ""), "rets": []})
-        a["rets"].append(rs)
-    board = []
-    for k, a in agg.items():
-        rets = a["rets"]; nn = len(rets)
-        if not nn: continue
-        wins = sum(1 for x in rets if x > 0)
-        board.append({"figure": k, "figure_name": a["figure_name"], "emoji": a["emoji"],
-            "type": a["type"], "calls": nn, "hit_rate": round(wins / nn * 100),
-            "avg_return": round(sum(rets) / nn, 2), "best": round(max(rets), 2), "worst": round(min(rets), 2)})
-    board.sort(key=lambda x: x["avg_return"], reverse=True)
-    return {"leaderboard": board}
-
 @router.post("/scan-now")
 def scan_now():
     n = O.scan_once()

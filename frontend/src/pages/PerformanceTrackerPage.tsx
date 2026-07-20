@@ -289,7 +289,7 @@ export function PerformanceTrackerPage() {
 
       <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
         <Activity size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-        Trained on walk-forward splits · 35-feature ensemble (XGBoost + LightGBM + LogReg) · FinBERT + 10-Q MD&A
+        Trained on walk-forward splits · 102-feature ensemble (XGBoost + LightGBM + LogReg) · FinBERT + 10-Q MD&A
       </div>
     </div>
   )

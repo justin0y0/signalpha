@@ -97,7 +97,9 @@ export function BacktestingPage() {
   const [ticker,setTicker]=useState('')
   const [sector,setSector]=useState('')
   const [startDate,setStartDate]=useState('2022-01-01')
-  const [endDate,setEndDate]=useState('2026-04-01')
+  // Default to today, not a frozen literal — a hardcoded end date silently truncates the
+  // backtest window a little more every day that passes.
+  const [endDate,setEndDate]=useState(()=>new Date().toISOString().slice(0,10))
   const [threshold,setThreshold]=useState(0.65)
   const [running,setRunning]=useState(false)
   const [result,setResult]=useState<BacktestResponse|null>(null)
