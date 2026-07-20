@@ -16,7 +16,11 @@
 Owner：**Justin**，USC Applied & Computational Mathematics，GitHub `justin0y0`。
 沟通用中文 + 英文术语，要直接诚实、不要 filler、不要编造结果。
 
-**核心 ML**：9 个 sector 分层 ensemble（XGBoost + LightGBM + LogisticRegression 的 VotingClassifier），**102 features**（含 FinBERT 情绪、期权 IV、宏观），Purged K-Fold CV 防泄漏，做的是财报驱动的价格反应（PEAD）。Walk-forward OOS ≈ **49.3%**（3 分类 UP/FLAT/DOWN，47 folds，5,393 events）。
+**核心 ML**：9 个 sector 分层模型，**102 features**（含 FinBERT 情绪、期权 IV、宏观），Purged K-Fold CV 防泄漏，做的是财报驱动的价格反应（PEAD）。Walk-forward OOS ≈ **49.3%**（3 分类 UP/FLAT/DOWN，47 folds，5,393 events）。
+
+> ⚠ **描述与实现不符**：文档和 About 页都说是「XGBoost + LightGBM + LogisticRegression 的 VotingClassifier」。`models/ensemble.py:92` 确实构造了三模型 soft-voting VotingClassifier，`fit()` 也训练了全部三个——但 `predict()`（`ensemble.py:224`）调的是 `direction_model.named_estimators_["xgb"]`，**只用 XGBoost，绕开了投票**。LightGBM 和 LogisticRegression 训练了但推理时从不参与。
+> 好消息是 `models/train.py:118` 的评估走的是**同一条 xgb-only 路径**，所以 **49.3% 这个数字测的就是线上真正跑的东西，数字本身诚实**，只有「三模型集成」这个说法不实。
+> 两条路（需 Justin 定）：① 把描述改成 XGBoost（零风险）；② 把推理切到真正的 soft-vote —— 但那样 49.3% 就不再描述线上，必须重测。
 
 **诚实定位（对外必须这么说）**：49.3% 是**3 分类准确率，不是胜率**，只比"全押 FLAT"的 baseline 高一点点，**不能包装成"能跑赢市场"**。可辩护的价值是：透明（赢和亏都展示）、每日复用、个性化、分发渠道。卖的是研究和教育，不是投资建议——每个用户可见的界面都要有 "not investment advice"。
 
@@ -145,6 +149,27 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 `sudo docker exec signalpha-backend-1 md5sum /app/<改过的文件>`，或对比 `docker ps` 的 `Up` 时长。
 
 ### 6b. 仍未解决
+
+0. **🔴 P0 最高优先 — `predictions` 表存在标签泄漏，网站上所有回测/对战/战绩数字都被污染**
+
+   **证据链（全部实测，非推断）**：
+   - `predictions` 5,530 行里 **5,394 行的 `created_at` 晚于它所预测的 `earnings_date`**；全部在 **2026-04-26 一天批量写入**，覆盖 2008-01-17 ~ 2026-07-29 的财报。真正 ex-ante 的只有 173 行。
+   - `data_pipeline/calibrate_predictions.py` 用**已知的 `actual_t5_return`** 训练 3 个 isotonic 校准器（按时间取前 70%），然后**把校准结果写回全部预测行**（第 78–99 行），**就地覆盖 `direction_prob_up/flat/down` 和 `confidence_score`**。前 70% 的行等于用自己的答案拟合了自己。
+   - **原始模型概率被永久覆盖**，表里没有 `raw_prob_*` 列保留，无法从数据库还原。
+   - 症状：`threshold=0.65` 的 Backtest 跑出 **159 笔交易 155 笔方向正确 = 97.48% 胜率、Sharpe 8.18、最大回撤 -0.69%**。底层模型是 49.3% 的 3 分类准确率，这个组合在真实 OOS 下不可能出现。
+
+   **影响面**：凡是读 `predictions ⨝ outcomes` 的页面全部受污染 —— **Backtest、Showdown、Track Record**。
+   `/performance` 页读的是 `model_performance` 表（来自 `models/train.py` 的 purged walk-forward），**那条 49.3% 是诚实的**。
+   所以网站现在同时展示"49.3% 准确率"和"97.5% 回测胜率"——这两个数字互相矛盾，矛盾本身就是破绽。
+
+   **为什么这件事比任何 bug 都重要**：这是给 Citadel 一类机构看的作品集。Look-ahead leakage 是 quant 领域的头号原罪，面试官看到 49.3% 的模型跑出 Sharpe 8 会立刻追问，一问就穿。
+
+   **附带问题**：校准目标用的是 `actual_t5_return`（±2% 分三类），但 Backtest 拿 `actual_t1_close_return` 去评分——**横轴不是同一个 horizon**。另外 `calibrate_predictions.py:105` 的 `correct_old` 定义了从没用过。
+
+   **可选修法（需 Justin 拍板，不要擅自动）**：
+   - (a) 诚实止血：给这些行打标记，Backtest/Showdown/Track Record 明确标注 "in-sample, illustrative only"，或直接只用那 173 行 ex-ante 数据（数据量会非常少）。
+   - (b) 正确做法：走 walk-forward 重新生成历史预测——每个事件只用它之前的数据训练。`models/train.py` 已经实现了 purged walk-forward 评估，把它改成**顺便落盘每折的预测**即可。工作量中等，但这是唯一能让回测数字站得住的路。
+   - (c) 停用 `calibrate_predictions.py`，或改成只在 holdout 上应用、并新增 `raw_prob_*` 列保留原始输出。
 
 1. **P0 — schema 没有单一真相源**：`oracle_signals` 和 `pulse_signal_log` 在整个 repo **没有任何 CREATE TABLE**（`db/init.sql` 只建 7 张 ML 表；`models.py` 的 11 个 ORM 类由 `main.py` 的 `Base.metadata.create_all` 建；`platform_users` 由 `auth_service.py` 的 `ensure_tables()` 建）。这两张表只存在于服务器手工建的表里。**postgres volume 一旦重建，Oracle 和 Pulse 全灭且无从恢复。**注意 `db/init.sql` 挂在 `docker-entrypoint-initdb.d`，**只在数据目录为空时执行一次**，所以补进 init.sql 对现有库无效——正确修法是加幂等的 `ensure_tables()`。
 2. **P1 — Alpha Brief + Watchlist 根本没装**：repo 里 `brief_service` / `daily_briefs` / `user_watchlist` / `BRIEF_*` env **0 处命中**。HANDOFF §4f 描述的是还没应用的安装包（`sa_brief.tgz`）。四个付费潜力点里这占了两个。
