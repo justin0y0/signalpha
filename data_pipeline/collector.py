@@ -64,6 +64,7 @@ class DataCollector:
     settings: Settings
 
     def __post_init__(self) -> None:
+        self._profile_cache: dict[str, dict[str, Any]] = {}
         self.fe = FeatureEngineer()
         self.sec = SECClient(self.settings.sec_user_agent)
         self.fmp = FMPClient(self.settings.financial_modeling_prep_api_key or "")
@@ -115,6 +116,17 @@ class DataCollector:
         negatives = sum(1 for token in tokens if token in NEGATIVE_WORDS)
         return (positives - negatives) / max(len(tokens), 1)
 
+    def _profile(self, ticker: str) -> dict[str, Any]:
+        """Cached company profile. FMP charges a call per lookup, so memoize per process."""
+        if ticker in self._profile_cache:
+            return self._profile_cache[ticker]
+        try:
+            profile = self._first_record(self.fmp.profile(ticker))
+        except Exception:
+            profile = {}
+        self._profile_cache[ticker] = profile
+        return profile
+
     def collect_earnings_calendar(self, start_date: date, end_date: date) -> list[dict[str, Any]]:
         raw_events = self.fmp.earnings_calendar(start_date.isoformat(), end_date.isoformat())
         items: list[dict[str, Any]] = []
@@ -122,18 +134,23 @@ class DataCollector:
             event_date = event.get("date") or event.get("earningsDate")
             if not event_date:
                 continue
+            ticker = str(event.get("symbol") or event.get("ticker")).upper()
+            # /stable/earnings-calendar only carries symbol, date and eps/revenue numbers.
+            # Everything below comes from the profile endpoint or stays NULL -- and a NULL
+            # sector would silently downgrade run_predictions to the `general` model.
+            profile = self._profile(ticker)
             items.append(
                 {
-                    "ticker": str(event.get("symbol") or event.get("ticker")).upper(),
-                    "company_name": event.get("name") or event.get("companyName"),
+                    "ticker": ticker,
+                    "company_name": event.get("name") or event.get("companyName") or profile.get("companyName"),
                     "earnings_date": pd.to_datetime(event_date).date(),
                     "report_time": self._normalize_report_time(event.get("time") or event.get("reportTime")),
                     "fiscal_quarter": event.get("fiscalQuarter") or event.get("quarter"),
                     "fiscal_year": event.get("fiscalYear") or event.get("year"),
-                    "market_cap": event.get("marketCap"),
-                    "sector": event.get("sector"),
-                    "industry": event.get("industry"),
-                    "exchange": event.get("exchangeShortName") or event.get("exchange"),
+                    "market_cap": event.get("marketCap") or profile.get("marketCap"),
+                    "sector": event.get("sector") or profile.get("sector"),
+                    "industry": event.get("industry") or profile.get("industry"),
+                    "exchange": event.get("exchangeShortName") or event.get("exchange") or profile.get("exchange"),
                     "source": "fmp",
                 }
             )

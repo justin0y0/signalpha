@@ -19,7 +19,17 @@ class FMPClient(BaseAPIClient):
         return self.get_json("earnings-calendar", params=params)
 
     def earnings_report(self, ticker: str, limit: int = 8) -> list[dict[str, Any]]:
-        return self.get_json("earnings-company", params=self._params(symbol=ticker, limit=limit))
+        # /stable renamed this from "earnings-company"; the old path 404s.
+        return self.get_json("earnings", params=self._params(symbol=ticker, limit=limit))
+
+    def profile(self, ticker: str) -> list[dict[str, Any]]:
+        """Company profile — the only /stable source for sector/industry/name/marketCap.
+
+        /stable/earnings-calendar returns just symbol+date+eps/revenue estimates, so the
+        calendar job has to enrich from here or `sector` stays NULL (and `sector` is what
+        selects the per-sector model in run_predictions).
+        """
+        return self.get_json("profile", params=self._params(symbol=ticker))
 
     def income_statement(self, ticker: str, period: str = "quarter", limit: int = 8) -> list[dict[str, Any]]:
         return self.get_json("income-statement", params=self._params(symbol=ticker, period=period, limit=limit))
@@ -30,8 +40,11 @@ class FMPClient(BaseAPIClient):
     def cash_flow_statement(self, ticker: str, period: str = "quarter", limit: int = 8) -> list[dict[str, Any]]:
         return self.get_json("cash-flow-statement", params=self._params(symbol=ticker, period=period, limit=limit))
 
+    # NOTE: financial_estimates and search_transcripts are gated behind a paid FMP plan on
+    # /stable (402/404 with the current key). Callers wrap them in try/except and degrade to
+    # {}, so forward guidance and transcript sentiment stay NULL until the plan is upgraded.
     def financial_estimates(self, ticker: str) -> list[dict[str, Any]]:
-        return self.get_json("financial-estimates", params=self._params(symbol=ticker))
+        return self.get_json("analyst-estimates", params=self._params(symbol=ticker))
 
     def price_target_summary(self, ticker: str) -> list[dict[str, Any]]:
         return self.get_json("price-target-summary", params=self._params(symbol=ticker))

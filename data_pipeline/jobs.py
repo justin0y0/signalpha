@@ -6,6 +6,7 @@ from typing import Any
 
 import pandas as pd
 from sqlalchemy import and_, desc, select
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from backend.app.core.config import get_settings
@@ -26,13 +27,70 @@ def _session() -> Session:
     return SessionLocal()
 
 
+def _json_safe(o):
+    """Coerce pandas Timestamp / datetime / numpy / NaN to JSON-serializable types."""
+    if o is None or isinstance(o, (str, int, bool)):
+        return o
+    if isinstance(o, float):
+        return None if (o != o or o in (float("inf"), float("-inf"))) else o
+    if hasattr(o, "item"):
+        try: return _json_safe(o.item())
+        except Exception: pass
+    if hasattr(o, "isoformat"):
+        try: return o.isoformat()
+        except Exception: return str(o)
+    if isinstance(o, dict):
+        return {str(k): _json_safe(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple, set)):
+        return [_json_safe(v) for v in o]
+    return o
+
+
+_UNKNOWN_KEYS_SEEN: set[tuple[str, str]] = set()
+
+
+def _coerce_for_model(model_cls: type, values: dict[str, Any]) -> dict[str, Any]:
+    """Drop keys the model has no column for, and JSON-sanitize the JSON columns.
+
+    Two production outages came from this gap:
+      * a collector grew keys (`spy_price`, `spy_200ma`, `vix_history`) with no matching
+        MacroFeature column -> `TypeError: invalid keyword argument` killed collect_macro_data
+        daily for ~3 months;
+      * a `datetime.date` rode into a JSONB column via `**market_snapshot` ->
+        `Object of type date is not JSON serializable` killed collect_options_data for ~2 months.
+    Both are now impossible: unknown keys are dropped (and logged once) and every JSON column
+    goes through `_json_safe`.
+    """
+    mapper = sa_inspect(model_cls)
+    columns = mapper.columns
+    cleaned: dict[str, Any] = {}
+    for key, value in values.items():
+        column = columns.get(key)
+        if column is None:
+            marker = (model_cls.__name__, key)
+            if marker not in _UNKNOWN_KEYS_SEEN:
+                _UNKNOWN_KEYS_SEEN.add(marker)
+                logger.warning("%s has no column %r — dropping it from the write", model_cls.__name__, key)
+            continue
+        if type(column.type).__name__ in {"JSON", "JSONB"}:
+            value = _json_safe(value)
+        cleaned[key] = value
+    return cleaned
+
+
 def _upsert(session: Session, model_cls: type, identity_filters: dict[str, Any], values: dict[str, Any]) -> Any:
+    values = _coerce_for_model(model_cls, values)
     instance = session.execute(select(model_cls).filter_by(**identity_filters)).scalar_one_or_none()
     if instance is None:
         instance = model_cls(**identity_filters, **values)
         session.add(instance)
     else:
         for key, value in values.items():
+            # Never let a sparser upstream feed blank out data we already have. FMP's /stable
+            # earnings-calendar returns only symbol+date, so a plain overwrite would wipe the
+            # sector column -- which is what picks the per-sector model in run_predictions.
+            if value is None and getattr(instance, key, None) is not None:
+                continue
             setattr(instance, key, value)
     return instance
 
@@ -71,6 +129,7 @@ def collect_options_data() -> None:
             .order_by(EarningsEvent.earnings_date.asc())
         ).scalars()
         event_list = list(events)
+        written = 0
         for event in event_list:
             try:
                 snapshot = collector.collect_event_snapshot(event.ticker, event.earnings_date, event.sector)
@@ -129,29 +188,15 @@ def collect_options_data() -> None:
                         "feature_payload": {**raw, **engineered},
                     },
                 )
+                # Commit per event, inside the try. A commit after the loop means one bad row
+                # aborts the whole transaction and the job silently writes nothing -- that is
+                # how this job produced zero rows for ~2 months.
+                session.commit()
+                written += 1
             except Exception as exc:  # noqa: BLE001 - keep pipeline running per ticker
+                session.rollback()
                 logger.exception("Feature collection failed for %s on %s: %s", event.ticker, event.earnings_date, exc)
-        session.commit()
-    logger.info("Finished company feature collection for %s events", len(event_list))
-
-
-def _json_safe(o):
-    """Coerce pandas Timestamp / datetime / numpy / NaN to JSON-serializable types."""
-    if o is None or isinstance(o, (str, int, bool)):
-        return o
-    if isinstance(o, float):
-        return None if (o != o or o in (float("inf"), float("-inf"))) else o
-    if hasattr(o, "item"):
-        try: return _json_safe(o.item())
-        except Exception: pass
-    if hasattr(o, "isoformat"):
-        try: return o.isoformat()
-        except Exception: return str(o)
-    if isinstance(o, dict):
-        return {str(k): _json_safe(v) for k, v in o.items()}
-    if isinstance(o, (list, tuple, set)):
-        return [_json_safe(v) for v in o]
-    return o
+    logger.info("Finished company feature collection: %s/%s events written", written, len(event_list))
 
 
 def run_predictions() -> None:
@@ -163,6 +208,7 @@ def run_predictions() -> None:
             .where(EarningsEvent.earnings_date >= date.today())
             .order_by(EarningsEvent.earnings_date.asc())
         ).all()
+        written = 0
         for event, price_feature in events:
             try:
                 model = registry.load_for_sector(event.sector or "general")
@@ -193,10 +239,12 @@ def run_predictions() -> None:
                         "feature_snapshot": _json_safe(price_feature.feature_payload),
                     },
                 )
+                session.commit()
+                written += 1
             except Exception as exc:  # noqa: BLE001 - keep job moving across sectors
+                session.rollback()
                 logger.exception("Prediction generation failed for %s on %s: %s", event.ticker, event.earnings_date, exc)
-        session.commit()
-    logger.info("Finished prediction generation")
+    logger.info("Finished prediction generation: %s/%s events written", written, len(events))
 
 
 def collect_post_earnings_results() -> None:
@@ -210,16 +258,19 @@ def collect_post_earnings_results() -> None:
             .order_by(EarningsEvent.earnings_date.desc())
         ).scalars()
         event_list = list(events)
+        written = 0
         for event in event_list:
             try:
                 outcome = collector.collect_post_earnings_outcome(event.ticker, event.earnings_date)
                 if not outcome:
                     continue
                 _upsert(session, Outcome, {"ticker": event.ticker, "earnings_date": event.earnings_date}, outcome)
+                session.commit()
+                written += 1
             except Exception as exc:  # noqa: BLE001
+                session.rollback()
                 logger.exception("Outcome collection failed for %s on %s: %s", event.ticker, event.earnings_date, exc)
-        session.commit()
-    logger.info("Finished post-earnings outcome collection for %s events", len(event_list))
+    logger.info("Finished post-earnings outcome collection: %s/%s events written", written, len(event_list))
 
 
 def retrain_models() -> None:

@@ -37,19 +37,39 @@ class BaseAPIClient:
         timeout: float = 30.0,
         min_interval_seconds: float = 0.25,
         max_retries: int = 4,
+        circuit_reset_seconds: float = 900.0,
     ):
         self.base_url = base_url.rstrip("/")
         self.headers = headers or {}
         self.timeout = timeout
         self.max_retries = max_retries
+        self.circuit_reset_seconds = circuit_reset_seconds
         self.rate_limiter = RateLimiter(min_interval_seconds=min_interval_seconds)
         self.client = httpx.Client(timeout=timeout, headers=self.headers)
         self._consecutive_failures = 0
         self._circuit_open = False
+        self._circuit_opened_at = 0.0
+
+    def _circuit_blocks(self) -> bool:
+        """Half-open the breaker once the cooldown has elapsed.
+
+        Without this the breaker latches permanently: the collector is a module-level
+        singleton, so a transient upstream outage would kill every job that touches this
+        client until the container is rebuilt. (That is exactly what took
+        collect_earnings_calendar offline — see CLAUDE.md §6.)
+        """
+        if not self._circuit_open:
+            return False
+        if time.monotonic() - self._circuit_opened_at >= self.circuit_reset_seconds:
+            logger.info("Circuit breaker half-open for %s — retrying upstream", self.base_url)
+            self._circuit_open = False
+            self._consecutive_failures = 0
+            return False
+        return True
 
     def _request(self, method: str, path: str, params: dict[str, Any] | None = None) -> httpx.Response:
         url = f"{self.base_url}/{path.lstrip('/')}"
-        if self._circuit_open:
+        if self._circuit_blocks():
             raise httpx.HTTPStatusError("Circuit breaker open — upstream repeatedly failing", request=httpx.Request(method, url), response=httpx.Response(503))
         last_error: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
@@ -84,7 +104,12 @@ class BaseAPIClient:
         self._consecutive_failures += 1
         if self._consecutive_failures >= 10:
             self._circuit_open = True
-            logger.warning("Circuit breaker opened for %s after 10 consecutive failures", self.base_url)
+            self._circuit_opened_at = time.monotonic()
+            logger.warning(
+                "Circuit breaker opened for %s after 10 consecutive failures (auto-retry in %.0fs)",
+                self.base_url,
+                self.circuit_reset_seconds,
+            )
         raise last_error
 
     def get_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
