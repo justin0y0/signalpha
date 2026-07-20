@@ -121,17 +121,43 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 
 ---
 
-## 6. 当前最大的技术债（第 2 步一致性自查的起点）
+## 6. 技术债
 
-1. **P0 — 两个 job 的 JSON 写入没过 `_json_safe`**：`jobs.py:99` `raw_payload=raw`、`jobs.py:129` `feature_payload={**raw,**engineered}`、`jobs.py:60` macro 的 `sector_relative`，都是裸 dict 直写 JSONB，且 `session.commit()`（`jobs.py:134`）在 per-ticker try 外面 → 一行脏数据整个 job 挂掉。这是 HANDOFF §5 #8「`collect_macro_data` + `collect_options_data` 从 5 月底起天天失败」的根因，**纯代码可判定**。`retrain_models` 的 `confusion_matrix` / `feature_importance` 同样裸写。
-2. **P0 — schema 没有单一真相源**：`oracle_signals` 和 `pulse_signal_log` 在整个 repo **没有任何 CREATE TABLE**（`db/init.sql` 只建 7 张 ML 表；`backend/app/db/models.py` 的 11 个 ORM 类由 `main.py` 的 `Base.metadata.create_all` 建；`platform_users` 由 `auth_service.py:33` 的 `ensure_tables()` 建）。这两张表只存在于服务器手工建的表里，且只通过 `text()` 裸 SQL 访问。**postgres volume 一旦重建，Oracle 和 Pulse 直接全灭且无从恢复。**
-3. **P1 — Alpha Brief + Watchlist 根本没装**：repo 里 `brief_service` / `daily_briefs` / `user_watchlist` / `BRIEF_*` env **0 处命中**。HANDOFF §4f 描述的是一个还没应用的安装包（`sa_brief.tgz`）。
-4. **P1 — 没有任何付费通路**：全 repo 无 Stripe / checkout / pricing / billing。`platform_users.tier` 只能手工改 psql，`trial_ends_at` 只决定谁收 Telegram 推送、不 gate 网页。
-5. **P1 — 死代码/影子文件**：`ibkr_service.py` + `ibkr_status.py`（IBKR 已否决但路由还注册着）、`backtest_service.py.bak`、`OhlcChart.tsx.bak` / `.bak2`、`OraclePage.tsx.bak`、`docker-compose.yml.bak.1780432669`。
-6. **P1 — 前端 API 调用分裂**：`frontend/src/api/client.ts` 只封装了 6 个 endpoint（calendar / predict / features / backtest / performance / quote），Oracle / Pulse / Showdown / Simulator / Track Record 全是各页面裸 `fetch` 拼路径 → 前后端契约漂移的高风险区。
-7. **P2 — 配置漂移**：`config.py:33` `default_calendar_lookahead_days = 14`，但 Calendar 页宣称 90 天前瞻窗口；`cors_origins` 生产环境仍是 localhost 默认值（同源代理下暂时无害）。
+### 6a. 已修复并线上验证（2026-07-20）
 
-HANDOFF.md §5 还列了 10 个已知 bug（Simulator 日线止损、Showdown 用 t5_return、Backtest beta 硬编码 0、Performance 页 "35-feature" 应为 102、Oracle `/leaderboard` 定义两遍等），第 2 步逐条核。
+| # | 问题 | 根因（生产 traceback 实证） | 修法 |
+|---|------|------|------|
+| 1 | `collect_macro_data` 自 2026-04-23 起**天天失败** | `collect_macro_snapshot()` 返回 `spy_price`/`spy_200ma`/`vix_history`，`MacroFeature` 没有这三列 → `TypeError: invalid keyword argument` | `_coerce_for_model()` 丢弃未知列并 warn 一次 |
+| 2 | `collect_options_data` 自 2026-05-14 起**天天失败** | `collect_macro_snapshot()` 的 `feature_date` 是 `date` 对象，经 `**market_snapshot` 混进 JSONB → `Object of type date is not JSON serializable` | `_coerce_for_model()` 把所有 JSON/JSONB 列过 `_json_safe` |
+| 3 | `collect_earnings_calendar` 挂死，未来事件只剩 12 个 | `base_client.py` 熔断器**没有复位路径**；collector 是模块级单例 → 一次 FMP 抖动就永久熔断所有 FMP job，直到容器重建 | 熔断器 900 秒后 half-open |
+| 4 | 单行脏数据能让整个 job 零产出 | `session.commit()` 在 per-row try **外面** | 四个 collector job 全部改为逐行 commit + rollback |
+| 5 | FMP `/stable` 日历只返回 symbol+date，sector 会被冲成 NULL | sector 决定 `run_predictions` 用哪个 sector 模型 | `_upsert` 不再用 None 覆盖已有值；新增 `profile()` 补 sector/name/marketCap |
+| 6 | `earnings-company` endpoint 404 | `/stable` 已改名 | → `earnings` |
+| 7 | Backtest `beta` 硬编码 0.0，`alpha` 却按 CAPM 标注 | — | 真 OLS 回归（日频对齐 SPY），alpha 改为 CAPM 残差 |
+| 8 | Showdown 用 `t5_return` 给**所有**策略计 P&L | `t5_return` 从财报前收盘算起、含 gap；DRIFTER/TREND_LORD 在 T+1 开盘才进场，被白送了它们错过的催化日 | `_realized_return()` 精确去 gap：`(1+t5)/(1+gap)-1 == close_t5/open_t1-1` |
+| 9 | Showdown Sharpe 硬编码 `sqrt(50)` | 假设所有策略一年交易 50 次 | 改为 `sqrt(n_trades/years)`，与 Backtest 口径一致 |
+| 10 | Oracle `GET /leaderboard` 定义两遍（逐字节相同） | — | 删掉死的那份 |
+| 11 | Performance 页 "35-feature"、Backtest 结束日期硬编码 `2026-04-01` | — | → 102-feature；结束日期默认今天 |
+| 12 | 后端算了 `cagr`/`alpha`/`beta` 等 7 项，前端 TS 类型没声明、页面不显示，还用 `as any` 绕过类型检查 | — | 补齐类型，KPI 区新增 CAGR / Alpha / Beta |
+| 13 | 服务器磁盘不足导致 `docker compose up` **静默失败**，容器 3 周没换过新镜像 | build cache 占 11.41GB | `docker builder prune -af` |
+
+**教训（写进流程）**：`docker compose up -d --build` 里 build 成功 ≠ 容器换了。部署后必须验证容器内代码：
+`sudo docker exec signalpha-backend-1 md5sum /app/<改过的文件>`，或对比 `docker ps` 的 `Up` 时长。
+
+### 6b. 仍未解决
+
+1. **P0 — schema 没有单一真相源**：`oracle_signals` 和 `pulse_signal_log` 在整个 repo **没有任何 CREATE TABLE**（`db/init.sql` 只建 7 张 ML 表；`models.py` 的 11 个 ORM 类由 `main.py` 的 `Base.metadata.create_all` 建；`platform_users` 由 `auth_service.py` 的 `ensure_tables()` 建）。这两张表只存在于服务器手工建的表里。**postgres volume 一旦重建，Oracle 和 Pulse 全灭且无从恢复。**注意 `db/init.sql` 挂在 `docker-entrypoint-initdb.d`，**只在数据目录为空时执行一次**，所以补进 init.sql 对现有库无效——正确修法是加幂等的 `ensure_tables()`。
+2. **P1 — Alpha Brief + Watchlist 根本没装**：repo 里 `brief_service` / `daily_briefs` / `user_watchlist` / `BRIEF_*` env **0 处命中**。HANDOFF §4f 描述的是还没应用的安装包（`sa_brief.tgz`）。四个付费潜力点里这占了两个。
+3. **P1 — 没有任何付费通路**：全 repo 无 Stripe / checkout / pricing / billing。`platform_users.tier` 只能手工改 psql，`trial_ends_at` 只决定谁收 Telegram 推送、不 gate 网页。
+4. **P1 — Simulator 止损按日线收盘执行**（HANDOFF §5 #1），−8% 止损配 15% 仓位 → 超额亏损。需要盘中价才能正确执行。
+5. **P1 — FMP 免费档限制**：`analyst-estimates`（402）和 `earning-call-transcript-latest`（402）付费才有 → `forward_eps_guidance` / `forward_revenue_guidance` / `transcript_sentiment` 恒为 NULL。这几个是 102 features 的一部分，等于模型少喂了几个特征。
+6. **P1 — 前端 API 调用分裂**：`api/client.ts` 只封装 6 个 endpoint，Oracle / Pulse / Showdown / Simulator / Track Record 全是各页面裸 `fetch`。（已核实**路径全部对得上后端**，但没有类型层保护。）
+7. **P2 — `ibkr_service.py` + `ibkr_status.py` 是死代码**，IBKR 已否决但路由还注册着。
+8. **P2 — 配置漂移**：`config.py:33` `default_calendar_lookahead_days = 14`，但 Calendar 页宣称 90 天前瞻窗口。
+9. **P2 — Pulse 每 5 分钟拉 `FI`/`MMC` 都失败**（yfinance "possibly delisted"），刷屏日志且浪费调用。ticker 列表需要清理。
+10. **P2 — scheduler cron 时区存疑**：`config.py` 设 `America/New_York`，但 apscheduler 日志打印的 next-run 是 UTC。若真按 UTC 跑，`collect_options_data` 的 16:30 就是美东 12:30（盘中）而非收盘后。待确认。
+
+HANDOFF.md §5 的 10 个 bug 里：#2/#3/#4/#7/#8 已修，#5（Oracle live worker 不出信号）**已过期**——现在 `oracle_signals` 有 332 条 `status='new'`，live worker 是工作的。
 
 ---
 
