@@ -69,6 +69,8 @@ export type PredictionResponse = {
   feature_snapshot: Record<string, unknown>
 }
 
+export type EquityPoint = { date: string; equity: number; drawdown: number }
+
 export type BacktestResponse = {
   total_samples: number
   total_trades: number
@@ -80,6 +82,7 @@ export type BacktestResponse = {
   sortino_ratio: number
   max_drawdown: number
   total_return: number
+  cagr: number
   win_rate: number
   avg_win_pct: number
   avg_loss_pct: number
@@ -87,8 +90,19 @@ export type BacktestResponse = {
   mae: number | null
   rmse: number | null
   confusion_matrix: number[][]
-  equity_curve: { date: string; equity: number; drawdown: number }[]
+  equity_curve: EquityPoint[]
   direction_stats: { direction: string; signals: number; hits: number; hit_rate: number; avg_return_pct: number }[]
+  benchmark_return: number
+  benchmark_curve: EquityPoint[]
+  alpha: number
+  beta: number
+  time_underwater_pct: number
+  monthly_returns: { month: string; return_pct: number; trades: number }[]
+  sector_attribution: { sector: string; return_pct: number; trades: number; win_rate: number }[]
+  trade_list: {
+    date: string; ticker: string; sector: string; signal: string; actual: string
+    confidence: number; actual_return_pct: number; pnl_dollars: number; win: boolean
+  }[]
 }
 
 export type ConfidenceTier = {

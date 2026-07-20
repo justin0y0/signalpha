@@ -119,7 +119,7 @@ export function BacktestingPage() {
   const chartData = result?.equity_curve.map((p, i) => ({
     date: new Date(p.date).toLocaleDateString('en-US',{month:'short',year:'2-digit'}),
     equity: +((p.equity - 1) * 100).toFixed(3),
-    benchmark: ((result as any).benchmark_curve?.[i]) ? +(((result as any).benchmark_curve[i].equity - 1) * 100).toFixed(3) : null,
+    benchmark: result.benchmark_curve?.[i] ? +((result.benchmark_curve[i].equity - 1) * 100).toFixed(3) : null,
     drawdown: +(p.drawdown * 100).toFixed(3),
   })) ?? []
 
@@ -132,6 +132,9 @@ export function BacktestingPage() {
     {label:'Win Rate',value:`${(result.win_rate*100).toFixed(1)}%`,sub:`of ${result.total_trades} trades`,color:result.win_rate>0.5?C.green:C.amber},
     {label:'Profit Factor',value:result.profit_factor>=99?'∞':fmt2(result.profit_factor),sub:'gross win / gross loss',color:result.profit_factor>1.5?C.green:result.profit_factor>1?C.cyan:C.red},
     {label:'Avg Win / Loss',value:`+${result.avg_win_pct.toFixed(2)}%`,sub:`loss ${result.avg_loss_pct.toFixed(2)}%`,color:C.green},
+    {label:'CAGR',value:pct(result.cagr),sub:'annualised growth',color:result.cagr>=0?C.green:C.red},
+    {label:'Alpha vs SPY',value:pct(result.alpha),sub:`CAPM, rf=0 · SPY ${pct(result.benchmark_return)}`,color:result.alpha>=0?C.green:C.red},
+    {label:'Beta',value:fmt2(result.beta),sub:'vs SPY daily returns',color:C.cyan},
   ]:[]
 
   return (
