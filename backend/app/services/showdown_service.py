@@ -113,6 +113,34 @@ def _exec_clock(earnings_date: date, report_time: str | None, days_offset: int) 
 POST_EARNINGS = {"DRIFTER", "TREND_LORD"}
 
 
+def _realized_return(r: dict, code: str) -> float | None:
+    """The return this strategy could actually have captured.
+
+    `outcomes.actual_t5_return` is measured from the PRE-earnings close
+    (`close_t5 / prev_close - 1`), so it embeds the earnings gap.
+
+    - PRE_EARNINGS strategies are positioned before the print, hold through the gap,
+      and legitimately earn all of it -> t5_return is correct as-is.
+    - POST_EARNINGS strategies (DRIFTER, TREND_LORD) only produce a signal once the gap
+      is observable and enter at the T+1 open. Crediting them t5_return pays them for the
+      catalyst day they explicitly missed -- for a PEAD strategy that is the whole edge,
+      counted twice.
+
+    `gap_pct` is `open_t1 / prev_close - 1`, so both share prev_close and de-gapping is
+    exact rather than approximate:
+        close_t5 / open_t1 - 1 == (1 + t5_return) / (1 + gap_pct) - 1
+    """
+    t5 = r.get("t5_return")
+    if t5 is None:
+        return None
+    if code in PRE_EARNINGS:
+        return float(t5)
+    gap = float(r.get("gap_pct") or 0.0)
+    if gap <= -0.999:  # a -100% gap would blow up the division
+        return None
+    return (1.0 + float(t5)) / (1.0 + gap) - 1.0
+
+
 def _to_dict(p, o):
     return {
         "date": p.earnings_date,
@@ -196,9 +224,10 @@ def run_showdown(
             entry_date = r["date"] + timedelta(days=entry_offset)
             exit_date = r["date"] + timedelta(days=exit_offset)
 
-            if r["outcome_known"]:
+            realized = _realized_return(r, strat.code)
+            if r["outcome_known"] and realized is not None:
                 # Trade closes — compute realized P&L
-                ret = s * r["t5_return"]
+                ret = s * realized
                 pnl = equity * position_size_pct * ret
                 equity += pnl
                 n_trades += 1
@@ -287,12 +316,16 @@ def run_showdown(
         else:
             ec = equity_curve
 
-        # Sharpe
+        # Sharpe — annualise by this strategy's OWN trade frequency, not a hardcoded
+        # sqrt(50). The old constant assumed every strategy trades 50x/year, which
+        # flattered the selective ones (SNIPER trades a handful) and penalised the busy
+        # ones. Backtest already annualises this way; now the two pages agree.
         sharpe = 0
         if len(trade_returns) > 1:
             tr = pd.Series(trade_returns)
             if tr.std() > 1e-9:
-                sharpe = float(tr.mean() / tr.std() * sqrt(50))
+                years = max(0.25, (min(end_date, today) - start_date).days / 365.25)
+                sharpe = float(tr.mean() / tr.std() * sqrt(len(trade_returns) / years))
 
         # Max drawdown
         eq_series = pd.Series([e["equity"] for e in equity_curve])
