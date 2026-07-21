@@ -15,12 +15,13 @@ export function Layout() {
   }, [open])
 
   const links = [
+    // Eleven entries collapsed to seven. Backtest/Performance/Simulator/Track
+    // Record/Showdown were five views of one ML signal; they now live as sections
+    // under Model and Strategy (see ModelPage.tsx / StrategyPage.tsx). The old paths
+    // still resolve via redirects in App.tsx.
     { to: '/', label: 'Calendar', end: true },
-    { to: '/backtest', label: 'Backtest' },
-    { to: '/performance', label: 'Performance' },
-    { to: '/simulator', label: 'Simulator' },
-    { to: '/track-record', label: 'Track Record' },
-    { to: '/showdown', label: 'Showdown' },
+    { to: '/model', label: 'Model' },
+    { to: '/strategy', label: 'Strategy' },
     { to: '/pulse', label: 'Pulse' },
     { to: '/oracle', label: 'Oracle' },
     { to: '/about', label: 'About' },

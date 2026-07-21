@@ -6,7 +6,7 @@ import { ActiveSignalsBanner } from '../components/ActiveSignalsBanner'
 import { SectorTreemap } from '../components/SectorTreemap'
 import { StockLogo } from '../components/StockLogo'
 import { motion } from 'framer-motion'
-import { Activity, Flame, Zap, TrendingUp, TrendingDown, Bell, BellOff, Star } from 'lucide-react'
+import { Activity, AlertTriangle, Bell, BellOff, Flame, Star, TrendingDown, TrendingUp, Zap } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 
 type Factor = { label: string; value: number }
@@ -249,8 +249,36 @@ function PulseHero({ data, now, highConv }: { data: PulseData; now: Date; highCo
               Each ticker scored by 6 independent factors: RSI, MA distance, momentum, volume, gap, sector.
               Trades fire when |score| ≥ {data.thresholds.signal}. Phone alerts when |score| ≥ {data.thresholds.notify}.
             </p>
+            <ResearchDisclaimer />
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Honest framing for the Pulse signal log.
+ *
+ * Measured over the 200 closed trades since the 2026-06-03 risk fix: 71.5% win rate
+ * but a 0.390 payoff ratio, against the 0.399 needed to break even — Profit Factor
+ * 0.979 BEFORE costs, and clearly negative at any realistic 2-5bp round trip. The
+ * conviction score itself does not rank outcomes: Spearman +0.039 (t=0.64, n=275).
+ * Showing a "conviction" number that has no measured relationship to what happens next
+ * is the same class of problem as the over-confident model probabilities, so it gets
+ * said out loud rather than left for a user to discover.
+ */
+function ResearchDisclaimer() {
+  return (
+    <div className="pulse-disclaimer">
+      <AlertTriangle size={13} className="pulse-disclaimer__icon" />
+      <div>
+        <b>Research prototype — no demonstrated edge.</b> Across 200 closed trades since
+        2026-06-03: 71.5% win rate, profit factor 0.979 <i>before</i> transaction costs, and
+        negative after them. Mean return per trade is statistically indistinguishable from
+        zero (t = −0.12). The conviction score shows no measured relationship to outcome
+        (Spearman +0.04). Treat these as market observations, not trade recommendations.
+        Not investment advice.
       </div>
     </div>
   )

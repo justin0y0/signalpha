@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Activity, BarChart3, Database, Grid3x3, Target, TrendingDown, TrendingUp } from 'lucide-react'
+import { Activity, BarChart3, Database, Grid3x3, Scale, Target, TrendingDown, TrendingUp } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '../api/client'
 import type { PerformanceResponse } from '../types'
@@ -22,6 +22,66 @@ function heatmapBg(acc: number | null | undefined): string {
   if (v >= 0.5) return `rgba(56, 189, 248, ${Math.min(v * 0.4, 0.3)})`
   if (v >= 0.4) return `rgba(251, 191, 36, ${Math.min(v * 0.35, 0.25)})`
   return `rgba(251, 113, 133, ${Math.min((0.5 - v) * 0.6, 0.3)})`
+}
+
+/**
+ * Baseline honesty panel.
+ *
+ * A 3-class accuracy figure means nothing without the baseline it has to beat. The
+ * naive "always predict FLAT" rule scores ~49.8% on this dataset because FLAT is the
+ * majority class; the model scores below that. Reporting accuracy without the
+ * comparison is the single easiest thing for a reader to be misled by, and the first
+ * thing an interviewer will ask about — so the page states it plainly.
+ *
+ * Computed from the confusion matrix already on this page (rows = actual), so it can
+ * never drift away from the numbers displayed beside it.
+ */
+function BaselinePanel({ cm }: { cm: number[][] }) {
+  if (!cm || cm.length !== 3) return null
+  const total = cm.flat().reduce((a, b) => a + b, 0)
+  if (!total) return null
+  // Row order matches the matrix rendered below: UP, FLAT, DOWN.
+  const correct = cm[0][0] + cm[1][1] + cm[2][2]
+  const flatRow = cm[1].reduce((a, b) => a + b, 0)
+  const acc = correct / total
+  const flatBase = flatRow / total
+  const delta = (acc - flatBase) * 100
+  const beats = delta > 0
+  return (
+    <motion.div className="card baseline-panel" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.21 }}>
+      <h3 className="card-title">
+        <Scale size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+        Accuracy vs Baseline
+      </h3>
+      <p className="card-sub">
+        A 3-class accuracy number is only meaningful against the trivial rule it has to beat.
+        FLAT is the majority class here, so &ldquo;always predict FLAT&rdquo; is the bar.
+      </p>
+      <div className="baseline-panel__grid">
+        <div className="baseline-panel__cell">
+          <span>Model</span><b>{(acc * 100).toFixed(2)}%</b>
+        </div>
+        <div className="baseline-panel__cell">
+          <span>Always-FLAT baseline</span><b>{(flatBase * 100).toFixed(2)}%</b>
+        </div>
+        <div className="baseline-panel__cell">
+          <span>Random (1 of 3)</span><b>33.33%</b>
+        </div>
+        <div className={'baseline-panel__cell baseline-panel__cell--verdict ' + (beats ? 'is-good' : 'is-bad')}>
+          <span>Edge over baseline</span>
+          <b>{delta >= 0 ? '+' : ''}{delta.toFixed(2)} pts</b>
+        </div>
+      </div>
+      {!beats && (
+        <p className="baseline-panel__note">
+          The model does <b>not</b> beat the majority-class baseline on 3-class accuracy. Where it does
+          show measurable skill is in identifying non-events: when it is highly confident and predicts
+          FLAT it is right ~66.7% of the time against a ~49.8% base rate. It has no directional edge —
+          high-confidence UP/DOWN calls land near or below a coin flip. Not investment advice.
+        </p>
+      )}
+    </motion.div>
+  )
 }
 
 export function PerformanceTrackerPage() {
@@ -110,6 +170,8 @@ export function PerformanceTrackerPage() {
           delay={0.2}
         />
       </div>
+
+      <BaselinePanel cm={data.confusion_matrix} />
 
       {data.confidence_tiers && data.confidence_tiers.length > 0 && (
         <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}>

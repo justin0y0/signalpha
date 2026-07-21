@@ -3919,3 +3919,106 @@ input, select { font: inherit; color: inherit; }
 .orc__sig-head{font-size:13px;color:#cbd5e1;margin:4px 0;font-style:italic}
 .orc__sig-why{font-size:12px;color:#94a3b8}
 .orc__sig-src{font-size:11px;color:#38bdf8;text-decoration:none}
+
+/* ====================== Sub-navigation ======================
+   In-page section switcher used by the merged Model and Backtest pages.
+   Matches the top nav's pill treatment so a section switch reads as the same
+   kind of control, one level down. */
+.subnav {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.3rem;
+  margin-bottom: 1.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.subnav__item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.subnav__item:hover { color: var(--text-secondary); background: var(--bg-card-hover); }
+.subnav__item.is-active { color: var(--text-primary); background: var(--bg-1); }
+.subnav__icon { display: grid; place-items: center; opacity: 0.9; }
+.subnav__underline {
+  position: absolute;
+  left: 0.75rem; right: 0.75rem; bottom: 3px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 10px var(--accent-cyan-glow);
+}
+@media (max-width: 600px) { .subnav { width: 100%; } }
+
+/* Pulse research disclaimer — the signal log has no demonstrated edge, so the page
+   says so where the claim is made rather than burying it. */
+.pulse-disclaimer {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  max-width: 720px;
+  margin: 0.9rem 0 0;
+  padding: 0.7rem 0.85rem;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  background: rgba(251, 191, 36, 0.07);
+  border: 1px solid rgba(251, 191, 36, 0.22);
+  border-left: 2px solid var(--accent-amber);
+  border-radius: var(--radius-md);
+}
+.pulse-disclaimer b { color: var(--accent-amber); font-weight: 600; }
+.pulse-disclaimer__icon { color: var(--accent-amber); flex-shrink: 0; margin-top: 2px; }
+
+/* Accuracy-vs-baseline panel. A 3-class accuracy figure is meaningless without the
+   majority-class baseline beside it, so the two are always rendered together. */
+.baseline-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.baseline-panel__cell {
+  display: flex; flex-direction: column; gap: 0.35rem;
+  padding: 0.85rem 0.95rem;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.baseline-panel__cell span {
+  font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-tertiary); font-weight: 600;
+}
+.baseline-panel__cell b {
+  font-family: var(--font-mono); font-size: 1.3rem; font-weight: 700;
+  color: var(--text-primary); letter-spacing: -0.02em;
+}
+.baseline-panel__cell--verdict.is-good { border-color: rgba(52, 211, 153, 0.35); }
+.baseline-panel__cell--verdict.is-good b { color: var(--accent-emerald); }
+.baseline-panel__cell--verdict.is-bad { border-color: rgba(251, 113, 133, 0.35); }
+.baseline-panel__cell--verdict.is-bad b { color: var(--accent-rose); }
+.baseline-panel__note {
+  margin: 1rem 0 0; padding: 0.75rem 0.9rem;
+  font-size: 0.8rem; line-height: 1.6; color: var(--text-secondary);
+  background: rgba(251, 191, 36, 0.06);
+  border-left: 2px solid var(--accent-amber);
+  border-radius: var(--radius-sm);
+}
+.baseline-panel__note b { color: var(--accent-amber); }
+@media (max-width: 860px) { .baseline-panel__grid { grid-template-columns: repeat(2, 1fr); } }
