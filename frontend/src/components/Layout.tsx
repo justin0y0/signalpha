@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
+import { BootSequence } from './BootSequence'
 import { AuthWidget } from './AuthWidget'
 
 export function Layout() {

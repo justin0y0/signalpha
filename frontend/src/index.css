@@ -4359,3 +4359,74 @@ input, select { font: inherit; color: inherit; }
 .chamber__copy { font-size: 0.85rem; line-height: 1.65; color: var(--text-secondary); margin: 0; max-width: 56ch; }
 .chamber__copy b { color: var(--text-primary); font-weight: 600; }
 @media (max-width: 760px) { .chamber { grid-template-columns: 1fr; } }
+
+/* ══════════════════════════════════════════════════════════════════
+   Boot sequence — a cold-start self-test, once per session.
+   Every line is a live number; if the model is below baseline the
+   boot screen says so. Skippable by any key or click.
+   ══════════════════════════════════════════════════════════════════ */
+.boot {
+  position: fixed; inset: 0; z-index: 999;
+  display: grid; place-items: center;
+  background: var(--bg-0);
+  animation: boot-out 0.45s ease 1.6s forwards;
+}
+@keyframes boot-out { to { opacity: 0; visibility: hidden; } }
+
+.boot__inner { width: min(460px, 88vw); display: flex; flex-direction: column; gap: 1.25rem; }
+.boot__mark {
+  position: relative;
+  font-family: var(--font-mono); font-size: 0.78rem;
+  letter-spacing: 0.42em; color: var(--accent-cyan);
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--border);
+}
+.boot__scan {
+  position: absolute; left: 0; bottom: -1px; height: 1px; width: 40%;
+  background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+  animation: boot-scan 1.1s ease-in-out infinite;
+}
+@keyframes boot-scan { 0% { left: 0 } 50% { left: 60% } 100% { left: 0 } }
+
+.boot__lines { display: flex; flex-direction: column; gap: 0.5rem; min-height: 150px; }
+.boot__line {
+  display: flex; align-items: baseline; gap: 0.5rem;
+  font-family: var(--font-mono); font-size: 0.72rem;
+  animation: boot-line 0.24s ease both;
+}
+@keyframes boot-line { from { opacity: 0; transform: translateY(3px) } to { opacity: 1; transform: none } }
+.boot__label { color: var(--text-tertiary); letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; }
+.boot__dots { flex: 1; border-bottom: 1px dotted var(--border-strong); transform: translateY(-3px); }
+.boot__value { color: var(--text-secondary); white-space: nowrap; }
+.boot__line--ok .boot__value { color: var(--accent-emerald); }
+.boot__line--warn .boot__value { color: var(--accent-amber); }
+.boot__hint {
+  font-family: var(--font-mono); font-size: 0.6rem;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-muted);
+}
+@media (prefers-reduced-motion: reduce) { .boot { display: none; } }
+
+/* ══════════════════════════════════════════════════════════════════
+   Risk audio — off by default, one control, never autoplays.
+   ══════════════════════════════════════════════════════════════════ */
+.riskaudio {
+  position: fixed; right: 1.1rem; bottom: 1.1rem; z-index: 60;
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  padding: 0.5rem 0.8rem;
+  background: var(--bg-2); color: var(--text-tertiary);
+  border: 1px solid var(--border); border-radius: 999px;
+  font-family: var(--font-mono); font-size: 0.66rem;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  cursor: pointer; transition: color 0.2s, border-color 0.2s, background 0.2s;
+  box-shadow: var(--shadow-md);
+}
+.riskaudio:hover { color: var(--text-secondary); border-color: var(--border-strong); }
+.riskaudio.is-on { color: var(--accent-cyan); border-color: var(--border-accent); }
+.riskaudio__bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 10px; }
+.riskaudio__bars i {
+  width: 2px; background: var(--accent-cyan); border-radius: 1px;
+  animation: riskaudio-bar 0.9s ease-in-out infinite;
+}
+@keyframes riskaudio-bar { 0%,100% { height: 3px } 50% { height: 10px } }
+@media (max-width: 640px) { .riskaudio__label { display: none; } }
+@media (prefers-reduced-motion: reduce) { .riskaudio__bars i { animation: none; height: 6px; } }

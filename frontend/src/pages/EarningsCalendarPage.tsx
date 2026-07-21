@@ -9,6 +9,7 @@ import { Badge } from '../components/ui/Badge'
 import { StatCard } from '../components/ui/StatCard'
 import { Superposition } from '../components/ui/Superposition'
 import { BlastField } from '../components/BlastField'
+import { RiskAudio } from '../components/RiskAudio'
 import { formatDate, daysUntil } from '../utils/date'
 
 const SECTORS = ['All', 'Technology', 'Financial Services', 'Healthcare', 'Consumer Cyclical', 'Consumer Defensive', 'Industrials', 'Energy', 'Communication Services']
@@ -72,6 +73,8 @@ export function EarningsCalendarPage() {
       >
         <BlastField events={events} />
       </motion.div>
+
+      <RiskAudio quietScores={events.map((e) => e.direction_prob_flat).filter((v): v is number => v != null)} />
 
       <div className="grid grid-4">
         <StatCard
