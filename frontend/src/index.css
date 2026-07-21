@@ -4072,3 +4072,68 @@ input, select { font: inherit; color: inherit; }
   border-radius: var(--radius-sm);
 }
 .brief-note b { color: var(--accent-cyan); }
+
+/* ══════════════════════════════════════════════════════════════════
+   Superposition — a forecast drawn as a distribution, not a label.
+   Three states overlap while the outcome is unknown; the row collapses
+   once it isn't. Keeps the existing palette; only the behaviour is new.
+   ══════════════════════════════════════════════════════════════════ */
+.sup { display: flex; flex-direction: column; gap: 0.32rem; min-width: 148px; }
+.sup--compact { min-width: 108px; gap: 0.24rem; }
+
+.sup__head { display: flex; align-items: baseline; gap: 0.4rem; }
+.sup__score {
+  font-family: var(--font-mono);
+  font-size: 0.95rem; font-weight: 700; line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.sup__score--high { color: var(--accent-cyan); }
+.sup__score--mid  { color: var(--text-secondary); }
+.sup__score--low  { color: var(--accent-amber); }
+.sup__label {
+  font-size: 0.66rem; color: var(--text-tertiary);
+  white-space: nowrap; letter-spacing: 0.02em;
+}
+
+/* The three states share one row and overlap — that overlap IS the message. */
+.sup__stack {
+  position: relative;
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(10, 14, 26, 0.75);
+  overflow: hidden;
+}
+.sup__ghost {
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  border-radius: 4px;
+  mix-blend-mode: screen;
+  transition: opacity 0.45s ease, width 0.45s ease;
+  will-change: transform, opacity;
+}
+.sup .sup__ghost:nth-child(2) { left: 22%; }
+.sup .sup__ghost:nth-child(3) { right: 0; left: auto; }
+
+/* Collapse: the surviving state snaps to full width and the others vanish. */
+.sup.is-collapsed .sup__ghost {
+  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              width 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.sup.is-collapsed .sup__ghost.is-truth {
+  left: 0; right: auto; width: 100% !important;
+  box-shadow: 0 0 12px currentColor;
+}
+
+.sup__legend {
+  display: flex; gap: 0.5rem;
+  font-family: var(--font-mono); font-size: 0.6rem;
+  color: var(--text-tertiary); font-variant-numeric: tabular-nums;
+}
+.sup__legend span { display: inline-flex; align-items: center; gap: 0.22rem; }
+.sup__dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sup__ghost { transition: none; }
+}

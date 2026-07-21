@@ -7,7 +7,7 @@ import type { CalendarEvent, CalendarResponse } from '../types'
 import { DirectionBadge } from '../components/ui/DirectionBadge'
 import { Badge } from '../components/ui/Badge'
 import { StatCard } from '../components/ui/StatCard'
-import { OutcomeBar } from '../components/ui/OutcomeBar'
+import { Superposition } from '../components/ui/Superposition'
 import { formatDate, daysUntil } from '../utils/date'
 
 const SECTORS = ['All', 'Technology', 'Financial Services', 'Healthcare', 'Consumer Cyclical', 'Consumer Defensive', 'Industrials', 'Energy', 'Communication Services']
@@ -168,7 +168,7 @@ export function EarningsCalendarPage() {
                 <th>Company</th>
                 <th>Sector</th>
                 <th>Earnings Date</th>
-                <th>Quiet Score · Distribution</th>
+                <th>Forecast · superposed</th>
                 <th style={{ textAlign: 'right' }}>Expected Move</th>
                 <th style={{ width: 40 }}></th>
               </tr>
@@ -201,7 +201,7 @@ export function EarningsCalendarPage() {
                       </div>
                     </td>
                     <td>
-                      <OutcomeBar compact up={e.direction_prob_up} flat={e.direction_prob_flat} down={e.direction_prob_down} />
+                      <Superposition compact up={e.direction_prob_up} flat={e.direction_prob_flat} down={e.direction_prob_down} />
                     </td>
                     <td className="mono" style={{ textAlign: 'right' }}>
                       {e.expected_move_pct != null ? `±${(e.expected_move_pct * 100).toFixed(2)}%` : <span className="tertiary">—</span>}
