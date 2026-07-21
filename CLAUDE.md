@@ -159,6 +159,21 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 | 18 | 日历采集窗口 14 天，但前端请求 90 天、页面自称"rolling 120-day window" | — | `default_calendar_lookahead_days` 14 → 90；profile 缓存改为落盘（`./data/profile_cache.json`），免费额度扛得住 |
 | 19 | Calendar/Performance/Deep-Dive 的 KPI 卡没有强调色边条、没有图标、没有 hover，和 Simulator/Contact 不像一个产品 | 共享 `StatCard` 组件比 `.sim-kpi` 少三样 | `StatCard` 升级为 `.sim-kpi` 的视觉语言，三个页面 12 处调用全部补图标 |
 
+### 6a-3. 第三批（2026-07-21）
+
+| # | 内容 | 验证 |
+|---|------|------|
+| 20 | **概率校准重做**：`recalibrate_predictions.py` expanding-window isotonic，读 `raw_prob_*` 只写展示列 | 校准器未见过的 5,077 行上 ECE **0.2342 → 0.0415**（改善 5.6×） |
+| 21 | **封停 `calibrate_predictions.py`**（泄漏源），运行即 exit 1 并说明三条罪状 | 实测拒绝运行 |
+| 22 | **导航 11 → 7**：Model(Performance+TrackRecord) / Strategy(Backtest+Showdown+Simulator)，新增 `SubNav`，5 个旧路径全部重定向 | 12 条路由实测全 200 |
+| 23 | **Accuracy vs Baseline 面板**：用页面自己的混淆矩阵算，Model 48.12% vs Always-FLAT 49.96%，Edge **−1.84 pts** | DOM 文本 + API 双向确认 |
+| 24 | **Pulse 研究声明**：Profit Factor 0.979(税前)/含成本为负/t=−0.12/score 秩相关 +0.04 | 进 bundle 确认 |
+| 25 | **MANUAL.md**：7 页全覆盖到每个数字的算式，4 处读不出的标 TODO 未编造 | — |
+
+> ⚠️ **校准的副作用（产品层面要知道）**：概率压回基准率后，模型在 **97.5%** 事件上 argmax 落 FLAT，只在 2.5% 事件给方向（给方向时 53.5%，n=71，无统计意义）。Calendar 的 PREDICTION 列因此基本全是 FLAT。
+> 核心结论仍成立：conf≥0.60 且预测 FLAT 时准确率 **66.59%**（基线 49.84%，n=862）。
+> **待定**：Calendar 该列建议改为展示三类概率分布而非 argmax 标签——argmax 对一个无方向 edge 的校准模型没有信息量。未改，等 Justin 定。
+
 ### 6b. 仍未解决
 
 0. **✅ 已解决 — 标签泄漏（walk-forward 重生成完成并上线）**
