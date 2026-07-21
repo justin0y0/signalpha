@@ -26,6 +26,7 @@ import {
   Zap,
 } from 'lucide-react'
 import {
+import { formatDate, formatDateShort } from '../utils/date'
   Area,
   AreaChart,
   CartesianGrid,
@@ -839,7 +840,7 @@ export function SimulatorPage() {
                           {fmtUSD(p.unrealized_pnl ?? 0)}
                           <div className="pnl-pct">{fmtPct((p.unrealized_pnl_pct ?? 0) * 100, 2)}</div>
                         </td>
-                        <td className="r small">{new Date(p.target_exit_date).toLocaleDateString()}</td>
+                        <td className="r small">{formatDate(p.target_exit_date)}</td>
                       </tr>
                     )
                   })}
@@ -939,7 +940,7 @@ export function SimulatorPage() {
                   {p.company_name && <div className="sim-pending-card__name">{p.company_name}</div>}
                   <div className="sim-pending-card__meta">
                     <span>
-                      {new Date(p.earnings_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      {formatDateShort(p.earnings_date)}
                     </span>
                     {p.report_time && <span className="sim-pending-card__rt">{p.report_time}</span>}
                     {p.sector && <span className="sim-pending-card__sector">{p.sector}</span>}

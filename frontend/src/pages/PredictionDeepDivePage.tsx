@@ -9,6 +9,7 @@ import { DirectionBadge } from '../components/ui/DirectionBadge'
 import { Badge } from '../components/ui/Badge'
 import { StatCard } from '../components/ui/StatCard'
 import { PriceTicker } from '../components/ui/PriceTicker'
+import { daysUntil, formatDate } from '../utils/date'
 
 function formatPct(v: number | null | undefined, signed = false) {
   if (v == null) return '—'
@@ -16,13 +17,6 @@ function formatPct(v: number | null | undefined, signed = false) {
   return signed && v > 0 ? `+${n}%` : `${n}%`
 }
 
-function daysUntil(iso: string): number {
-  const d = new Date(iso)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  d.setHours(0, 0, 0, 0)
-  return Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-}
 
 export function PredictionDeepDivePage() {
   const { ticker = '' } = useParams<{ ticker: string }>()
@@ -130,7 +124,7 @@ export function PredictionDeepDivePage() {
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             {data.sector && <Badge variant="accent">{data.sector}</Badge>}
             <span className="countdown-chip">
-              📅 {data.earnings_date} · {duLabel}
+              📅 {formatDate(data.earnings_date)} · {duLabel}
             </span>
             {data.report_time && <Badge variant="default">{data.report_time}</Badge>}
           </div>

@@ -7,21 +7,9 @@ import type { CalendarEvent, CalendarResponse } from '../types'
 import { DirectionBadge } from '../components/ui/DirectionBadge'
 import { Badge } from '../components/ui/Badge'
 import { StatCard } from '../components/ui/StatCard'
+import { formatDate, daysUntil } from '../utils/date'
 
 const SECTORS = ['All', 'Technology', 'Financial Services', 'Healthcare', 'Consumer Cyclical', 'Consumer Defensive', 'Industrials', 'Energy', 'Communication Services']
-
-function formatDate(iso: string) {
-  const d = new Date(iso)
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function daysUntil(iso: string): number {
-  const d = new Date(iso)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  d.setHours(0, 0, 0, 0)
-  return Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-}
 
 export function EarningsCalendarPage() {
   const navigate = useNavigate()

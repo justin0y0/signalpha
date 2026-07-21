@@ -4,6 +4,7 @@ import { Play, RotateCcw, TrendingUp, TrendingDown, Minus, ChevronDown } from 'l
 import { ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts'
 import { api } from '../api/client'
 import type { BacktestResponse } from '../types'
+import { parseLocalDate } from '../utils/date'
 
 const SECTORS = ['','Technology','Financial Services','Healthcare','Consumer Cyclical','Consumer Defensive','Industrials','Energy','Communication Services']
 const C = { cyan:'#38bdf8', purple:'#a78bfa', green:'#4ade80', red:'#f87171', amber:'#fbbf24', muted:'#475569' }
@@ -117,7 +118,7 @@ export function BacktestingPage() {
   }
 
   const chartData = result?.equity_curve.map((p, i) => ({
-    date: new Date(p.date).toLocaleDateString('en-US',{month:'short',year:'2-digit'}),
+    date: parseLocalDate(p.date).toLocaleDateString('en-US',{month:'short',year:'2-digit'}),
     equity: +((p.equity - 1) * 100).toFixed(3),
     benchmark: result.benchmark_curve?.[i] ? +((result.benchmark_curve[i].equity - 1) * 100).toFixed(3) : null,
     drawdown: +(p.drawdown * 100).toFixed(3),
