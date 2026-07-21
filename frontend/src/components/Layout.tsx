@@ -20,6 +20,7 @@ export function Layout() {
     // under Model and Strategy (see ModelPage.tsx / StrategyPage.tsx). The old paths
     // still resolve via redirects in App.tsx.
     { to: '/', label: 'Calendar', end: true },
+    { to: '/brief', label: 'Brief' },
     { to: '/model', label: 'Model' },
     { to: '/strategy', label: 'Strategy' },
     { to: '/pulse', label: 'Pulse' },

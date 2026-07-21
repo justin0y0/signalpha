@@ -4056,3 +4056,19 @@ input, select { font: inherit; color: inherit; }
 .outcome__dot--up { background: var(--up); }
 .outcome__dot--flat { background: rgba(148, 163, 184, 0.6); }
 .outcome__dot--down { background: var(--down); }
+
+/* Alpha Brief */
+.brief-count {
+  margin-left: auto; font-family: var(--font-mono); font-size: 0.72rem;
+  color: var(--text-tertiary); background: var(--bg-1);
+  padding: 0.15rem 0.45rem; border-radius: 4px;
+}
+.brief-table td { vertical-align: middle; }
+.brief-note {
+  margin: 0.9rem 0 0; padding: 0.7rem 0.85rem;
+  font-size: 0.78rem; line-height: 1.55; color: var(--text-secondary);
+  background: rgba(56, 189, 248, 0.06);
+  border-left: 2px solid var(--accent-cyan);
+  border-radius: var(--radius-sm);
+}
+.brief-note b { color: var(--accent-cyan); }

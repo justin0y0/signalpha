@@ -3,6 +3,7 @@ import { Layout } from './components/Layout'
 import { AboutPage } from './pages/AboutPage'
 import { ContactPage } from './pages/ContactPage'
 import { EarningsCalendarPage } from './pages/EarningsCalendarPage'
+import { BriefPage } from './pages/BriefPage'
 import { ModelPage } from './pages/ModelPage'
 import { StrategyPage } from './pages/StrategyPage'
 import { OraclePage } from './pages/OraclePage'
@@ -15,6 +16,7 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<EarningsCalendarPage />} />
+        <Route path="/brief" element={<BriefPage />} />
         <Route path="/predict/:ticker" element={<PredictionDeepDivePage />} />
         <Route path="/model" element={<ModelPage />} />
         <Route path="/strategy" element={<StrategyPage />} />

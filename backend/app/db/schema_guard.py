@@ -92,6 +92,29 @@ DDL_STATEMENTS: list[str] = [
     "ALTER TABLE predictions ADD COLUMN IF NOT EXISTS raw_prob_flat NUMERIC",
     "ALTER TABLE predictions ADD COLUMN IF NOT EXISTS raw_prob_down NUMERIC",
     "CREATE INDEX IF NOT EXISTS idx_predictions_oos ON predictions (is_out_of_sample)",
+
+    # --- Alpha Brief + Watchlist -------------------------------------------------
+    """
+    CREATE TABLE IF NOT EXISTS user_watchlist (
+        id         BIGSERIAL PRIMARY KEY,
+        email      TEXT NOT NULL,
+        ticker     TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (email, ticker)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_watchlist_email ON user_watchlist (email)",
+    """
+    CREATE TABLE IF NOT EXISTS daily_briefs (
+        id         BIGSERIAL PRIMARY KEY,
+        brief_date DATE NOT NULL,
+        email      TEXT,
+        payload    JSONB NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (brief_date, email)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_briefs_date ON daily_briefs (brief_date DESC)",
 ]
 
 

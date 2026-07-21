@@ -106,7 +106,7 @@ const TAB_GUIDE = [
     actions: [
       'Calibration curve: when model says 80% confident, is hit rate actually 80%?',
       'Filter by confidence threshold to see precision vs recall tradeoff',
-      'True walk-forward OOS accuracy = 49.3% across 5,393 held-out test events',
+      'Walk-forward OOS accuracy = 49.3%, against a 49.8% always-FLAT baseline — it does not beat it',
     ],
   },
   {
@@ -203,8 +203,8 @@ const BENCHMARKS = [
   {
     label: 'Signalpha (this project)',
     value: 49.3,
-    detail: 'Walk-forward OOS, balanced confusion matrix',
-    source: 'Trial-2 hyperparameter search, 5,393 events',
+    detail: 'Walk-forward OOS — below the 49.8% always-FLAT baseline',
+    source: 'Purged walk-forward, 5,477 held-out events (rebuilt 2026-07-20)',
     sourceLink: null,
     tint: 'cyan',
   },
@@ -554,12 +554,18 @@ export function AboutPage() {
             <span>Where this sits in the literature</span>
           </div>
           <h2 className="about-section__title">
-            49.3% on a 3-class label is closer to the academic frontier than the random or
-            FLAT-only baselines suggest.
+            49.3% on a 3-class label does not beat the 49.8% always-FLAT baseline. Here is
+            what the model can actually do.
           </h2>
           <p className="about-section__sub">
             Directional earnings prediction on US large-caps is one of the most informationally
-            efficient settings in markets. A few reference points to calibrate what 49% means.
+            efficient settings in markets — and on this dataset the model has no directional edge:
+            it commits to a direction on 2.5% of events and is right 53.5% of those (n=71,
+            indistinguishable from chance). Where it does show measurable skill is the opposite
+            question: at P(FLAT) ≥ 0.60 it correctly identifies a non-event 66.6% of the time
+            against a 49.8% base rate (n=862, ≈9.9 standard errors). These numbers come from a
+            walk-forward rebuild that replaced an earlier backfill contaminated by look-ahead —
+            the contaminated version reported a 97.5% backtest win rate.
           </p>
         </div>
 

@@ -265,6 +265,32 @@ def _entry_window_open(event: EarningsEvent, db: Session, today: date) -> tuple[
     return False, f"too_early_{days}d"
 
 
+
+def _path_extremes(ticker: str, since: date, until: date | None = None) -> tuple[float, float] | None:
+    """Lowest low and highest high on the daily path from `since` to `until`.
+
+    The stop-loss used to be checked only against whatever the mark happened to be at
+    the moment run_step fired (every 30 minutes), and when an outcome was available the
+    mark was the T+5 CLOSE. A position that fell 20% intraday and closed the week at
+    -5% therefore recorded a TIME exit at -5% and never tripped its -8% stop. Combined
+    with sizing up to 15% of equity that flattered the paper account.
+
+    Daily high/low is still not a true intraday path -- it cannot say whether the low
+    or the high came first within a bar -- so the caller resolves that ambiguity
+    conservatively (stop before take-profit).
+    """
+    try:
+        import yfinance as yf
+        end = (until or date.today()) + timedelta(days=1)
+        hist = yf.Ticker(ticker).history(start=since.isoformat(), end=end.isoformat(), auto_adjust=False)
+        if hist is None or hist.empty:
+            return None
+        return float(hist["Low"].min()), float(hist["High"].max())
+    except Exception as exc:  # noqa: BLE001 - never let a price fetch kill the step
+        logger.debug("path extremes failed for %s: %s", ticker, exc)
+        return None
+
+
 def _close_position(
     db: Session, pos: SimulationPosition, exit_price: float, exit_reason: str,
     cfg: SimulationConfig, cash_ref: list[float], realized_pnl_total: list[float],
@@ -391,15 +417,41 @@ def run_step(db: Session) -> dict[str, Any]:
         pos.unrealized_pnl_pct = ret_pct
         pos.unrealized_pnl = ret_pct * _to_float(pos.notional_value)
 
+        # Resolve stops against the realised price PATH, not just the current mark.
+        # Checking only the mark meant an intraday breach that recovered by the close
+        # never triggered, and outcome-marked positions were judged on the T+5 close.
+        stop_pct = _to_float(cfg.stop_loss_pct)
+        tp_pct = _to_float(cfg.take_profit_pct)
+        stop_price = entry * (1 - stop_pct) if pos.side == "LONG" else entry * (1 + stop_pct)
+        tp_price = entry * (1 + tp_pct) if pos.side == "LONG" else entry * (1 - tp_pct)
+
+        hit_stop = hit_tp = False
+        extremes = _path_extremes(pos.ticker, pos.entry_date, min(today, pos.target_exit_date))
+        if extremes is not None:
+            low, high = extremes
+            if pos.side == "LONG":
+                hit_stop, hit_tp = low <= stop_price, high >= tp_price
+            else:
+                hit_stop, hit_tp = high >= stop_price, low <= tp_price
+        else:
+            # No path available — fall back to the mark, the old behaviour.
+            hit_stop = ret_pct <= -stop_pct
+            hit_tp = ret_pct >= tp_pct
+
         exit_reason: str | None = None
-        if today >= pos.target_exit_date:
-            exit_reason = "TIME"
-        elif ret_pct <= -_to_float(cfg.stop_loss_pct):
-            exit_reason = "STOP_LOSS"
-        elif ret_pct >= _to_float(cfg.take_profit_pct):
-            exit_reason = "TAKE_PROFIT"
+        exit_price = mark
+        if hit_stop:
+            # Daily bars cannot order the low and the high within a session, so when
+            # both levels were touched assume the stop came first. Being optimistic
+            # here is exactly what made the old numbers untrustworthy.
+            exit_reason, exit_price = "STOP_LOSS", stop_price
+        elif hit_tp:
+            exit_reason, exit_price = "TAKE_PROFIT", tp_price
+        elif today >= pos.target_exit_date:
+            exit_reason, exit_price = "TIME", mark
+
         if exit_reason:
-            _close_position(db, pos, mark, exit_reason, cfg, cash_ref, realized_pnl_total)
+            _close_position(db, pos, exit_price, exit_reason, cfg, cash_ref, realized_pnl_total)
             closes_done.append({"ticker": pos.ticker, "reason": exit_reason})
 
     db.flush()

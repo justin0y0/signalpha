@@ -24,6 +24,7 @@ from backend.app.api.routes.showdown import router as showdown_router
 from backend.app.api.routes.pulse import router as pulse_router
 from backend.app.api.routes.quote import router as quote_router
 from backend.app.api.routes.auth import router as auth_router
+from backend.app.api.routes.brief import router as brief_router
 from backend.app.core.config import get_settings
 from backend.app.core.logging import configure_logging
 from backend.app.db.base import Base
@@ -95,6 +96,7 @@ app.include_router(logos_router)
 app.include_router(tg_webhook_router)
 app.include_router(simulator_router, prefix=settings.api_v1_prefix)
 app.include_router(auth_router)
+app.include_router(brief_router)
 
 
 @app.get("/")
