@@ -19,7 +19,7 @@ export function Sparkline({ data, width = 120, height = 32, positive }: Props) {
 
   const isPositive = positive ?? data[data.length - 1] >= data[0]
   const stroke = isPositive ? 'var(--up)' : 'var(--down)'
-  const fill = isPositive ? 'rgba(111, 162, 135,0.12)' : 'rgba(196, 114, 106,0.12)'
+  const fill = isPositive ? 'rgba(52,211,153,0.12)' : 'rgba(251,113,133,0.12)'
 
   return (
     <svg width={width} height={height} style={{ display: 'block' }}>

@@ -296,13 +296,13 @@ function HeroBackdrop() {
     >
       <defs>
         <linearGradient id="waveGrad" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="rgba(226, 112, 58,0)" />
-          <stop offset="35%" stopColor="rgba(226, 112, 58,0.55)" />
-          <stop offset="65%" stopColor="rgba(127, 169, 155,0.55)" />
-          <stop offset="100%" stopColor="rgba(127, 169, 155,0)" />
+          <stop offset="0%" stopColor="rgba(56,189,248,0)" />
+          <stop offset="35%" stopColor="rgba(56,189,248,0.55)" />
+          <stop offset="65%" stopColor="rgba(167,139,250,0.55)" />
+          <stop offset="100%" stopColor="rgba(167,139,250,0)" />
         </linearGradient>
         <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(127, 169, 155,0.06)" strokeWidth="1" />
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(148,163,214,0.06)" strokeWidth="1" />
         </pattern>
       </defs>
       <rect width="1200" height="320" fill="url(#grid)" />

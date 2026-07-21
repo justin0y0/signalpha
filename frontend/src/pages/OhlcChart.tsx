@@ -122,8 +122,8 @@ export function OhlcChart({ ticker, since, entry, dir }: { ticker: string; since
           <g transform={`translate(${tipX},${padT + 2})`}>
             <rect width="96" height="62" rx="6" fill="var(--bg-1)" stroke="var(--border)" opacity="0.96" />
             <text x="8" y="15" style={{ fill: 'var(--text, #e5e7eb)', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>{hv.t}</text>
-            <text x="8" y="30" style={{ fill: 'var(--text-muted, #7FA99B)', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>O {hv.o.toFixed(2)} H {hv.h.toFixed(2)}</text>
-            <text x="8" y="43" style={{ fill: 'var(--text-muted, #7FA99B)', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>L {hv.l.toFixed(2)} C {hv.c.toFixed(2)}</text>
+            <text x="8" y="30" style={{ fill: 'var(--text-muted, #94a3b8)', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>O {hv.o.toFixed(2)} H {hv.h.toFixed(2)}</text>
+            <text x="8" y="43" style={{ fill: 'var(--text-muted, #94a3b8)', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>L {hv.l.toFixed(2)} C {hv.c.toFixed(2)}</text>
             {dPct != null && <text x="8" y="56" style={{ fill: dPct >= 0 ? 'var(--up)' : 'var(--down)', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>{dPct >= 0 ? '+' : ''}{dPct.toFixed(1)}% vs entry</text>}
           </g>
         </g>

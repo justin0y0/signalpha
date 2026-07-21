@@ -7,7 +7,7 @@ import type { BacktestResponse } from '../types'
 import { parseLocalDate } from '../utils/date'
 
 const SECTORS = ['','Technology','Financial Services','Healthcare','Consumer Cyclical','Consumer Defensive','Industrials','Energy','Communication Services']
-const C = { cyan:'#E2703A', purple:'#7FA99B', green:'#6FA287', red:'#C4726A', amber:'#D9A441', muted:'#4C5854' }
+const C = { cyan:'#38bdf8', purple:'#a78bfa', green:'#4ade80', red:'#f87171', amber:'#fbbf24', muted:'#475569' }
 const pct = (v:number,d=2) => `${v>=0?'+':''}${(v*100).toFixed(d)}%`
 const fmt2 = (v:number) => v.toFixed(2)
 type Kpi = { label:string; value:string; sub?:string; color:string }
@@ -35,7 +35,7 @@ function ConfMatrix({cm}:{cm:number[][]}) {
           {row.map((v,ai)=>{
             const hit=pi===ai
             const intensity=max>0?v/max:0
-            const bg=hit?`rgba(226, 112, 58,${0.08+intensity*0.5})`:`rgba(196, 114, 106,${intensity*0.3})`
+            const bg=hit?`rgba(56,189,248,${0.08+intensity*0.5})`:`rgba(248,113,113,${intensity*0.3})`
             return (
               <motion.div key={`${pi}${ai}`} className="bt-cm__cell" style={{background:bg}}
                 initial={{scale:0.8,opacity:0}} animate={{scale:1,opacity:1}} transition={{delay:0.05*(pi*3+ai)}}>
@@ -205,7 +205,7 @@ export function BacktestingPage() {
               <div className="bt-card__title">
                 <TrendingUp size={13}/>Equity Curve vs SPY
                 <span className="bt-bench-legend"><span className="bt-bench-legend__dash"/>SPY benchmark</span>
-                <span className="bt-card__pill" style={{color:ret>=0?C.green:C.red,background:ret>=0?'rgba(111, 162, 135,0.1)':'rgba(196, 114, 106,0.1)'}}>{pct(ret)}</span>
+                <span className="bt-card__pill" style={{color:ret>=0?C.green:C.red,background:ret>=0?'rgba(74,222,128,0.1)':'rgba(248,113,113,0.1)'}}>{pct(ret)}</span>
               </div>
               <div style={{height:220}}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -223,7 +223,7 @@ export function BacktestingPage() {
                     <Tooltip content={<CustomTooltip/>}/>
                     <Area type="monotone" dataKey="equity" stroke={ret>=0?C.green:C.red} strokeWidth={2} fill="url(#eqGrad)" dot={false} activeDot={{r:3}}/>
                     {chartData[0]?.benchmark !== null && chartData[0]?.benchmark !== undefined && (
-                      <Line type="monotone" dataKey="benchmark" stroke="rgba(127, 169, 155,0.75)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} />
+                      <Line type="monotone" dataKey="benchmark" stroke="rgba(148,163,184,0.75)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} />
                     )}
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -282,7 +282,7 @@ export function BacktestingPage() {
         <motion.div className="bt-empty" initial={{opacity:0}} animate={{opacity:1}}>
           <Play size={28} style={{opacity:0.25,marginBottom:10}}/>
           <p>Configure parameters above and run the backtest.</p>
-          <p style={{fontSize:'0.78rem',marginTop:4,color:'#4C5854'}}>Strategy: LONG on UP · SHORT on DOWN · SKIP on FLAT</p>
+          <p style={{fontSize:'0.78rem',marginTop:4,color:'#475569'}}>Strategy: LONG on UP · SHORT on DOWN · SKIP on FLAT</p>
         </motion.div>
       )}
     </div>

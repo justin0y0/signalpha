@@ -370,15 +370,15 @@ function EquityCurve({ data, initial }: { data: SimDashboard['equity_curve']; in
         <AreaChart data={chartData} margin={{ top: 8, right: 12, left: 8, bottom: 8 }}>
           <defs>
             <linearGradient id="equityGradGreen" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgba(111, 162, 135, 0.45)" />
-              <stop offset="100%" stopColor="rgba(111, 162, 135, 0)" />
+              <stop offset="0%" stopColor="rgba(52, 211, 153, 0.45)" />
+              <stop offset="100%" stopColor="rgba(52, 211, 153, 0)" />
             </linearGradient>
             <linearGradient id="equityGradRed" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgba(196, 114, 106, 0.4)" />
-              <stop offset="100%" stopColor="rgba(196, 114, 106, 0)" />
+              <stop offset="0%" stopColor="rgba(248, 113, 113, 0.4)" />
+              <stop offset="100%" stopColor="rgba(248, 113, 113, 0)" />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke="rgba(127, 169, 155,0.06)" strokeDasharray="3 3" />
+          <CartesianGrid stroke="rgba(148,163,214,0.06)" strokeDasharray="3 3" />
           <XAxis dataKey="label" tick={{ fill: 'var(--text-tertiary)', fontSize: 11 }}
             stroke="var(--border)" interval="preserveStartEnd" minTickGap={56} />
           <YAxis
@@ -390,7 +390,7 @@ function EquityCurve({ data, initial }: { data: SimDashboard['equity_curve']; in
           />
           <ReferenceLine
             y={initial}
-            stroke="rgba(127, 169, 155,0.4)"
+            stroke="rgba(148,163,214,0.4)"
             strokeDasharray="4 4"
             label={{
               value: `start ${fmtUSD(initial)}`,
@@ -407,7 +407,7 @@ function EquityCurve({ data, initial }: { data: SimDashboard['equity_curve']; in
           <Area
             type="monotone"
             dataKey="equity"
-            stroke={inProfit ? 'var(--accent-emerald)' : '#C4726A'}
+            stroke={inProfit ? 'var(--accent-emerald)' : '#f87171'}
             strokeWidth={2}
             fill={inProfit ? 'url(#equityGradGreen)' : 'url(#equityGradRed)'}
             isAnimationActive

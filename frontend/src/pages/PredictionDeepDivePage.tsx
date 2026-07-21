@@ -248,11 +248,11 @@ export function PredictionDeepDivePage() {
             <AreaChart data={convergenceData}>
               <defs>
                 <linearGradient id="zoneGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#E2703A" stopOpacity={0.5} />
-                  <stop offset="100%" stopColor="#E2703A" stopOpacity={0.05} />
+                  <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.5} />
+                  <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.05} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="2 4" stroke="rgba(127, 169, 155,0.08)" />
+              <CartesianGrid strokeDasharray="2 4" stroke="rgba(148,163,214,0.08)" />
               <XAxis dataKey="day" tick={{ fill: '#6b7593', fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis
                 domain={['auto', 'auto']}
@@ -262,11 +262,11 @@ export function PredictionDeepDivePage() {
                 tickFormatter={(v) => v.toFixed(1)}
               />
               <Tooltip
-                contentStyle={{ background: '#0f1524', border: '1px solid rgba(127, 169, 155,0.2)', borderRadius: 10, fontSize: 12 }}
-                labelStyle={{ color: '#A6B3AC' }}
+                contentStyle={{ background: '#0f1524', border: '1px solid rgba(148,163,214,0.2)', borderRadius: 10, fontSize: 12 }}
+                labelStyle={{ color: '#a8b3d1' }}
               />
-              <Area type="monotone" dataKey="upper" stroke="#E2703A" strokeWidth={1.5} fill="url(#zoneGrad)" />
-              <Area type="monotone" dataKey="lower" stroke="#7FA99B" strokeWidth={1.5} fill="transparent" />
+              <Area type="monotone" dataKey="upper" stroke="#38bdf8" strokeWidth={1.5} fill="url(#zoneGrad)" />
+              <Area type="monotone" dataKey="lower" stroke="#a78bfa" strokeWidth={1.5} fill="transparent" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -341,11 +341,11 @@ export function PredictionDeepDivePage() {
           <div style={{ height: 220 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={historicalData}>
-                <CartesianGrid strokeDasharray="2 4" stroke="rgba(127, 169, 155,0.08)" />
+                <CartesianGrid strokeDasharray="2 4" stroke="rgba(148,163,214,0.08)" />
                 <XAxis dataKey="date" tick={{ fill: '#6b7593', fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: '#6b7593', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v.toFixed(0)}%`} />
                 <Tooltip
-                  contentStyle={{ background: '#0f1524', border: '1px solid rgba(127, 169, 155,0.2)', borderRadius: 10, fontSize: 12 }}
+                  contentStyle={{ background: '#0f1524', border: '1px solid rgba(148,163,214,0.2)', borderRadius: 10, fontSize: 12 }}
                   formatter={(v: number) => [`${v.toFixed(2)}%`, 'Reaction']}
                 />
                 <Bar dataKey="reaction" radius={[6, 6, 0, 0]}>

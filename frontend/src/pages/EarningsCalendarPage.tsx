@@ -8,7 +8,6 @@ import { DirectionBadge } from '../components/ui/DirectionBadge'
 import { Badge } from '../components/ui/Badge'
 import { StatCard } from '../components/ui/StatCard'
 import { OutcomeBar } from '../components/ui/OutcomeBar'
-import { Recorder } from '../components/Recorder'
 import { formatDate, daysUntil } from '../utils/date'
 
 const SECTORS = ['All', 'Technology', 'Financial Services', 'Healthcare', 'Consumer Cyclical', 'Consumer Defensive', 'Industrials', 'Energy', 'Communication Services']
@@ -70,16 +69,11 @@ export function EarningsCalendarPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <h1 className="hero-headline">Which earnings will be non-events</h1>
+        <h1 className="hero-headline">Earnings Intelligence Calendar</h1>
         <p className="hero-sub">
-          The model reads {total} upcoming reports for stillness rather than direction — the one
-          thing it measurably does well. The trace below is its own estimate of how much is
-          about to happen.
+          ML-powered earnings predictions across {total} tracked events.
+          Click any ticker for deep analysis and live quote.
         </p>
-      </motion.div>
-
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.7, delay: 0.1 }}>
-        <Recorder events={events} />
       </motion.div>
 
       <div className="grid grid-4">
