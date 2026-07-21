@@ -18,6 +18,16 @@ LOGGING_CONFIG = {
             "formatter": "default",
         }
     },
+    "loggers": {
+        # yfinance re-logs every failed symbol at ERROR on every call. run_pulse_scan runs
+        # every 5 minutes over the whole universe, so two permanently-dead tickers were
+        # producing tens of thousands of ERROR lines a day — enough to bury real errors and
+        # to matter for disk on a 49G volume. Real failures still surface: callers log their
+        # own message, and yfinance WARNING and above still comes through.
+        "yfinance": {"level": "CRITICAL", "handlers": ["console"], "propagate": False},
+        "peewee": {"level": "WARNING", "handlers": ["console"], "propagate": False},
+        "urllib3": {"level": "WARNING", "handlers": ["console"], "propagate": False},
+    },
     "root": {
         "level": "INFO",
         "handlers": ["console"],
