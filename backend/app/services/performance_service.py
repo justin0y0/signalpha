@@ -11,12 +11,21 @@ from backend.app.services.prediction_filters import OUT_OF_SAMPLE_ONLY
 FLAT_THRESHOLD = 0.02
 
 
-def _actual_class(t5: float | None) -> str | None:
-    if t5 is None:
+def _actual_class(ret: float | None) -> str | None:
+    """Bucket a realised return into the same 3 classes the model was trained on.
+
+    Must be fed the T+1 close return. The model's direction label comes from
+    `actual_t1_close_return` (models/train.py -> label_direction), and Backtest and
+    Track Record both score against T+1. This function used to be handed
+    `actual_t5_return`, so the confidence-tier block was grading a T+1 model against a
+    T+5 outcome — an apples-to-oranges comparison that produced a flat ~33% (exactly
+    3-class random) at every confidence threshold.
+    """
+    if ret is None:
         return None
-    if t5 > FLAT_THRESHOLD:
+    if ret > FLAT_THRESHOLD:
         return "UP"
-    if t5 < -FLAT_THRESHOLD:
+    if ret < -FLAT_THRESHOLD:
         return "DOWN"
     return "FLAT"
 
@@ -72,7 +81,7 @@ class PerformanceService:
                 (Outcome.ticker == Prediction.ticker)
                 & (Outcome.earnings_date == Prediction.earnings_date),
             )
-            .where(Outcome.actual_t5_return.is_not(None))
+            .where(Outcome.actual_t1_close_return.is_not(None))
             .where(OUT_OF_SAMPLE_ONLY)
         ).all()
 
@@ -81,7 +90,7 @@ class PerformanceService:
 
         records = []
         for p, o in rows:
-            ac = _actual_class(o.actual_t5_return)
+            ac = _actual_class(o.actual_t1_close_return)
             if ac is None:
                 continue
             pc = _predicted_class(p.direction_prob_up, p.direction_prob_flat, p.direction_prob_down)
