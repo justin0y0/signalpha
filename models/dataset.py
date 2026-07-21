@@ -30,7 +30,13 @@ def label_direction_adaptive(value: float, stock_std: float | None, floor: float
     if stock_std is None or stock_std != stock_std:  # NaN check
         threshold = floor
     else:
-        threshold = max(floor, min(ceiling, abs(stock_std) * 1.0))
+        # 0.5x sigma, matching this function's own docstring — the implementation had
+        # drifted to 1.0x. At 1.0x the FLAT band swallows ~69% of events (roughly what
+        # +/-1 sigma covers), which both unbalances the 3-class problem and raises the
+        # always-FLAT baseline the model has to beat. At 0.5x, "non-event" means the
+        # stock moved less than half its own typical earnings reaction, which is the
+        # thing actually worth predicting.
+        threshold = max(floor, min(ceiling, abs(stock_std) * 0.5))
     if value > threshold:
         return "UP"
     if value < -threshold:
