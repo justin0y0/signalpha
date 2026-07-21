@@ -51,7 +51,8 @@ export function PressureField({ intensity }: Props) {
     let t = 0
     function paint() {
       if (w < 2 || h < 2) return
-      const k = Math.min(1, Math.max(0, intensityRef.current))
+      // Floor the intensity: a dead-calm tape should still show a living field.
+      const k = Math.min(1, Math.max(0.22, intensityRef.current))
       ctx!.clearRect(0, 0, w, h)
       for (let i = 0; i < lines; i++) {
         const y0 = (h / (lines - 1)) * i
@@ -64,12 +65,19 @@ export function PressureField({ intensity }: Props) {
           else ctx!.lineTo(x, y)
         }
         // Calm tape reads cool and thin; agitation warms and thickens it.
-        const alpha = 0.05 + k * 0.12
+        //
+        // The first pass peaked at alpha 13/255 — technically present, visually absent.
+        // Ambient does not mean invisible: the field has to be legible as motion while
+        // still losing to any number on top of it.
+        const alpha = 0.16 + k * 0.30
         ctx!.strokeStyle = k > 0.55
           ? `rgba(251, 191, 36, ${alpha})`
           : `rgba(56, 189, 248, ${alpha})`
-        ctx!.lineWidth = 1
+        ctx!.lineWidth = 1 + k * 1.4
+        ctx!.shadowColor = k > 0.55 ? 'rgba(251,191,36,0.5)' : 'rgba(56,189,248,0.5)'
+        ctx!.shadowBlur = 6 + k * 10
         ctx!.stroke()
+        ctx!.shadowBlur = 0
       }
     }
 

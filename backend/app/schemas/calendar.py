@@ -20,6 +20,11 @@ class CalendarEvent(BaseModel):
     direction_prob_up: float | None = None
     direction_prob_flat: float | None = None
     direction_prob_down: float | None = None
+    # The stock's own FLAT band — 0.5x its historical earnings-reaction sigma, clamped
+    # to [2.5%, 10%]. This is what the model labels against, and it differs enormously
+    # by name (MMM 2.5%, TSLA 4.4%). The frontend was reverse-engineering an
+    # approximation from expected_move; now it gets the real number.
+    flat_band: float | None = None
     expected_move_pct: float | None = None
     has_prediction: bool = False
 

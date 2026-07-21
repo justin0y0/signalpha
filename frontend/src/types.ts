@@ -10,6 +10,7 @@ export type CalendarEvent = {
   direction_prob_up?: number | null
   direction_prob_flat?: number | null
   direction_prob_down?: number | null
+  flat_band?: number | null
   expected_move_pct?: number | null
   has_prediction: boolean
 }

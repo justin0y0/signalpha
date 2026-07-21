@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type React from 'react'
 import { useRenderTier } from '../hooks/useRenderTier'
 import type { CalendarEvent } from '../types'
 import { parseLocalDate } from '../utils/date'
@@ -27,6 +28,7 @@ export function BandTimeline({ events }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [offset, setOffset] = useState(0)
   const [hovered, setHovered] = useState<string | null>(null)
+  const pausedRef = useRef(false)
 
   const rows = useMemo(() => {
     return events
@@ -38,41 +40,71 @@ export function BandTimeline({ events }: Props) {
         day: parseLocalDate(e.earnings_date).getTime(),
         move: Math.abs(e.expected_move_pct as number),
         quiet: e.direction_prob_flat as number,
+        band: e.flat_band ?? null,
       }))
       .sort((a, b) => a.day - b.day)
   }, [events])
 
-  // Scrub: vertical scroll over the pinned section advances the window.
+  // Scrub inside the panel, never by hijacking the page.
+  //
+  // The first version pinned this and consumed up to 360vh of scroll, which pushed
+  // the actual backtest tools 3.6 screens down — you had to scrub the whole calendar
+  // before reaching the thing you came for. A component that explains the data has no
+  // business holding the page hostage. It now drifts on its own and hands control to
+  // the pointer on hover, so it costs exactly the height it occupies.
   useEffect(() => {
-    if (!rows.length) return
-    const host = hostRef.current
-    if (!host) return
-    const onScroll = () => {
-      const rect = host.getBoundingClientRect()
-      const travel = rect.height - window.innerHeight
-      if (travel <= 0) return
-      const progress = Math.min(1, Math.max(0, -rect.top / travel))
-      setOffset(progress * Math.max(0, rows.length - WINDOW_DAYS))
+    if (!rows.length || tier === 'still') return
+    const span = Math.max(0, rows.length - WINDOW_DAYS)
+    if (span <= 0) return
+    let raf = 0
+    let last = performance.now()
+    let alive = true
+    const io = new IntersectionObserver(([e]) => {
+      const was = alive
+      alive = e.isIntersecting
+      if (alive && !was) { last = performance.now(); raf = requestAnimationFrame(step) }
+    })
+    if (hostRef.current) io.observe(hostRef.current)
+    function step(now: number) {
+      if (!alive || document.hidden) return
+      const dt = Math.min(80, now - last)
+      last = now
+      if (!pausedRef.current) {
+        setOffset((o) => {
+          const next = o + dt * 0.0011 * span * 0.06
+          return next >= span ? 0 : next
+        })
+      }
+      raf = requestAnimationFrame(step)
     }
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [rows.length])
+    raf = requestAnimationFrame(step)
+    return () => { cancelAnimationFrame(raf); io.disconnect() }
+  }, [rows.length, tier])
+
+  // Hover hands the scrub to the pointer: sweep across to move through the calendar.
+  const onPointer = (ev: React.PointerEvent<HTMLDivElement>) => {
+    const span = Math.max(0, rows.length - WINDOW_DAYS)
+    if (span <= 0) return
+    const r = ev.currentTarget.getBoundingClientRect()
+    const p = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width))
+    setOffset(p * span)
+  }
 
   if (!rows.length) return null
 
   const start = Math.floor(offset)
   const frac = offset - start
   const visible = rows.slice(start, start + WINDOW_DAYS + 1)
-  const maxBand = Math.max(...rows.map((r) => bandFor(r.quiet, r.move)), 0.06)
+  const maxBand = Math.max(...rows.map((r) => r.band ?? bandFor(r.quiet, r.move)), 0.06)
 
   return (
-    <div
-      ref={hostRef}
-      className="bandtl"
-      style={{ height: tier === 'still' ? 'auto' : `${Math.min(360, rows.length * 9)}vh` }}
-    >
-      <div className={`bandtl__stage${tier === 'still' ? ' is-static' : ''}`}>
+    <div ref={hostRef} className="bandtl">
+      <div
+        className="bandtl__stage"
+        onPointerMove={onPointer}
+        onPointerEnter={() => { pausedRef.current = true }}
+        onPointerLeave={() => { pausedRef.current = false; setHovered(null) }}
+      >
         <div className="bandtl__head">
           <div>
             <div className="bandtl__kicker">Flat band, to scale</div>
@@ -84,13 +116,13 @@ export function BandTimeline({ events }: Props) {
             </p>
           </div>
           <div className="bandtl__scrubhint">
-            {tier === 'still' ? `${rows.length} events` : 'scroll to scrub →'}
+            {tier === 'still' ? `${rows.length} events` : 'sweep across to scrub'}
           </div>
         </div>
 
         <div className="bandtl__track" style={{ transform: tier === 'still' ? undefined : `translateX(${-frac * (100 / WINDOW_DAYS)}%)` }}>
-          {(tier === 'still' ? rows.slice(0, 14) : visible).map((r) => {
-            const band = bandFor(r.quiet, r.move)
+          {(tier === 'still' ? rows.slice(0, WINDOW_DAYS) : visible).map((r) => {
+            const band = r.band ?? bandFor(r.quiet, r.move)
             const bandPct = (band / maxBand) * 100
             const movePct = (r.move / maxBand) * 100
             const breaches = r.move > band
@@ -136,10 +168,9 @@ export function BandTimeline({ events }: Props) {
 }
 
 /**
- * The band the backend labels against, reconstructed for display: 0.5x the stock's own
- * reaction sigma, clamped to [2.5%, 10%]. Expected move is the best per-row proxy
- * available on the calendar payload, so a name the model reads as quiet with a small
- * expected move gets a tight band and a volatile one gets a wide one.
+ * Fallback only. The API now returns the real per-stock band (0.5x its realised
+ * earnings-reaction sigma); this approximation covers names with too few outcomes on
+ * record to compute one.
  */
 function bandFor(quiet: number, move: number): number {
   const implied = move * (0.6 + (1 - quiet) * 1.1)
