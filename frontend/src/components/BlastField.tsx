@@ -51,6 +51,12 @@ export function BlastField({ events }: Props) {
       canvas.height = Math.floor(h * dpr)
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
+    // ResizeObserver, not a one-shot measure. The canvas mounts the moment the render
+    // tier resolves from 'still' to 'full', which is before layout has settled, so a
+    // single getBoundingClientRect() reads 0x0 and every particle lands off-screen —
+    // a live canvas painting nothing, which is exactly what shipped first.
+    const ro = new ResizeObserver(resize)
+    ro.observe(canvas)
     resize()
 
     // Build clusters. z is time-to-earnings, so scrolling moves through the calendar.
@@ -99,6 +105,7 @@ export function BlastField({ events }: Props) {
 
     function draw() {
       if (!running || document.hidden) return
+      if (w < 2 || h < 2) { raf = requestAnimationFrame(draw); return }
       t += 0.006
       ctx!.clearRect(0, 0, w, h)
       ctx!.globalCompositeOperation = 'lighter'
@@ -160,6 +167,7 @@ export function BlastField({ events }: Props) {
     return () => {
       cancelAnimationFrame(raf)
       io.disconnect()
+      ro.disconnect()
       window.removeEventListener('resize', resize)
       window.removeEventListener('scroll', onScroll)
       canvas.removeEventListener('pointermove', onMove)
