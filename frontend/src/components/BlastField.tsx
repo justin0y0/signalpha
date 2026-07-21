@@ -107,6 +107,12 @@ export function BlastField({ events }: Props) {
       if (!running || document.hidden) return
       if (w < 2 || h < 2) { raf = requestAnimationFrame(draw); return }
       t += 0.006
+      drawFrame()
+      raf = requestAnimationFrame(draw)
+    }
+
+    function drawFrame() {
+      if (w < 2 || h < 2) return
       ctx!.clearRect(0, 0, w, h)
       ctx!.globalCompositeOperation = 'lighter'
 
@@ -155,13 +161,19 @@ export function BlastField({ events }: Props) {
       }
 
       ctx!.globalCompositeOperation = 'source-over'
-      raf = requestAnimationFrame(draw)
     }
 
     window.addEventListener('resize', resize)
     window.addEventListener('scroll', onScroll, { passive: true })
     canvas.addEventListener('pointermove', onMove)
     canvas.addEventListener('pointerleave', onLeave)
+
+    // Paint frame one synchronously. requestAnimationFrame does not fire while the
+    // document is hidden — a background tab, a throttled window, some low-power modes —
+    // so scheduling the first frame through rAF leaves the canvas blank until the page
+    // is looked at. Drawing once up front means the field is always there on arrival
+    // and the loop only ever adds motion.
+    drawFrame()
     raf = requestAnimationFrame(draw)
 
     return () => {
