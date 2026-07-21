@@ -161,7 +161,38 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 
 ### 6b. 仍未解决
 
-0. **🟡 处理中 — `predictions` 表标签泄漏（walk-forward 重生成已在跑）**
+0. **✅ 已解决 — 标签泄漏（walk-forward 重生成完成并上线）**
+
+   `regenerate_predictions.py` 已跑完：**5,505 条打分，5,477 条写回**（覆盖 98.4%）。四个消费面已接 `OUT_OF_SAMPLE_ONLY` 过滤并部署验证。原表备份在 `predictions_backup_20260720`（5,567 行）。
+
+   **诚实数字（线上实测）**：
+   | 指标 | 泄漏时 | walk-forward OOS |
+   |---|---|---|
+   | Backtest 胜率 @0.65 | 97.48% | **44.86%** |
+   | Backtest 总收益 / Sharpe | +70.01% / 8.18 | **−5.66% / −0.578** |
+   | Track Record 命中率 | 67.7% | **46.3%** |
+   | Showdown QUANT | +24.28% | **−1.34%** |
+
+   ### 🔑 由此得到的核心结论（对产品定位是决定性的）
+
+   **模型没有方向预测能力，但有显著的"平静事件"识别能力。**
+
+   | 情形 | 准确率 | 基线 | 样本 | 结论 |
+   |---|---|---|---|---|
+   | conf≥0.85 且预测 **FLAT** | **66.7%** | 49.8% | 1219 | **+16.9pp ≈ 11.8 个标准误，强显著** |
+   | conf≥0.85 且预测 **方向** | **40.7%** | 50% | 145 | 比抛硬币还差 |
+   | 全样本 3 分类准确率 | 46.41% | 49.84%(全押FLAT) | 5477 | **低于最蠢基线 3.4pp** |
+
+   独立交叉验证：用 `/performance` 页早就在显示的 `model_performance` 混淆矩阵算，准确率 48.12% vs 全押FLAT 49.96%，**同样低于基线**——说明这不是重生成引入的，是一直如此，只是从来没和正确基线对比过。
+
+   **产品含义**：
+   - ❌ 不能说"我们预测涨跌" —— 数据明确否定
+   - ✅ 可以说"我们识别哪些财报大概率是非事件" —— 强统计支持，且**有真实交易用途**（卖 premium / 短跨式吃 IV crush；管理持仓风险）
+   - 现有 pipeline 里的 `expected_move_pct` 和期权 IV 数据正好支撑这个方向
+
+   **仍待办**：重做校准（只在 holdout 上 fit，写进 `raw_prob_*` 之外的列）。现在平均 confidence 0.71 对应 46.4% 准确率，**严重过度自信，直接展示给用户是误导**。
+
+   以下是原始问题记录（保留备查）：
 
    状态：`schema_guard` 已加 `is_out_of_sample` / `raw_prob_*` 列；`data_pipeline/regenerate_predictions.py` 正在用 purged walk-forward 重算历史预测；四个消费面（Backtest / Showdown / Track Record / Performance 置信分层）已接上 `OUT_OF_SAMPLE_ONLY` 过滤，**但必须等重生成写完才能部署**，否则四个页面全空。
    原始 `predictions` 已备份到 `predictions_backup_20260720`（5,567 行）。
