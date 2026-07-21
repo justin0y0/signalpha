@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
+import { FeedRail } from './FeedRail'
 import { AuthWidget } from './AuthWidget'
 
 export function Layout() {
@@ -30,7 +31,9 @@ export function Layout() {
   ]
 
   return (
-    <div className="app-shell">
+    <>
+      <FeedRail />
+      <div className="app-shell">
       <header className="topbar">
         <NavLink to="/" className="brand">
           <div className="brand-mark">
@@ -86,5 +89,6 @@ export function Layout() {
         <Outlet />
       </main>
     </div>
+    </>
   )
 }

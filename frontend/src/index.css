@@ -2,45 +2,66 @@
 @import '@fontsource-variable/jetbrains-mono/wght.css';
 
 :root {
-  /* === Signalpha Design Tokens === */
-  --bg-0: #05070d;
-  --bg-1: #0a0e1a;
-  --bg-2: #0f1524;
-  --bg-3: #141b2e;
-  --bg-card: rgba(20, 27, 46, 0.6);
-  --bg-card-hover: rgba(28, 37, 60, 0.8);
-  --border: rgba(148, 163, 214, 0.1);
-  --border-strong: rgba(148, 163, 214, 0.18);
-  --border-accent: rgba(56, 189, 248, 0.35);
+  /* === Signalpha — chart-recorder identity ===
+     The product's one validated skill is detecting stillness: which earnings will be
+     non-events. So the visual world is a scientific chart recorder — the instrument
+     that draws a flat line until something happens — rather than a trading terminal.
+     Committed single theme; the instrument only exists in the dark. */
 
-  --text-primary: #f0f4ff;
-  --text-secondary: #a8b3d1;
-  --text-tertiary: #6b7593;
-  --text-muted: #4a5373;
+  /* Ground: graphite with a deliberate green bias, not the default blue-black. */
+  --ink: #0D1211;
+  --ink-raised: #141A18;
+  --ink-panel: #191F1D;
+  --bg-0: var(--ink);
+  --bg-1: var(--ink-raised);
+  --bg-2: var(--ink-panel);
+  --bg-3: #1F2624;
+  --bg-card: rgba(25, 31, 29, 0.72);
+  --bg-card-hover: rgba(33, 41, 38, 0.9);
 
-  --accent-cyan: #38bdf8;
-  --accent-cyan-glow: rgba(56, 189, 248, 0.35);
-  --accent-purple: #a78bfa;
-  --accent-purple-glow: rgba(167, 139, 250, 0.3);
-  --accent-emerald: #34d399;
-  --accent-emerald-glow: rgba(52, 211, 153, 0.3);
-  --accent-rose: #fb7185;
-  --accent-rose-glow: rgba(251, 113, 133, 0.3);
-  --accent-amber: #fbbf24;
+  --border: rgba(127, 169, 155, 0.13);
+  --border-strong: rgba(127, 169, 155, 0.26);
+  --border-accent: rgba(226, 112, 58, 0.4);
 
-  --up: #34d399;
-  --down: #fb7185;
-  --flat: #a8b3d1;
+  /* Neutrals carry the same green bias so nothing reads as unconsidered grey. */
+  --text-primary: #EDF0EC;
+  --text-secondary: #A6B3AC;
+  --text-tertiary: #6E7C76;
+  --text-muted: #4C5854;
 
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
-  --shadow-md: 0 4px 16px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
-  --shadow-lg: 0 20px 40px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.25);
-  --shadow-glow-cyan: 0 0 24px rgba(56, 189, 248, 0.15);
-  --shadow-glow-purple: 0 0 24px rgba(167, 139, 250, 0.18);
+  /* The stylus. One bold place; everything else stays quiet. */
+  --stylus: #E2703A;
+  --stylus-soft: rgba(226, 112, 58, 0.16);
+  --stylus-glow: rgba(226, 112, 58, 0.34);
+  --trace: #7FA99B;
+  --trace-soft: rgba(127, 169, 155, 0.14);
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
+  /* Legacy accent names kept so 4,000 lines of existing CSS keep resolving. */
+  --accent-cyan: var(--stylus);
+  --accent-cyan-glow: var(--stylus-glow);
+  --accent-purple: var(--trace);
+  --accent-purple-glow: var(--trace-soft);
+  --accent-emerald: #6FA287;
+  --accent-emerald-glow: rgba(111, 162, 135, 0.28);
+  --accent-rose: #C4726A;
+  --accent-rose-glow: rgba(196, 114, 106, 0.28);
+  --accent-amber: #D9A441;
+
+  /* Semantic direction, desaturated so it never competes with the stylus. */
+  --up: #6FA287;
+  --down: #C4726A;
+  --flat: #7FA99B;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.5);
+  --shadow-md: 0 4px 18px rgba(0,0,0,0.38), 0 1px 2px rgba(0,0,0,0.25);
+  --shadow-lg: 0 24px 48px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3);
+  --shadow-glow-cyan: 0 0 26px var(--stylus-soft);
+  --shadow-glow-purple: 0 0 26px var(--trace-soft);
+
+  /* Instrument panels are milled, not pillowy. */
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 7px;
   --radius-xl: 24px;
 
   --font-sans: 'Inter Variable', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -4072,3 +4093,89 @@ input, select { font: inherit; color: inherit; }
   border-radius: var(--radius-sm);
 }
 .brief-note b { color: var(--accent-cyan); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Typographic inversion.
+   Convention puts a sans on headings and a mono on data. Here the mono is
+   promoted to the display role at large sizes with tight tracking, and Inter
+   drops to body. On an instrument, the machine's own typeface should be the
+   loudest thing on the panel — and it makes the page recognisable at a glance.
+   ══════════════════════════════════════════════════════════════════════ */
+.hero-headline,
+h1, h2,
+.card-title,
+.about-section__title,
+.mc-hero__title,
+.bt-hero__title,
+.sim-card__title {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+.hero-headline { font-size: clamp(2rem, 4.4vw, 3.4rem); line-height: 1.02; }
+.hero-sub { max-width: 62ch; line-height: 1.6; }
+
+/* Eyebrows read as instrument labels: small, wide, quiet. */
+.stat-label, .field-label, .about-section__kicker,
+.sim-card__kicker, .mc-hero__eyebrow, .bt-hero__badge {
+  font-family: var(--font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* Digits must line up in every column. */
+.stat-value, .data-table td, .outcome__score, .mono, .tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── The paper feed ───────────────────────────────────────────────────
+   A stylus rail down the left edge that advances with scroll, the way chart
+   paper feeds past a pen. Purely ambient; hidden from assistive tech and
+   stilled for reduced-motion. */
+.feed-rail {
+  position: fixed;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: linear-gradient(180deg, transparent, var(--border-strong) 12%, var(--border-strong) 88%, transparent);
+  z-index: 40;
+  pointer-events: none;
+}
+.feed-rail__stylus {
+  position: absolute;
+  left: -2px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--stylus);
+  box-shadow: 0 0 12px var(--stylus-glow), 0 0 3px var(--stylus);
+  will-change: top;
+}
+@media (max-width: 900px) { .feed-rail { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .feed-rail__stylus { transition: none !important; }
+}
+
+/* ── Recorder hero ─────────────────────────────────────────────────── */
+.recorder {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, rgba(127,169,155,0.04), transparent 60%),
+    var(--ink-raised);
+  overflow: hidden;
+}
+.recorder__canvas { display: block; width: 100%; height: 180px; }
+.recorder__meta {
+  display: flex; flex-wrap: wrap; gap: 1.4rem;
+  padding: 0.85rem 1.15rem;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.recorder__meta b { color: var(--text-primary); font-weight: 600; letter-spacing: -0.01em; }
+.recorder__legend { display: inline-flex; align-items: center; gap: 0.4rem; }
+.recorder__swatch { width: 14px; height: 2px; display: inline-block; }
