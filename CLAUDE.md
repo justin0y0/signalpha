@@ -148,9 +148,27 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 **教训（写进流程）**：`docker compose up -d --build` 里 build 成功 ≠ 容器换了。部署后必须验证容器内代码：
 `sudo docker exec signalpha-backend-1 md5sum /app/<改过的文件>`，或对比 `docker ps` 的 `Up` 时长。
 
+### 6a-2. 第二批修复（2026-07-20 稍晚）
+
+| # | 问题 | 根因 | 修法 |
+|---|------|------|------|
+| 14 | repo 没有任何加列/建表的迁移路径；`oracle_signals`/`pulse_signal_log` 只存在于手工建的表 | `init.sql` 只在空数据目录跑一次；`create_all` 不改已有表 | 新增 `backend/app/db/schema_guard.py`，启动时跑幂等 DDL（11 条，已验证 0 失败） |
+| 15 | **日历所有日期早一天**（美西时区） | `new Date('2026-07-21')` 按 UTC 午夜解析，`toLocaleDateString` 在负时区渲染成前一天。PDT 下实测 "Jul 21" 显示为 "Jul 20" | 新增 `frontend/src/utils/date.ts`，所有 DATE 型字段统一走 `parseLocalDate`；TIMESTAMPTZ 字段保持原样 |
+| 16 | **所有 cron job 跑在 UTC 而非美东** | 手工构造的 `CronTrigger` 在**构造时**就锁定本地时区；scheduler 的 `timezone=` 只对"传参数让 add_job 自己建 trigger"生效。容器没设 TZ → 实测 `.timezone == Etc/UTC` | 每个 trigger 显式传 `timezone=TZ`。原来 `collect_options_data` 本该收盘后跑，实际跑在 12:30 ET 盘中 |
+| 17 | yfinance 每次调用都把失败 ticker 重打一遍 ERROR，Pulse 每 5 分钟扫全universe → 每天几万行 ERROR，淹没真错误也吃磁盘 | `FI`/`MMC` 恒返回 0 行（AAPL 正常） | `logging.py` 压掉 yfinance/peewee/urllib3 的日志级别；扫描本身已能跳过缺失 ticker |
+| 18 | 日历采集窗口 14 天，但前端请求 90 天、页面自称"rolling 120-day window" | — | `default_calendar_lookahead_days` 14 → 90；profile 缓存改为落盘（`./data/profile_cache.json`），免费额度扛得住 |
+| 19 | Calendar/Performance/Deep-Dive 的 KPI 卡没有强调色边条、没有图标、没有 hover，和 Simulator/Contact 不像一个产品 | 共享 `StatCard` 组件比 `.sim-kpi` 少三样 | `StatCard` 升级为 `.sim-kpi` 的视觉语言，三个页面 12 处调用全部补图标 |
+
 ### 6b. 仍未解决
 
-0. **🔴 P0 最高优先 — `predictions` 表存在标签泄漏，网站上所有回测/对战/战绩数字都被污染**
+0. **🟡 处理中 — `predictions` 表标签泄漏（walk-forward 重生成已在跑）**
+
+   状态：`schema_guard` 已加 `is_out_of_sample` / `raw_prob_*` 列；`data_pipeline/regenerate_predictions.py` 正在用 purged walk-forward 重算历史预测；四个消费面（Backtest / Showdown / Track Record / Performance 置信分层）已接上 `OUT_OF_SAMPLE_ONLY` 过滤，**但必须等重生成写完才能部署**，否则四个页面全空。
+   原始 `predictions` 已备份到 `predictions_backup_20260720`（5,567 行）。
+
+   以下是原始问题记录：
+
+   **（原 P0）`predictions` 表存在标签泄漏，网站上所有回测/对战/战绩数字都被污染**
 
    **证据链（全部实测，非推断）**：
    - `predictions` 5,530 行里 **5,394 行的 `created_at` 晚于它所预测的 `earnings_date`**；全部在 **2026-04-26 一天批量写入**，覆盖 2008-01-17 ~ 2026-07-29 的财报。真正 ex-ante 的只有 173 行。
@@ -158,8 +176,8 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
    - **原始模型概率被永久覆盖**，表里没有 `raw_prob_*` 列保留，无法从数据库还原。
    - 症状：`threshold=0.65` 的 Backtest 跑出 **159 笔交易 155 笔方向正确 = 97.48% 胜率、Sharpe 8.18、最大回撤 -0.69%**。底层模型是 49.3% 的 3 分类准确率，这个组合在真实 OOS 下不可能出现。
 
-   **影响面**：凡是读 `predictions ⨝ outcomes` 的页面全部受污染 —— **Backtest、Showdown、Track Record**。
-   `/performance` 页读的是 `model_performance` 表（来自 `models/train.py` 的 purged walk-forward），**那条 49.3% 是诚实的**。
+   **影响面**：凡是读 `predictions ⨝ outcomes` 的页面全部受污染 —— **Backtest、Showdown、Track Record，以及 Performance 页的"置信分层"区块**（`performance_service._confidence_tiers` 也读这张表；线上实测 CONF≥65% 显示 74.1% 准确率 / 86.5% 方向准确率）。
+   Performance 页的顶部卡片、sector 热力图、混淆矩阵、SHAP 图读的是 `model_performance` 表（来自 `models/train.py` 的 purged walk-forward），**那部分和 49.3% 是诚实的**。
    所以网站现在同时展示"49.3% 准确率"和"97.5% 回测胜率"——这两个数字互相矛盾，矛盾本身就是破绽。
 
    **为什么这件事比任何 bug 都重要**：这是给 Citadel 一类机构看的作品集。Look-ahead leakage 是 quant 领域的头号原罪，面试官看到 49.3% 的模型跑出 Sharpe 8 会立刻追问，一问就穿。
