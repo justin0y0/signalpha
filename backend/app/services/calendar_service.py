@@ -56,6 +56,9 @@ class CalendarService:
                     market_cap=float(event.market_cap) if event.market_cap is not None else None,
                     confidence_score=prediction.confidence_score if prediction else None,
                     direction=direction,
+                    direction_prob_up=prediction.direction_prob_up if prediction else None,
+                    direction_prob_flat=prediction.direction_prob_flat if prediction else None,
+                    direction_prob_down=prediction.direction_prob_down if prediction else None,
                     expected_move_pct=prediction.expected_move_pct if prediction else None,
                     has_prediction=prediction is not None,
                 )

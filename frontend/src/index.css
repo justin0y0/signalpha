@@ -4022,3 +4022,37 @@ input, select { font: inherit; color: inherit; }
 }
 .baseline-panel__note b { color: var(--accent-amber); }
 @media (max-width: 860px) { .baseline-panel__grid { grid-template-columns: repeat(2, 1fr); } }
+
+/* ====================== Outcome distribution ======================
+   Replaces the single direction label on the Calendar. After calibration the
+   argmax is FLAT on 97.5% of events, so the label carried no information while
+   the distribution behind it still does — and P(FLAT) is the one signal the
+   model demonstrably has. */
+.outcome { display: flex; flex-direction: column; gap: 0.3rem; min-width: 130px; }
+.outcome--compact { min-width: 96px; gap: 0.22rem; }
+.outcome__head { display: flex; align-items: baseline; gap: 0.4rem; }
+.outcome__score {
+  font-family: var(--font-mono); font-size: 0.95rem; font-weight: 700;
+  letter-spacing: -0.02em; line-height: 1;
+}
+.outcome__score--high { color: var(--accent-cyan); }
+.outcome__score--mid  { color: var(--text-secondary); }
+.outcome__score--low  { color: var(--accent-amber); }
+.outcome__label { font-size: 0.68rem; color: var(--text-tertiary); white-space: nowrap; }
+.outcome__bar {
+  display: flex; height: 5px; width: 100%;
+  border-radius: 3px; overflow: hidden; background: var(--bg-1);
+}
+.outcome__seg { display: block; height: 100%; }
+.outcome__seg--up   { background: var(--up); }
+.outcome__seg--flat { background: rgba(148, 163, 184, 0.45); }
+.outcome__seg--down { background: var(--down); }
+.outcome__legend {
+  display: flex; gap: 0.5rem;
+  font-family: var(--font-mono); font-size: 0.62rem; color: var(--text-tertiary);
+}
+.outcome__legend span { display: inline-flex; align-items: center; gap: 0.22rem; }
+.outcome__dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+.outcome__dot--up { background: var(--up); }
+.outcome__dot--flat { background: rgba(148, 163, 184, 0.6); }
+.outcome__dot--down { background: var(--down); }

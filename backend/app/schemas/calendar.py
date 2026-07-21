@@ -14,6 +14,12 @@ class CalendarEvent(BaseModel):
     market_cap: float | None = None
     confidence_score: float | None = None
     direction: str | None = None
+    # The full calibrated distribution, not just its argmax. After walk-forward
+    # calibration FLAT wins argmax on 97.5% of events, so `direction` alone conveys
+    # almost nothing; the split behind it still does. The Calendar renders these.
+    direction_prob_up: float | None = None
+    direction_prob_flat: float | None = None
+    direction_prob_down: float | None = None
     expected_move_pct: float | None = None
     has_prediction: bool = False
 

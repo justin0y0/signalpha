@@ -53,6 +53,24 @@ def _prepare_training_frame(database_url: str) -> pd.DataFrame:
     return expanded
 
 
+def _events_per_year(frame: pd.DataFrame, n_returns: int) -> float:
+    """Annualisation factor for an event-driven return series.
+
+    Sharpe scales by sqrt(observations per year). For a daily series that is 252; for
+    one return per earnings event it is however many events actually landed in the
+    span, which is closer to 50. Using 252 on event returns overstates Sharpe by
+    ~2.2x. Falls back to the number of returns when the span is unusable.
+    """
+    if n_returns <= 1:
+        return 1.0
+    try:
+        span_days = (frame["earnings_date"].max() - frame["earnings_date"].min()).days
+        years = max(0.25, span_days / 365.25)
+        return max(1.0, n_returns / years)
+    except Exception:  # noqa: BLE001
+        return float(max(1, n_returns))
+
+
 def _evaluate_sector(frame: pd.DataFrame, sector: str) -> dict[str, Any]:
     candidate_cols = [
         col
@@ -143,7 +161,13 @@ def _evaluate_sector(frame: pd.DataFrame, sector: str) -> dict[str, Any]:
         "f1_weighted": float(f1),
         "mae": float(mean_absolute_error(y_true_mag, y_pred_mag)),
         "rmse": float(root_mean_squared_error(y_true_mag, y_pred_mag)),
-        "sharpe_ratio": float(sharpe_ratio(pd.Series(strategy_returns))),
+        # sharpe_ratio() defaults to annualization=252, which assumes a DAILY return
+        # series. What it gets here is one return per earnings event -- roughly 50 a
+        # year -- so the default inflated every per-sector Sharpe on the Performance
+        # page by about sqrt(252/50) ~ 2.2x, and put it on a different footing from
+        # Backtest, which annualises by sqrt(n_trades/years). Annualise by this
+        # sector's own event count instead so the two pages mean the same thing.
+        "sharpe_ratio": float(sharpe_ratio(pd.Series(strategy_returns), annualization=_events_per_year(frame, len(strategy_returns)))),
         "confusion_matrix": confusion_matrix(y_true_dir, y_pred_dir, labels=["DOWN", "FLAT", "UP"]).tolist(),
     }
 

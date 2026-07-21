@@ -7,6 +7,9 @@ export type CalendarEvent = {
   market_cap?: number | null
   confidence_score?: number | null
   direction?: string | null
+  direction_prob_up?: number | null
+  direction_prob_flat?: number | null
+  direction_prob_down?: number | null
   expected_move_pct?: number | null
   has_prediction: boolean
 }

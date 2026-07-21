@@ -7,6 +7,7 @@ import type { CalendarEvent, CalendarResponse } from '../types'
 import { DirectionBadge } from '../components/ui/DirectionBadge'
 import { Badge } from '../components/ui/Badge'
 import { StatCard } from '../components/ui/StatCard'
+import { OutcomeBar } from '../components/ui/OutcomeBar'
 import { formatDate, daysUntil } from '../utils/date'
 
 const SECTORS = ['All', 'Technology', 'Financial Services', 'Healthcare', 'Consumer Cyclical', 'Consumer Defensive', 'Industrials', 'Energy', 'Communication Services']
@@ -57,8 +58,8 @@ export function EarningsCalendarPage() {
       const du = daysUntil(e.earnings_date)
       return du >= 0 && du <= 7
     }).length
-    const upDirs = events.filter((e) => e.direction === 'UP').length
-    return { withPrediction, upcoming7, upDirs }
+    const quiet = events.filter((e) => (e.direction_prob_flat ?? 0) >= 0.6).length
+    return { withPrediction, upcoming7, quiet }
   }, [events])
 
   return (
@@ -101,10 +102,10 @@ export function EarningsCalendarPage() {
           delay={0.15}
         />
         <StatCard
-          label="Bullish Signals"
+          label="Likely Quiet"
           icon={<TrendingUp size={12} />}
-          value={stats.upDirs}
-          helper="predicted UP direction"
+          value={stats.quiet}
+          helper="P(FLAT) ≥ 60% · the model's one validated skill"
           accent="cyan"
           delay={0.2}
         />
@@ -167,7 +168,7 @@ export function EarningsCalendarPage() {
                 <th>Company</th>
                 <th>Sector</th>
                 <th>Earnings Date</th>
-                <th>Prediction</th>
+                <th>Quiet Score · Distribution</th>
                 <th style={{ textAlign: 'right' }}>Expected Move</th>
                 <th style={{ width: 40 }}></th>
               </tr>
@@ -200,7 +201,7 @@ export function EarningsCalendarPage() {
                       </div>
                     </td>
                     <td>
-                      <DirectionBadge direction={e.direction} confidence={e.confidence_score} />
+                      <OutcomeBar compact up={e.direction_prob_up} flat={e.direction_prob_flat} down={e.direction_prob_down} />
                     </td>
                     <td className="mono" style={{ textAlign: 'right' }}>
                       {e.expected_move_pct != null ? `±${(e.expected_move_pct * 100).toFixed(2)}%` : <span className="tertiary">—</span>}
