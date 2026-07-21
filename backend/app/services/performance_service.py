@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.db.models import ModelPerformance, Outcome, Prediction
 from backend.app.schemas.performance import ConfidenceTier, PerformanceResponse, SectorPerformance
+from backend.app.services.prediction_filters import OUT_OF_SAMPLE_ONLY
 
 
 FLAT_THRESHOLD = 0.02
@@ -72,6 +73,7 @@ class PerformanceService:
                 & (Outcome.earnings_date == Prediction.earnings_date),
             )
             .where(Outcome.actual_t5_return.is_not(None))
+            .where(OUT_OF_SAMPLE_ONLY)
         ).all()
 
         if not rows:

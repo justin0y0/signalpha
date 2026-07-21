@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.api.deps import get_db
 from backend.app.db.models import Prediction, Outcome, EarningsEvent
+from backend.app.services.prediction_filters import OUT_OF_SAMPLE_ONLY
 
 router = APIRouter(prefix="/track-record", tags=["track-record"])
 
@@ -54,6 +55,7 @@ def summary(db: Session = Depends(get_db)) -> dict:
             Outcome.earnings_date == Prediction.earnings_date,
         ))
         .where(Outcome.actual_t1_close_return.is_not(None))
+        .where(OUT_OF_SAMPLE_ONLY)
     ).all()
 
     if not rows:
@@ -124,6 +126,7 @@ def confusion(db: Session = Depends(get_db)) -> dict:
             Outcome.earnings_date == Prediction.earnings_date,
         ))
         .where(Outcome.actual_t1_close_return.is_not(None))
+        .where(OUT_OF_SAMPLE_ONLY)
     ).all()
 
     classes = ["UP", "FLAT", "DOWN"]
@@ -155,6 +158,7 @@ def calibration(db: Session = Depends(get_db)) -> dict:
             Outcome.earnings_date == Prediction.earnings_date,
         ))
         .where(Outcome.actual_t1_close_return.is_not(None))
+        .where(OUT_OF_SAMPLE_ONLY)
         .where(Prediction.confidence_score.is_not(None))
     ).all()
 
@@ -195,6 +199,7 @@ def rolling(window: int = Query(90, ge=14, le=365), db: Session = Depends(get_db
             Outcome.earnings_date == Prediction.earnings_date,
         ))
         .where(Outcome.actual_t1_close_return.is_not(None))
+        .where(OUT_OF_SAMPLE_ONLY)
         .order_by(Prediction.earnings_date)
     ).all()
 
@@ -250,6 +255,7 @@ def recent(
             Outcome.earnings_date == Prediction.earnings_date,
         ))
         .where(Outcome.actual_t1_close_return.is_not(None))
+        .where(OUT_OF_SAMPLE_ONLY)
         .order_by(Prediction.earnings_date.desc())
     )
     if sector: q = q.where(Prediction.sector == sector)
@@ -299,6 +305,7 @@ def confidence_breakdown(db: Session = Depends(get_db)) -> dict:
             Outcome.earnings_date == Prediction.earnings_date,
         ))
         .where(Outcome.actual_t1_close_return.is_not(None))
+        .where(OUT_OF_SAMPLE_ONLY)
         .where(Prediction.confidence_score.is_not(None))
     ).all()
 

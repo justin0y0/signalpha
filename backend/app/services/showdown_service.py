@@ -14,6 +14,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models import EarningsEvent, Outcome, Prediction
+from backend.app.services.prediction_filters import OUT_OF_SAMPLE_ONLY
 
 
 @dataclass
@@ -178,6 +179,7 @@ def run_showdown(
         .where(
             Prediction.earnings_date >= start_date,
             Prediction.earnings_date <= end_date,
+            OUT_OF_SAMPLE_ONLY,
         )
         .order_by(Prediction.earnings_date.asc())
     ).all()

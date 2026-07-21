@@ -12,6 +12,7 @@ from backend.app.schemas.backtest import (
     BacktestRequest, BacktestResponse, DirectionStat, EquityPoint,
     MonthlyReturn, SectorAttribution, TradeRecord,
 )
+from backend.app.services.prediction_filters import OUT_OF_SAMPLE_ONLY
 
 log = logging.getLogger(__name__)
 INITIAL_EQUITY = 1_000_000.0
@@ -88,6 +89,8 @@ class BacktestService:
             .where(
                 Prediction.earnings_date >= req.start_date,
                 Prediction.earnings_date <= req.end_date,
+                # Only genuinely ex-ante rows. Without this the curve is in-sample fit.
+                OUT_OF_SAMPLE_ONLY,
             )
             .order_by(Prediction.earnings_date.asc())
         )
