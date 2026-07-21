@@ -41,6 +41,13 @@ async def lifespan(_: FastAPI):
         ensure_tables()
     except Exception:
         pass
+    # Tables/columns that create_all cannot produce: the two hand-made tables
+    # (oracle_signals, pulse_signal_log) and any ADD COLUMN on an existing table.
+    try:
+        from backend.app.db.schema_guard import ensure_schema
+        ensure_schema()
+    except Exception:
+        pass
     yield
 
 

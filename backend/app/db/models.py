@@ -149,6 +149,14 @@ class Prediction(Base):
     key_drivers: Mapped[list | None] = mapped_column(JSON)
     similar_cases: Mapped[list | None] = mapped_column(JSON)
     feature_snapshot: Mapped[dict | None] = mapped_column(JSON)
+    # True only when the model that produced this row was trained purely on data
+    # predating earnings_date. Rows backfilled after the fact stay False and must be
+    # excluded from anything that reports performance. See db/schema_guard.py.
+    is_out_of_sample: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    # The model's untouched output, kept so post-hoc calibration can never destroy it.
+    raw_prob_up: Mapped[float | None] = mapped_column(Float)
+    raw_prob_flat: Mapped[float | None] = mapped_column(Float)
+    raw_prob_down: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
