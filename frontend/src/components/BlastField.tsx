@@ -55,7 +55,10 @@ export function BlastField({ events }: Props) {
     // tier resolves from 'still' to 'full', which is before layout has settled, so a
     // single getBoundingClientRect() reads 0x0 and every particle lands off-screen —
     // a live canvas painting nothing, which is exactly what shipped first.
-    const ro = new ResizeObserver(resize)
+    // Paint on every size change, not just measure. Together with the synchronous
+    // first frame this makes the field independent of requestAnimationFrame entirely:
+    // whenever the canvas has area, something is on it. rAF then only supplies motion.
+    const ro = new ResizeObserver(() => { resize(); drawFrame() })
     ro.observe(canvas)
     resize()
 
