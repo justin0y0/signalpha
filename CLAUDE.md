@@ -73,6 +73,22 @@ gcloud compute ssh justinyu0315@signalpha-prod --zone us-west2-a --command \
 
 **部署前必须先 `git push`**，服务器靠 `git pull` 拿代码，本地改了不 push 等于没改。
 
+### 🔴 部署后必须跑这个，否则不许说"好了"
+
+```bash
+./scripts/verify_deploy.sh
+```
+
+从**外部、经真实域名**打一遍所有 API 和页面——用户怎么访问就怎么验。
+
+**为什么加这条**：2026-07-21 我把站搞挂了，每个 tab 包括 `/admin` 全是 502，持续到 Justin 发现才知道。根因是重建 backend 容器后它换了 IP，而 nginx 的 `proxy_pass http://backend:8000` **只在启动时解析一次**并永久缓存。当时用的部署检查全部通过——因为那些检查只问"我的代码进容器了吗"，那是关于我的问题，不是关于用户能不能用的问题。
+
+nginx 侧已改为变量 + Docker DNS 按请求解析，但**验证习惯比那个修复更重要**：容器内 grep 通过 ≠ 网站能用。
+
+### 另一条铁律：不要在 backend 容器里跑重活
+
+重训练/回填这类几十分钟的任务**不许 `docker exec` 进 `signalpha-backend-1`**——它和 Oracle worker 共用进程资源，我那次跑到 113% CPU。用 `signalpha-scheduler-1` 或起一次性容器。
+
 ### 常用运维命令（Claude 直接跑）
 ```bash
 # psql
