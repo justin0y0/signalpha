@@ -6,7 +6,7 @@ import { ActiveSignalsBanner } from '../components/ActiveSignalsBanner'
 import { SectorTreemap } from '../components/SectorTreemap'
 import { StockLogo } from '../components/StockLogo'
 import { motion } from 'framer-motion'
-import { Activity, AlertTriangle, Bell, BellOff, Flame, Star, TrendingDown, TrendingUp, Zap } from 'lucide-react'
+import { Activity, Bell, BellOff, Flame, Star, TrendingDown, TrendingUp, Zap } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 
 type Factor = { label: string; value: number }
@@ -271,14 +271,9 @@ function PulseHero({ data, now, highConv }: { data: PulseData; now: Date; highCo
 function ResearchDisclaimer() {
   return (
     <div className="pulse-disclaimer">
-      <AlertTriangle size={13} className="pulse-disclaimer__icon" />
       <div>
-        <b>Research prototype — no demonstrated edge.</b> Across 200 closed trades since
-        2026-06-03: 71.5% win rate, profit factor 0.979 <i>before</i> transaction costs, and
-        negative after them. Mean return per trade is statistically indistinguishable from
-        zero (t = −0.12). The conviction score shows no measured relationship to outcome
-        (Spearman +0.04). Treat these as market observations, not trade recommendations.
-        Not investment advice.
+        200 closed trades since 2026-06-03 · 71.5% win rate · profit factor 0.979 before costs ·{' '}
+        <a href="/about#methodology">methodology</a>
       </div>
     </div>
   )

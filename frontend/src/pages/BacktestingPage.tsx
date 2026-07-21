@@ -101,7 +101,10 @@ export function BacktestingPage() {
   // Default to today, not a frozen literal — a hardcoded end date silently truncates the
   // backtest window a little more every day that passes.
   const [endDate,setEndDate]=useState(()=>new Date().toISOString().slice(0,10))
-  const [threshold,setThreshold]=useState(0.65)
+  // 0.65 was set when probabilities were uncalibrated and inflated. Walk-forward
+  // calibration pulls them back to the base rate, so P(UP) tops out far lower and a
+  // 0.65 gate fired on 84 of 5,477 rows — the default run returned zero trades.
+  const [threshold,setThreshold]=useState(0.40)
   const [running,setRunning]=useState(false)
   const [result,setResult]=useState<BacktestResponse|null>(null)
   const [error,setError]=useState<string|null>(null)
@@ -171,8 +174,8 @@ export function BacktestingPage() {
           </div>
           <div className="bt-field">
             <label>Min confidence <span className="bt-conf-val">{(threshold*100).toFixed(0)}%</span></label>
-            <input type="range" min="0.5" max="0.95" step="0.05" value={threshold} onChange={e=>setThreshold(+e.target.value)} className="bt-slider"/>
-            <div className="bt-slider-labels"><span>50%</span><span>95%</span></div>
+            <input type="range" min="0.25" max="0.80" step="0.01" value={threshold} onChange={e=>setThreshold(+e.target.value)} className="bt-slider"/>
+            <div className="bt-slider-labels"><span>25%</span><span>80%</span></div>
           </div>
           <div className="bt-field bt-field--actions">
             <button className="bt-run" onClick={run} disabled={running}>
@@ -186,7 +189,13 @@ export function BacktestingPage() {
       {error&&<motion.div className="bt-error" initial={{opacity:0}} animate={{opacity:1}}>{error}</motion.div>}
 
       <AnimatePresence>
-        {result&&result.total_samples>0&&(
+        {result&&result.total_samples>0&&result.total_trades===0&&(
+          <motion.div className="bt-error" initial={{opacity:0}} animate={{opacity:1}}>
+            {result.total_samples.toLocaleString()} events matched, but none cleared a {(threshold*100).toFixed(0)}% probability gate,
+            so there are no trades to report. Probabilities are calibrated to the base rate — try 35–45%.
+          </motion.div>
+        )}
+        {result&&result.total_trades>0&&(
           <motion.div ref={resultRef} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
             <div className="bt-kpi-strip">
               {kpis.map((k,i)=><KpiCard key={k.label} k={k} delay={i*0.05}/>)}

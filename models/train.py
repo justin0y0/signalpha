@@ -48,8 +48,32 @@ def _prepare_training_frame(database_url: str) -> pd.DataFrame:
         return frame
     frame["earnings_date"] = pd.to_datetime(frame["earnings_date"])
     expanded = expand_feature_payload(frame, payload_col="feature_payload")
-    expanded["direction_label"] = expanded["actual_t1_close_return"].astype(float).apply(label_direction)
-    expanded["magnitude_target"] = expanded["actual_t1_close_return"].astype(float).abs()
+
+    # Per-stock FLAT band instead of a flat +/-2% for everything.
+    #
+    # A 2% earnings move is enormous for a utility and noise for TSLA, so a single
+    # threshold asks the model to learn an incoherent target: low-vol names almost
+    # never produce UP/DOWN, high-vol names almost never produce FLAT. The label then
+    # encodes "which stock is this" more than "what happened".
+    #
+    # label_direction_adaptive has been in models/dataset.py the whole time -- and
+    # train.py even imported it -- but the static labeller was the one actually wired
+    # up. Band = the stock's own historical earnings-reaction sigma, clamped to
+    # [2.5%, 10%]. Sigma is computed EXPANDING (shift(1) so an event never sees its
+    # own outcome), because a full-sample sigma would leak future volatility into a
+    # label the walk-forward split is supposed to keep clean.
+    expanded = expanded.sort_values(["ticker", "earnings_date"]).reset_index(drop=True)
+    returns = expanded["actual_t1_close_return"].astype(float)
+    expanded["stock_reaction_std"] = (
+        returns.groupby(expanded["ticker"])
+        .transform(lambda s: s.shift(1).expanding(min_periods=4).std())
+    )
+    expanded["direction_label"] = [
+        label_direction_adaptive(value, std)
+        for value, std in zip(returns, expanded["stock_reaction_std"])
+    ]
+    expanded["magnitude_target"] = returns.abs()
+    expanded = expanded.sort_values("earnings_date").reset_index(drop=True)
     return expanded
 
 
@@ -87,6 +111,7 @@ def _evaluate_sector(frame: pd.DataFrame, sector: str) -> dict[str, Any]:
             "convergence_high",
             "direction_label",
             "magnitude_target",
+            "stock_reaction_std",
         }
         and pd.api.types.is_numeric_dtype(frame[col])
     ]
@@ -188,6 +213,7 @@ def _fit_final_model(frame: pd.DataFrame, sector: str, model_version: str) -> tu
             "convergence_high",
             "direction_label",
             "magnitude_target",
+            "stock_reaction_std",
         }
         and pd.api.types.is_numeric_dtype(frame[col])
     ]

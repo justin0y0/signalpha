@@ -8,7 +8,11 @@ from backend.app.schemas.performance import ConfidenceTier, PerformanceResponse,
 from backend.app.services.prediction_filters import OUT_OF_SAMPLE_ONLY
 
 
+# Per-stock FLAT band, matching how the model is now labelled (see
+# models/train.py). A single +/-2% cut calls a 2% move on a utility the same event
+# as a 2% move on TSLA, which is not the same event at all.
 FLAT_THRESHOLD = 0.02
+ADAPTIVE_FLOOR, ADAPTIVE_CEILING = 0.025, 0.10
 
 
 def _actual_class(ret: float | None) -> str | None:

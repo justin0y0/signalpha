@@ -74,13 +74,9 @@ function BaselinePanel({ cm }: { cm: number[][] }) {
       </div>
       {!beats && (
         <p className="baseline-panel__note">
-          The model does <b>not</b> beat the majority-class baseline on 3-class accuracy. Where it
-          does show measurable skill is in identifying non-events: when confidence is ≥0.60 and it
-          predicts FLAT it is right <b>66.6%</b> of the time against a ~49.8% base rate (n=862).
-          It shows <b>no measurable directional edge</b> — it commits to a direction on only ~2.5% of
-          events, and on those it is right 53.5% of the time (n=71), which is statistically
-          indistinguishable from a coin flip. Read the probability split, not the headline label.
-          Not investment advice.
+          Below the majority-class baseline on 3-class accuracy. The model&rsquo;s measurable
+          skill is elsewhere: at P(FLAT) ≥ 0.60 it identifies a non-event <b>66.6%</b> of the
+          time against a 49.8% base rate (n=862).
         </p>
       )}
     </motion.div>

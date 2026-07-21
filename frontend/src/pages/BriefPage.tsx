@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { AlertTriangle, Clock, Moon, Star, Zap } from 'lucide-react'
+import { Clock, Moon, Star, Zap } from 'lucide-react'
 import { StatCard } from '../components/ui/StatCard'
 import { OutcomeBar } from '../components/ui/OutcomeBar'
 import { formatDateShort } from '../utils/date'
@@ -62,9 +62,8 @@ function Section({ title, icon, rows, tone }: { title: string; icon: React.React
       </table>
       {tone === 'quiet' && (
         <p className="brief-note">
-          These are the model&rsquo;s highest-conviction <b>non-events</b> — the one thing it is
-          measurably good at (66.6% correct vs a 49.8% base rate, n=862). Relevant if you sell
-          premium into earnings; the IV column is there for that reason.
+          Highest-conviction <b>non-events</b> — 66.6% correct against a 49.8% base rate.
+          The IV column is here because that combination is what premium sellers screen for.
         </p>
       )}
     </motion.div>
@@ -117,16 +116,6 @@ export function BriefPage() {
         <StatCard label="Likely Quiet" icon={<Moon size={12} />} value={data.counts.quiet} helper="P(flat) ≥ 60%" accent="purple" delay={0.1} />
         <StatCard label="Move Expected" icon={<Zap size={12} />} value={data.counts.loud} helper="P(flat) ≤ 40%" accent="amber" delay={0.15} />
         <StatCard label="Watchlist" icon={<Star size={12} />} value={data.watchlist_size} helper={data.personalised ? 'personalised' : 'not signed in'} accent="emerald" delay={0.2} />
-      </div>
-
-      <div className="pulse-disclaimer">
-        <AlertTriangle size={13} className="pulse-disclaimer__icon" />
-        <div>
-          <b>What this is and is not.</b> The model has <b>no directional edge</b> — it does not
-          predict which way a stock moves, and the site says so with the numbers. It does identify
-          non-events at 66.6% against a 49.8% base rate. Read the quiet score, not a direction.
-          Research and education only. Not investment advice.
-        </div>
       </div>
 
       <Section title="Likely quiet" icon={<Moon size={13} />} rows={data.quiet} tone="quiet" />
