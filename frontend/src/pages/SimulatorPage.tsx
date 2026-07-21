@@ -26,7 +26,6 @@ import {
   Zap,
 } from 'lucide-react'
 import {
-import { formatDate, formatDateShort } from '../utils/date'
   Area,
   AreaChart,
   CartesianGrid,
@@ -36,6 +35,7 @@ import { formatDate, formatDateShort } from '../utils/date'
   XAxis,
   YAxis,
 } from 'recharts'
+import { formatDate, formatDateShort } from '../utils/date'
 
 // ============================================================
 //  Types (subset — matches v3 backend payload)
