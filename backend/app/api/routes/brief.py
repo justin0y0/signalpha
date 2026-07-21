@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from backend.app.api.deps import get_db
-from backend.app.services import brief_service, watchlist_service
+from backend.app.services import brief_service, entitlements, watchlist_service
 
 router = APIRouter(prefix="/api/v1", tags=["brief"])
 
@@ -16,8 +16,17 @@ def get_brief(
     horizon_days: int = Query(7, ge=1, le=30),
     db: Session = Depends(get_db),
 ) -> dict:
+    # The brief is the one daily-recurring surface, so it is where entitlement is
+    # enforced. Public surfaces (calendar/model/strategy) stay open — gating the
+    # evidence would defeat the transparency argument the site is built on.
+    ent = entitlements.resolve(db, email)
+    if not ent.allows("brief"):
+        return {"gated": True, "entitlement": ent.as_dict(),
+                "upgrade": entitlements.upgrade_hint(ent)}
     tickers = watchlist_service.get(db, email) if email else None
-    return brief_service.build_brief(db, tickers=tickers or None, horizon_days=horizon_days)
+    payload = brief_service.build_brief(db, tickers=tickers or None, horizon_days=horizon_days)
+    payload["entitlement"] = ent.as_dict()
+    return payload
 
 
 @router.get("/watchlist")
@@ -33,3 +42,10 @@ def add_watchlist(email: str, ticker: str, db: Session = Depends(get_db)) -> dic
 @router.delete("/watchlist")
 def remove_watchlist(email: str, ticker: str, db: Session = Depends(get_db)) -> dict:
     return {"email": email, "tickers": watchlist_service.remove(db, email, ticker)}
+
+
+@router.get("/entitlement")
+def get_entitlement(email: str | None = None, db: Session = Depends(get_db)) -> dict:
+    """What this email can currently see. Drives the UI's gating without guessing."""
+    ent = entitlements.resolve(db, email)
+    return {"entitlement": ent.as_dict(), "upgrade": entitlements.upgrade_hint(ent)}
