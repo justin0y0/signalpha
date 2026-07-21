@@ -20,7 +20,14 @@ fail=0
 check() {
   local path="$1" expect="${2:-200}"
   local code
+  # One retry with a longer budget: endpoints that fan out to yfinance are slow on
+  # the first request after a restart (cold price cache) and fast forever after.
+  # A health check that fails on cold start trains you to ignore it.
   code=$(curl -sk -m 15 -o /dev/null -w "%{http_code}" "$BASE$path" 2>/dev/null || echo "000")
+  if [ "$code" != "$expect" ]; then
+    sleep 2
+    code=$(curl -sk -m 45 -o /dev/null -w "%{http_code}" "$BASE$path" 2>/dev/null || echo "000")
+  fi
   if [ "$code" = "$expect" ]; then
     printf "  \033[32mok\033[0m   %-34s %s\n" "$path" "$code"
   else

@@ -8,6 +8,7 @@ import { DirectionBadge } from '../components/ui/DirectionBadge'
 import { Badge } from '../components/ui/Badge'
 import { StatCard } from '../components/ui/StatCard'
 import { Superposition } from '../components/ui/Superposition'
+import { BlastField } from '../components/BlastField'
 import { formatDate, daysUntil } from '../utils/date'
 
 const SECTORS = ['All', 'Technology', 'Financial Services', 'Healthcare', 'Consumer Cyclical', 'Consumer Defensive', 'Industrials', 'Energy', 'Communication Services']
@@ -69,11 +70,7 @@ export function EarningsCalendarPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <h1 className="hero-headline">Earnings Intelligence Calendar</h1>
-        <p className="hero-sub">
-          ML-powered earnings predictions across {total} tracked events.
-          Click any ticker for deep analysis and live quote.
-        </p>
+        <BlastField events={events} />
       </motion.div>
 
       <div className="grid grid-4">

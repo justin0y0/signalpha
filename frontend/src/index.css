@@ -4137,3 +4137,65 @@ input, select { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .sup__ghost { transition: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   Blast field — the calendar as pending detonations.
+   Cluster tightness is P(FLAT); depth is time-to-earnings; the cursor
+   displaces the field. Existing palette, new behaviour.
+   ══════════════════════════════════════════════════════════════════ */
+.blast {
+  position: relative;
+  min-height: 340px;
+  display: flex;
+  align-items: flex-end;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background:
+    radial-gradient(120% 80% at 70% 0%, rgba(56,189,248,0.07), transparent 60%),
+    var(--bg-1);
+  border: 1px solid var(--border);
+}
+.blast__canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+.blast__overlay {
+  position: relative;
+  z-index: 1;
+  padding: 2rem 2.2rem;
+  max-width: 640px;
+  /* The field is busiest top-right, so the text sits in a scrim at bottom-left. */
+  background: linear-gradient(90deg, rgba(10,14,26,0.88) 0%, rgba(10,14,26,0.72) 60%, transparent 100%);
+  pointer-events: none;
+}
+.blast__title {
+  font-size: clamp(1.9rem, 3.6vw, 2.9rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.6rem;
+  text-wrap: balance;
+}
+.blast__sub {
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin: 0 0 1rem;
+  max-width: 52ch;
+}
+.blast__stats {
+  display: flex; gap: 1.4rem; flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.blast__stats b {
+  color: var(--accent-cyan);
+  font-weight: 700; letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 780px) {
+  .blast { min-height: 260px; }
+  .blast__overlay { padding: 1.4rem 1.5rem; background: rgba(10,14,26,0.82); max-width: 100%; }
+}
