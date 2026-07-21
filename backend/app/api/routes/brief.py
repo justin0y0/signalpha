@@ -16,14 +16,13 @@ def get_brief(
     horizon_days: int = Query(7, ge=1, le=30),
     db: Session = Depends(get_db),
 ) -> dict:
-    # The brief is the one daily-recurring surface, so it is where entitlement is
-    # enforced. Public surfaces (calendar/model/strategy) stay open — gating the
-    # evidence would defeat the transparency argument the site is built on.
+    # The brief itself is public — it is the best demo of the one thing the model
+    # measurably does, and hiding it pre-launch means nobody sees the reason to sign
+    # up. What is gated is personalisation: only an entitled user gets their watchlist
+    # applied, which is also the honest thing to charge for since it is per-user work
+    # rather than shared research.
     ent = entitlements.resolve(db, email)
-    if not ent.allows("brief"):
-        return {"gated": True, "entitlement": ent.as_dict(),
-                "upgrade": entitlements.upgrade_hint(ent)}
-    tickers = watchlist_service.get(db, email) if email else None
+    tickers = watchlist_service.get(db, email) if (email and ent.allows("watchlist")) else None
     payload = brief_service.build_brief(db, tickers=tickers or None, horizon_days=horizon_days)
     payload["entitlement"] = ent.as_dict()
     return payload

@@ -33,9 +33,15 @@ PAID_TIERS = {"pro", "paid", "lifetime"}
 
 # Surfaces that stay open to everyone. The transparency argument only works if the
 # evidence is public — gating the track record would defeat the point of having one.
-PUBLIC_FEATURES = {"calendar", "model", "strategy", "about", "oracle", "pulse"}
-# Surfaces that recur daily and are therefore the natural place for a paywall later.
-GATED_FEATURES = {"brief", "watchlist", "telegram_push"}
+#
+# The brief is public too, deliberately. It is the product's single best demo and the
+# only surface built around the one thing the model measurably does well; hiding it
+# behind a sign-in before launch means nobody ever sees the reason to sign in. What
+# gets gated is what makes the brief *yours* — watchlist personalisation and push —
+# which is also the honest thing to charge for later, since it is per-user work rather
+# than a page of shared research.
+PUBLIC_FEATURES = {"calendar", "model", "strategy", "about", "oracle", "pulse", "brief"}
+GATED_FEATURES = {"watchlist", "telegram_push"}
 
 
 @dataclass
