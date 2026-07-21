@@ -2,7 +2,7 @@
 
 > 这份手册面向**想真正看懂每个数字含义**的用户。每个指标都给出确切定义（算式、口径、样本），以及容易误解的地方。
 >
-> 凡是我无法从代码里读出确切定义的，都标了 **`TODO 待确认`**，不会编。
+> 曾经标 `TODO 待确认` 的四处（per-sector Sharpe 年化因子、Track Record 高置信档阈值、Pulse 因子数、Convergence Band 训练目标）**已于 2026-07-21 全部从代码查实并写入**，其中两处查出了实现与文案不符的 bug。
 >
 > **最后更新：2026-07-21**。页面结构在这一天从 11 个 tab 收敛为 7 个，本文描述的是新结构。
 
@@ -114,6 +114,30 @@ confidence_score = max(P(UP), P(FLAT), P(DOWN))
 
 ---
 
+## 1b. Brief（`/brief`）—— 每日简报
+
+**这个页面干嘛的**：未来 7 天的财报，按"模型认为它会不会是个非事件"排序。
+**数据来自**：`GET /api/v1/brief?horizon_days=7[&email=...]`
+
+**为什么按"安静 vs 有动作"组织而不是"看涨 vs 看跌"**：模型没有方向能力（见开篇），但识别非事件有统计显著的能力。按方向组织等于卖一个数据不支持的东西。
+
+| 区块 | 含义 |
+|---|---|
+| **Earnings Ahead** | 窗口内财报总数 |
+| **Likely Quiet** | P(FLAT) ≥ 60% 的事件数 |
+| **Move Expected** | P(FLAT) ≤ 40% 的事件数 |
+| **Watchlist** | 你收藏的 ticker 数（需登录）|
+
+**表格列**：Ticker / 公司 / 日期+盘前盘后 / **Quiet Score + 概率分布条** / 预期波动 / **ATM IV**。
+
+**ATM IV 那一列是有意放的**：如果你卖期权 premium，"模型认为大概率没事 + IV 却很高"就是最直接的筛选条件。这是这个信号唯一具体的交易用途。
+
+**门禁**：Brief 本身**完全公开**。需要登录的只有 ① watchlist 个性化 ② Telegram 推送。
+
+**渲染是纯数据的，没有 LLM 参与** —— 简报不可能编出一个不存在的数字。
+
+---
+
 ## 2. Model（`/model`）—— 模型有多好
 
 两个子页面（顶部 SubNav 切换，URL 用 `?view=`）。**2026-07-21 由原 Performance 和 Track Record 两个 tab 合并**——它们重复了约三分之二的内容。
@@ -157,7 +181,7 @@ confidence_score = max(P(UP), P(FLAT), P(DOWN))
 
 **Per-Sector Heatmap**：每个 sector 的 Accuracy / Precision / Recall / F1 / MAE / Sharpe。
 - MAE = 预期波动幅度的平均绝对误差（对 `|T+1 收益|`）
-- Sharpe = `models/backtest.py:sharpe_ratio()` 对该 sector 的 walk-forward 策略收益序列计算 — **`TODO 待确认`：年化因子的确切取值我没有逐行核对，需要你确认是否与 Backtest 页的 `sqrt(n/years)` 一致**
+- Sharpe = `均值/标准差 × sqrt(该 sector 的事件/年)`。**2026-07-21 前这里用的是 `sqrt(252)`**（假设日收益），而喂进去的是每事件收益（约 50 笔/年），把 Sharpe 系统性放大约 2.2 倍，且与 Backtest 口径不一致。现已统一。
 
 **SHAP Top Features**：XGBoost 的 SHAP 值，取绝对值均值排序。表示"这个特征对模型输出的平均影响强度"，**不代表因果**。
 
@@ -172,7 +196,7 @@ confidence_score = max(P(UP), P(FLAT), P(DOWN))
 |---|---|
 | **TOTAL PREDICTIONS** | 有已知结果的 out-of-sample 预测数 |
 | **OVERALL HIT RATE** | argmax 类别 == 实际类别 的比例（3 分类，T+1，±2%）|
-| **HIGH CONFIDENCE** | 高置信子集的命中率 — **`TODO 待确认`：阈值我读到是 0.65，但请你确认前端展示的是哪一档** |
+| **HIGH CONFIDENCE** | 置信度 **≥ 0.75** 的子集命中率（`track_record.py` 的 HIGH 桶；MEDIUM 是 ≥0.60，其余为 LOW）|
 | **AVG ACTUAL MOVE** | `平均 \|T+1 收益\|`，单位 % |
 | **BEST SECTOR** | 命中率最高的 sector |
 
@@ -265,7 +289,7 @@ $1M 纸上交易账户，每 30 分钟自动步进一次（工作日 04:00–20:
 3. **Connors RSI(2) 超卖 + 上升趋势**
 4. **Connors RSI(2) 超买 + 下降趋势**
 5. **成交量 z-score** — `+Nσ` 会**削弱**回归信号（AL 论文式 20）
-6. `TODO 待确认`：第 6 个因子（sector / MA 距离 / gap 之一）我在代码里没有一一对应上，需要你确认 `market_pulse_service.py` 里 `factors.append` 的完整清单
+6. **实际只有 5 个因子**：代码里 `factors.append` 只有 5 处（AL s-score、Gao 盘中动量、RSI(2) 超卖+上升、RSI(2) 超买+下降、成交量 z-score）。页面标题写的"6-Factor"**与实现不符**，应改为 5。
 
 **阈值**：`|score| ≥ 0.50` 触发交易；`|score| ≥ 0.60` 推 Telegram（"HIGH CONVICTION"）。
 
@@ -326,7 +350,7 @@ $1M 纸上交易账户，每 30 分钟自动步进一次（工作日 04:00–20:
 | **顶部横幅** | 代码 + 公司名 + 方向徽章 + 板块 + 财报日倒计时 + 实时报价 |
 | **Predicted Direction** | argmax 类别 + 置信度 |
 | **Expected Move** | `±X%` 点估计，副标题给历史平均 |
-| **Convergence Band** | 价格收敛区间 —— `TODO 待确认`：这是 `ConvergenceZonePredictor` 的输出，我没有读到它训练目标的确切定义（对应 `outcomes.convergence_low/high` = 前 20 根 bar 的最低/最高价），**请确认展示时是否应标注"20 日价格区间预测"** |
+| **Convergence Band** | **未来 20 个交易日的价格区间预测**。`ConvergenceZonePredictor` 用两个 `ApproxQuantileForest` 分别拟合 `outcomes.convergence_low`（前 20 根 bar 的最低价）和 `convergence_high`（最高价）|
 | **Data Completeness** | 该事件非空特征的占比。**<80% 会触发黄色警告**，说明输入数据不全，预测可靠性下降 |
 | **Direction Probabilities** | 三个类别概率条，加总为 1 |
 | **Historical Reactions** | 该股过去 8 次财报的 T+1 反应 |
@@ -341,7 +365,7 @@ $1M 纸上交易账户，每 30 分钟自动步进一次（工作日 04:00–20:
 
 **基准对比图里的数字**：Random 33% / FLAT-only 50% / Renaissance 50.75%（Zuckerman 2019）/ SignAlpha / PEAD 56%（Cohen-Malloy-Nguyen, JoF 2020）/ GPT-4 CoT 60.4%（Kim-Muhn-Nikolaev, arXiv 2407.17866）。
 
-> `TODO 待确认`：这个页面上的 SignAlpha 数值需要按 walk-forward 重算后的 **46.4%** 更新，并且应当明确标注它**低于 FLAT-only 基线**。我还没改这一页，因为需要你决定对外口径怎么写。
+**2026-07-21 已改为诚实口径**：标题从"49.3% 比 random 和 FLAT-only 基线暗示的更接近学术前沿"改为"49.3% 没有跑赢 49.8% 的 all-FLAT 基线"，正文补上了模型真正有能力的地方（非事件识别 66.6% vs 49.8%，n=862）以及泄漏被发现和修复的经过。
 
 ---
 
@@ -361,12 +385,14 @@ $1M 纸上交易账户，每 30 分钟自动步进一次（工作日 04:00–20:
 
 | # | 缺陷 | 影响 |
 |---|---|---|
-| 1 | Simulator 止损按日线收盘判定，非盘中 | 纸上账户收益偏乐观 |
+| 1 | ~~Simulator 止损按日线收盘判定~~ **已修（2026-07-21）**：改为按实际价格路径（日线高低点）判定，同一根 bar 内同时触及止损和止盈时保守假设先止损 | — |
 | 2 | Showdown 并发持仓不受资金约束 | 高并发时实际杠杆 >1 |
 | 3 | Backtest 的 SPY 基准是日线前向填充对齐 | 与事件型策略对比是近似的 |
 | 4 | FMP 免费档限制 | `forward_eps_guidance` / `transcript_sentiment` 恒为空，等于模型少了几个特征 |
 | 5 | Oracle 拿不到 X/Twitter | Musk、Serenity 长期无信号 |
-| 6 | Alpha Brief / Watchlist 未实现 | 路线图上有，代码里没有 |
+| 6 | ~~Alpha Brief / Watchlist 未实现~~ **已实现（2026-07-21）** | — |
+| 7 | Pulse 页标题写"6-Factor"但代码只有 5 个因子 | 文案与实现不符，待改 |
+| 8 | 无支付通路 | entitlement 层已就位，缺的是支付服务商对接（需 Justin 的账号与定价决策）|
 
 ---
 
