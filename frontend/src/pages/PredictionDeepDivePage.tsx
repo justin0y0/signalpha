@@ -10,6 +10,7 @@ import { Badge } from '../components/ui/Badge'
 import { StatCard } from '../components/ui/StatCard'
 import { PriceTicker } from '../components/ui/PriceTicker'
 import { daysUntil, formatDate } from '../utils/date'
+import { CrushChamber } from '../components/CrushChamber'
 
 function formatPct(v: number | null | undefined, signed = false) {
   if (v == null) return '—'
@@ -130,6 +131,14 @@ export function PredictionDeepDivePage() {
           </div>
         </div>
         <PriceTicker ticker={data.ticker} />
+      </motion.div>
+
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
+        <CrushChamber
+          daysUntil={du}
+          expectedMove={data.expected_move.point_estimate_pct ?? 0}
+          quiet={data.direction_probabilities.flat}
+        />
       </motion.div>
 
       {/* === Core Prediction Stats === */}

@@ -4,6 +4,7 @@ import { PulseTrackRecordDetail } from '../components/PulseTrackRecordDetail'
 import { PulseTrackRecord } from '../components/PulseTrackRecord'
 import { ActiveSignalsBanner } from '../components/ActiveSignalsBanner'
 import { SectorTreemap } from '../components/SectorTreemap'
+import { PressureField } from '../components/PressureField'
 import { StockLogo } from '../components/StockLogo'
 import { motion } from 'framer-motion'
 import { Activity, Bell, BellOff, Flame, Star, TrendingDown, TrendingUp, Zap } from 'lucide-react'
@@ -106,6 +107,8 @@ export function PulsePage() {
 
   return (
     <div className="mc-page">
+      {/* Turbulence driven by the same breadth and volatility the page reports. */}
+      <PressureField intensity={Math.min(1, Math.abs(data.market.avg_vol_z ?? 0) / 2.2)} />
       <PulseHero data={data} now={now} highConv={highConv.length} />
       <NotifBanner status={data.notifications} sent={data.signals.filter(s => s.notified).length} />
       <MarketGauges data={data} />

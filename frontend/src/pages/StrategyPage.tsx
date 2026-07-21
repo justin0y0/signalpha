@@ -1,7 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { FlaskConical, Swords, Wallet } from 'lucide-react'
 import { SubNav } from '../components/ui/SubNav'
+import { BandTimeline } from '../components/BandTimeline'
+import { api } from '../api/client'
+import type { CalendarEvent } from '../types'
 import { BacktestingPage } from './BacktestingPage'
 import { ShowdownPage } from './ShowdownPage'
 import { SimulatorPage } from './SimulatorPage'
@@ -37,9 +40,18 @@ export function StrategyPage() {
     setParams(next, { replace: true })
   }
 
+  // The band timeline sits above every strategy view: whatever harness you are
+  // looking at, it is scoring against these per-stock bands.
+  const [events, setEvents] = useState<CalendarEvent[]>([])
+  useEffect(() => {
+    const q = new URLSearchParams({ days_forward: '90', days_back: '0' })
+    api.getCalendar(q).then((r) => setEvents(r.items)).catch(() => setEvents([]))
+  }, [])
+
   return (
     <div>
       <SubNav items={ITEMS} active={view} onChange={change} />
+      <BandTimeline events={events} />
       {view === 'backtest' && <BacktestingPage />}
       {view === 'showdown' && <ShowdownPage />}
       {view === 'paper' && <SimulatorPage />}

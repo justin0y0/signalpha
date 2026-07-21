@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { Clock, Moon, Star, Zap } from 'lucide-react'
 import { StatCard } from '../components/ui/StatCard'
 import { OutcomeBar } from '../components/ui/OutcomeBar'
+import { SplitFlap } from '../components/ui/SplitFlap'
 import { formatDateShort } from '../utils/date'
 
 /**
@@ -48,7 +49,7 @@ function Section({ title, icon, rows, tone }: { title: string; icon: React.React
         <tbody>
           {rows.map((r) => (
             <tr key={`${r.ticker}-${r.earnings_date}`}>
-              <td className="mono" style={{ fontWeight: 700 }}>{r.ticker}</td>
+              <td><SplitFlap value={r.ticker} width={5} className="brief-flap" /></td>
               <td className="muted" style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {r.company_name ?? '—'}
               </td>
