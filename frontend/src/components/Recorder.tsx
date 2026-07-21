@@ -55,6 +55,22 @@ export function Recorder({ events }: Props) {
     resize()
     window.addEventListener('resize', resize)
 
+    // Pause when the canvas is off-screen or the tab is hidden. An unthrottled rAF
+    // that redraws forever pegs the renderer on a page the reader has scrolled past —
+    // which is exactly what made scrolling stutter on first deploy.
+    let visible = true
+    const io = new IntersectionObserver(([e]) => {
+      const wasHidden = !visible
+      visible = e.isIntersecting
+      if (visible && wasHidden && !reduced) raf.current = requestAnimationFrame(draw)
+    }, { threshold: 0 })
+    io.observe(canvas)
+    const onVisibility = () => {
+      if (document.hidden) cancelAnimationFrame(raf.current)
+      else if (visible && !reduced) raf.current = requestAnimationFrame(draw)
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
     const draw = () => {
       ctx.clearRect(0, 0, width, height)
       const mid = height / 2
@@ -102,7 +118,7 @@ export function Recorder({ events }: Props) {
       ctx.setLineDash([])
       ctx.globalAlpha = 1
 
-      if (!reduced) {
+      if (!reduced && visible && !document.hidden) {
         t += 0.55
         raf.current = requestAnimationFrame(draw)
       }
@@ -111,6 +127,8 @@ export function Recorder({ events }: Props) {
 
     return () => {
       cancelAnimationFrame(raf.current)
+      io.disconnect()
+      document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('resize', resize)
     }
   }, [events])

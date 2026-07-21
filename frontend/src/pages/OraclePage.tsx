@@ -18,9 +18,9 @@ type LbRow = {
 }
 
 const CAT: Record<string, [string, string]> = {
-  policy: ['#f5c451', '#d9881f'], tech_ceo: ['#34d399', '#0e9488'], x_trader: ['#34d3e0', '#2b7fb3'],
-  x_mover: ['#a78bfa', '#7c5cf0'], fund: ['#5b9dff', '#3a64f0'], activist: ['#fb7aa8', '#dd4f86'],
-  congress: ['#2dd4bf', '#0d8c80'], value: ['#bfd66a', '#7fae3c'], contrarian: ['#ef4444', '#a51d1d'],
+  policy: ['#f5c451', '#d9881f'], tech_ceo: ['#6FA287', '#0e9488'], x_trader: ['#34d3e0', '#2b7fb3'],
+  x_mover: ['#7FA99B', '#7c5cf0'], fund: ['#5b9dff', '#3a64f0'], activist: ['#fb7aa8', '#dd4f86'],
+  congress: ['#7FA99B', '#0d8c80'], value: ['#bfd66a', '#7fae3c'], contrarian: ['#ef4444', '#a51d1d'],
 }
 const DEF: [string, string] = ['#6b7280', '#374151']
 const AVATARS: Record<string,string> = {trump:'/avatars/trump.svg',huang:'/avatars/huang.svg',serenity:'/avatars/serenity.svg',musk:'/avatars/musk.svg',su:'/avatars/su.svg',wood:'/avatars/wood.svg',ackman:'/avatars/ackman.svg',pelosi:'/avatars/pelosi.svg',buffett:'/avatars/buffett.svg',burry:'/avatars/burry.svg'}

@@ -24,11 +24,11 @@ type RecentItem = {
   actual_t5_return: number | null; hit: boolean
 }
 
-const CYAN = '#38bdf8'
-const PURPLE = '#a78bfa'
-const GREEN = '#4ade80'
-const RED = '#f87171'
-const AMBER = '#fbbf24'
+const CYAN = '#E2703A'
+const PURPLE = '#7FA99B'
+const GREEN = '#6FA287'
+const RED = '#C4726A'
+const AMBER = '#D9A441'
 
 const fmt = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`
 const fmtRet = (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(2)}%`
@@ -64,8 +64,8 @@ function ConfusionMatrix({ data }: { data: Confusion }) {
               const isHit = pred === actual
               const intensity = maxVal > 0 ? val / maxVal : 0
               const bg = isHit
-                ? `rgba(56,189,248,${0.1 + intensity * 0.55})`
-                : `rgba(248,113,113,${intensity * 0.35})`
+                ? `rgba(226, 112, 58,${0.1 + intensity * 0.55})`
+                : `rgba(196, 114, 106,${intensity * 0.35})`
               return (
                 <div key={`${pred}-${actual}`} className="tr-confusion__cell" style={{ background: bg }}>
                   <span className="tr-confusion__n">{val.toLocaleString()}</span>
@@ -92,10 +92,10 @@ function CalibrationChart({ data }: { data: CalibPt[] }) {
         <ScatterChart margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
           <XAxis dataKey="confidence_bin" type="number" domain={[30, 100]}
-            tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={v => `${v}%`}
+            tick={{ fill: '#7FA99B', fontSize: 11 }} tickFormatter={v => `${v}%`}
             label={{ value: 'Predicted confidence', fill: '#64748b', fontSize: 11, position: 'insideBottom', offset: -4 }} />
           <YAxis dataKey="actual_rate" type="number" domain={[0.3, 1]}
-            tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={v => `${(v * 100).toFixed(0)}%`} />
+            tick={{ fill: '#7FA99B', fontSize: 11 }} tickFormatter={v => `${(v * 100).toFixed(0)}%`} />
           <ReferenceLine stroke="rgba(255,255,255,0.2)"
             segment={[{ x: 30, y: 0.3 }, { x: 100, y: 1.0 }]}
             strokeDasharray="6 3" label={{ value: 'Perfect', fill: '#64748b', fontSize: 10, position: 'insideTopRight' }} />
@@ -132,14 +132,14 @@ function RollingChart({ data }: { data: RollingPt[] }) {
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={pts} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-          <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 10 }}
+          <XAxis dataKey="date" tick={{ fill: '#7FA99B', fontSize: 10 }}
             tickFormatter={v => v.slice(0, 7)} interval="preserveStartEnd" />
-          <YAxis domain={[30, 100]} tick={{ fill: '#94a3b8', fontSize: 11 }}
+          <YAxis domain={[30, 100]} tick={{ fill: '#7FA99B', fontSize: 11 }}
             tickFormatter={v => `${v}%`} />
-          <ReferenceLine y={33.3} stroke="rgba(248,113,113,0.4)" strokeDasharray="4 3"
-            label={{ value: 'Random', fill: '#f87171', fontSize: 10, position: 'right' }} />
-          <ReferenceLine y={50} stroke="rgba(251,191,36,0.4)" strokeDasharray="4 3"
-            label={{ value: 'FLAT-only', fill: '#fbbf24', fontSize: 10, position: 'right' }} />
+          <ReferenceLine y={33.3} stroke="rgba(196, 114, 106,0.4)" strokeDasharray="4 3"
+            label={{ value: 'Random', fill: '#C4726A', fontSize: 10, position: 'right' }} />
+          <ReferenceLine y={50} stroke="rgba(217, 164, 65,0.4)" strokeDasharray="4 3"
+            label={{ value: 'FLAT-only', fill: '#D9A441', fontSize: 10, position: 'right' }} />
           <Tooltip
             content={({ payload, label }) => {
               if (!payload?.length) return null
@@ -219,7 +219,7 @@ function RecentTable({ items, total, onFilter, verdict, setVerdict, minConf, set
                   </div>
                 </td>
                 <td>
-                  <span className="tr-dir" style={{ color: DIR_COLOR[r.actual_class as keyof typeof DIR_COLOR] || '#94a3b8' }}>
+                  <span className="tr-dir" style={{ color: DIR_COLOR[r.actual_class as keyof typeof DIR_COLOR] || '#7FA99B' }}>
                     {DIR_ICON[r.actual_class as keyof typeof DIR_ICON]} {r.actual_class}
                   </span>
                 </td>
@@ -368,14 +368,14 @@ export function TrackRecordPage() {
                 <div className="tr-confbreak__bar-wrap">
                   <div className="tr-confbreak__bar" style={{
                     width: `${r.hit_rate * 100}%`,
-                    background: r.hit_rate >= 0.85 ? '#4ade80' : r.hit_rate >= 0.75 ? '#38bdf8' : r.hit_rate >= 0.6 ? '#a78bfa' : '#64748b'
+                    background: r.hit_rate >= 0.85 ? '#6FA287' : r.hit_rate >= 0.75 ? '#E2703A' : r.hit_rate >= 0.6 ? '#7FA99B' : '#64748b'
                   }} />
                   <div className="tr-confbreak__baseline" style={{ left: '33.3%' }} />
                   <div className="tr-confbreak__baseline tr-confbreak__baseline--amber" style={{ left: '50%' }} />
                 </div>
                 <div className="tr-confbreak__stat">
                   <span className="tr-confbreak__pct" style={{
-                    color: r.hit_rate >= 0.85 ? '#4ade80' : r.hit_rate >= 0.75 ? '#38bdf8' : '#a78bfa'
+                    color: r.hit_rate >= 0.85 ? '#6FA287' : r.hit_rate >= 0.75 ? '#E2703A' : '#7FA99B'
                   }}>{(r.hit_rate * 100).toFixed(1)}%</span>
                   <span className="tr-confbreak__n">n={r.n.toLocaleString()}</span>
                 </div>

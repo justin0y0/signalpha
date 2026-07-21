@@ -188,10 +188,10 @@ export function ShowdownPage() {
                     {data.next_signal.strategy_name}
                   </span>
                   →
-                  <span style={{ color: data.next_signal.side === 'LONG' ? '#4ade80' : '#f87171', fontWeight: 700 }}>
+                  <span style={{ color: data.next_signal.side === 'LONG' ? '#6FA287' : '#C4726A', fontWeight: 700 }}>
                     {data.next_signal.side === 'LONG' ? '↑ LONG' : '↓ SHORT'}
                   </span>
-                  <span className="mono" style={{ color: '#38bdf8', fontWeight: 700 }}>{data.next_signal.ticker}</span>
+                  <span className="mono" style={{ color: '#E2703A', fontWeight: 700 }}>{data.next_signal.ticker}</span>
                   <span className="mc-next__when">
                     {data.next_signal.earnings_date.slice(5)} @ {data.next_signal.fires_at_clock}
                   </span>
@@ -217,12 +217,12 @@ export function ShowdownPage() {
                     <span className="mc-tape__a">
                       {e.type === 'open' ? '→ OPEN' : '✓ CLOSE'}
                     </span>
-                    <span style={{ color: e.side === 'LONG' ? '#4ade80' : '#f87171', fontWeight: 700 }}>
+                    <span style={{ color: e.side === 'LONG' ? '#6FA287' : '#C4726A', fontWeight: 700 }}>
                       {e.side}
                     </span>
-                    <span className="mono" style={{ color: '#38bdf8', fontWeight: 700 }}>{e.ticker}</span>
+                    <span className="mono" style={{ color: '#E2703A', fontWeight: 700 }}>{e.ticker}</span>
                     {e.return_pct !== undefined && (
-                      <span className="mono" style={{ color: (e.return_pct ?? 0) >= 0 ? '#4ade80' : '#f87171', fontWeight: 700 }}>
+                      <span className="mono" style={{ color: (e.return_pct ?? 0) >= 0 ? '#6FA287' : '#C4726A', fontWeight: 700 }}>
                         {(e.return_pct ?? 0) >= 0 ? '+' : ''}{e.return_pct?.toFixed(2)}%
                       </span>
                     )}
@@ -258,7 +258,7 @@ export function ShowdownPage() {
         <div style={{ height: 320 }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={mergedCurve} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(56,189,248,0.06)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(226, 112, 58,0.06)" />
               <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false}
                 tickFormatter={v => v.slice(5)} minTickGap={50} />
               <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false}
@@ -277,7 +277,7 @@ export function ShowdownPage() {
                         return (
                           <div key={p.dataKey} className="mc-tt__row">
                             <span>{st.emoji} {st.name}</span>
-                            <b style={{ color: p.value >= 0 ? st.color : '#f87171' }}>
+                            <b style={{ color: p.value >= 0 ? st.color : '#C4726A' }}>
                               {p.value >= 0 ? '+' : ''}{p.value.toFixed(2)}%
                             </b>
                           </div>
@@ -320,15 +320,15 @@ export function ShowdownPage() {
                 <span className="mc-log__strat" style={{ color: strat.color }}>
                   {strat.emoji} {strat.name}
                 </span>
-                <span className="mc-log__verb" style={{ color: e.type === 'open' ? '#38bdf8' : '#a78bfa' }}>
+                <span className="mc-log__verb" style={{ color: e.type === 'open' ? '#E2703A' : '#7FA99B' }}>
                   {e.type === 'open' ? 'OPENED' : 'CLOSED'}
                 </span>
-                <span style={{ color: e.side === 'LONG' ? '#4ade80' : '#f87171', fontWeight: 700, fontSize: '0.7rem' }}>
+                <span style={{ color: e.side === 'LONG' ? '#6FA287' : '#C4726A', fontWeight: 700, fontSize: '0.7rem' }}>
                   {e.side === 'LONG' ? '↑ LONG' : '↓ SHORT'}
                 </span>
                 <span className="mono mc-log__tk">{e.ticker}</span>
                 {e.return_pct !== undefined && (
-                  <span className="mono mc-log__ret" style={{ color: (e.return_pct ?? 0) >= 0 ? '#4ade80' : '#f87171' }}>
+                  <span className="mono mc-log__ret" style={{ color: (e.return_pct ?? 0) >= 0 ? '#6FA287' : '#C4726A' }}>
                     {(e.return_pct ?? 0) >= 0 ? '+' : ''}{e.return_pct?.toFixed(2)}%
                   </span>
                 )}
@@ -411,7 +411,7 @@ function BigBoard({ strategy: s, equity, rank, isActive, isLeader, onClick }: {
         <div className="mc-board__chips">
           {s.currently_open.slice(0, 4).map((p, i) => (
             <span key={i} className="mc-chip">
-              <span style={{ color: p.side === 'LONG' ? '#4ade80' : '#f87171', fontWeight: 700 }}>
+              <span style={{ color: p.side === 'LONG' ? '#6FA287' : '#C4726A', fontWeight: 700 }}>
                 {p.side === 'LONG' ? '↑' : '↓'}
               </span>
               <span className="mono">{p.ticker}</span>
@@ -465,7 +465,7 @@ function SignalCalendar({ data }: { data: Showdown }) {
                     <div key={ticker} className="mc-cal__tk-row">
                       <span className="mc-cal__tk mono">{ticker}</span>
                       <span className="mc-cal__rt mono">{sigs[0].report_time}</span>
-                      <span className="mc-cal__sd" style={{ color: sigs[0].side === 'LONG' ? '#4ade80' : '#f87171' }}>
+                      <span className="mc-cal__sd" style={{ color: sigs[0].side === 'LONG' ? '#6FA287' : '#C4726A' }}>
                         {sigs[0].side === 'LONG' ? '↑' : '↓'}
                       </span>
                       <span className="mc-cal__clock mono">@{sigs[0].fires_at_clock}</span>

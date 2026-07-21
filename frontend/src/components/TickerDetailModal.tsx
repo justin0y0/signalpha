@@ -115,7 +115,7 @@ function Body({ data }: { data: Detail }) {
               <>
                 <span className="tdp-head__price">{fmt(p.price, 2, '$')}</span>
                 {p.sector && (
-                  <span className="tdp-head__sector" style={{ color: '#a78bfa' }}>{p.sector}</span>
+                  <span className="tdp-head__sector" style={{ color: '#7FA99B' }}>{p.sector}</span>
                 )}
                 {p.session && typeof p.session === 'string' && p.session !== 'market' && (
                   <span className="tdp-head__session">{p.session.replace('_', '-').toUpperCase()}</span>
@@ -131,7 +131,7 @@ function Body({ data }: { data: Detail }) {
       {sig && (
         <motion.div className="tdp-card tdp-card--signal"
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-          style={{ borderColor: sig.side === 'LONG' ? '#4ade80' : '#f87171' }}>
+          style={{ borderColor: sig.side === 'LONG' ? '#6FA287' : '#C4726A' }}>
           <div className="tdp-card__top">
             <span className="tdp-label">ACTIVE SIGNAL · {
               sig.primary === 'AL_REVERSION' ? 'Avellaneda-Lee'
@@ -139,11 +139,11 @@ function Body({ data }: { data: Detail }) {
               : sig.primary === 'CONNORS' ? 'Connors RSI(2)'
               : (sig.primary || '—')
             }</span>
-            <span className="tdp-side" style={{ color: sig.side === 'LONG' ? '#4ade80' : '#f87171' }}>
+            <span className="tdp-side" style={{ color: sig.side === 'LONG' ? '#6FA287' : '#C4726A' }}>
               {sig.side === 'LONG' ? <TrendingUp size={14} /> : <TrendingDown size={14} />} {sig.side}
             </span>
           </div>
-          <div className="tdp-bigscore" style={{ color: sig.side === 'LONG' ? '#4ade80' : '#f87171' }}>
+          <div className="tdp-bigscore" style={{ color: sig.side === 'LONG' ? '#6FA287' : '#C4726A' }}>
             {fmtSigned(sig.score, 2)}
           </div>
           <div className="tdp-card__row">
@@ -158,7 +158,7 @@ function Body({ data }: { data: Detail }) {
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
           <div className="tdp-card__top">
             <span className="tdp-label">PRICE · LAST 5 DAYS</span>
-            <span style={{ fontSize: '0.78rem', color: sparkChange >= 0 ? '#4ade80' : '#f87171', fontWeight: 700 }}>
+            <span style={{ fontSize: '0.78rem', color: sparkChange >= 0 ? '#6FA287' : '#C4726A', fontWeight: 700 }}>
               {sparkChange >= 0 ? '+' : ''}{(sparkChange * 100).toFixed(2)}%
             </span>
           </div>
@@ -172,7 +172,7 @@ function Body({ data }: { data: Detail }) {
                   ) : null
                 } />
                 <Line type="monotone" dataKey="v"
-                  stroke={sparkChange >= 0 ? '#4ade80' : '#f87171'}
+                  stroke={sparkChange >= 0 ? '#6FA287' : '#C4726A'}
                   strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
@@ -186,17 +186,17 @@ function Body({ data }: { data: Detail }) {
           <div className="tdp-label">PULSE SIGNALS</div>
           <div className="tdp-grid">
             <Stat label="s-score" value={fmtSigned(p.s_score, 2)}
-              color={typeof p.s_score === 'number' && Math.abs(p.s_score) > 1.25 ? (p.s_score > 0 ? '#f87171' : '#4ade80') : undefined} />
+              color={typeof p.s_score === 'number' && Math.abs(p.s_score) > 1.25 ? (p.s_score > 0 ? '#C4726A' : '#6FA287') : undefined} />
             <Stat label="Half-life" value={typeof p.half_life_bars === 'number' ? `${p.half_life_bars.toFixed(0)} bars` : '—'} />
             <Stat label="beta market" value={fmt(p.beta_market, 2)} />
             <Stat label="beta sector" value={fmt(p.beta_sector, 2)} />
             <Stat label="RSI(2)" value={fmt(p.rsi2, 0)}
-              color={typeof p.rsi2 === 'number' && p.rsi2 > 90 ? '#f87171' : typeof p.rsi2 === 'number' && p.rsi2 < 10 ? '#4ade80' : undefined} />
+              color={typeof p.rsi2 === 'number' && p.rsi2 > 90 ? '#C4726A' : typeof p.rsi2 === 'number' && p.rsi2 < 10 ? '#6FA287' : undefined} />
             <Stat label="ATR(20)" value={fmt(p.atr20, 2, '$')} />
             <Stat label="Vol z" value={fmtSigned(p.vol_z, 1) + 'σ'}
-              color={typeof p.vol_z === 'number' && Math.abs(p.vol_z) > 2 ? '#fbbf24' : undefined} />
+              color={typeof p.vol_z === 'number' && Math.abs(p.vol_z) > 2 ? '#D9A441' : undefined} />
             <Stat label="Regime" value={p.regime_up ? 'Above 200' : 'Below 200'}
-              color={p.regime_up ? '#4ade80' : '#f87171'} />
+              color={p.regime_up ? '#6FA287' : '#C4726A'} />
           </div>
         </motion.div>
       )}
@@ -209,7 +209,7 @@ function Body({ data }: { data: Detail }) {
             {sig.factors.map((f: any, i: number) => (
               <div key={i} className="tdp-factor">
                 <span>{(f && f.label) || '—'}</span>
-                <b style={{ color: (f && f.value) >= 0 ? '#4ade80' : '#f87171', fontFamily: 'var(--font-mono)' }}>
+                <b style={{ color: (f && f.value) >= 0 ? '#6FA287' : '#C4726A', fontFamily: 'var(--font-mono)' }}>
                   {fmtSigned(f && f.value, 2)}
                 </b>
               </div>
@@ -231,24 +231,24 @@ function Body({ data }: { data: Detail }) {
                 <div className="tdp-eh__pred">
                   <div className="tdp-eh__plabel">PRED</div>
                   <div className="tdp-eh__pval" style={{
-                    color: e && e.predicted_label === 'UP' ? '#4ade80' :
-                           e && e.predicted_label === 'DOWN' ? '#f87171' : 'var(--text-tertiary)'
+                    color: e && e.predicted_label === 'UP' ? '#6FA287' :
+                           e && e.predicted_label === 'DOWN' ? '#C4726A' : 'var(--text-tertiary)'
                   }}>{(e && e.predicted_label) || '—'}</div>
                 </div>
                 <div className="tdp-eh__act">
                   <div className="tdp-eh__plabel">ACTUAL</div>
                   <div className="tdp-eh__pval" style={{
-                    color: e && e.actual_label === 'UP' ? '#4ade80' :
-                           e && e.actual_label === 'DOWN' ? '#f87171' : 'var(--text-tertiary)'
+                    color: e && e.actual_label === 'UP' ? '#6FA287' :
+                           e && e.actual_label === 'DOWN' ? '#C4726A' : 'var(--text-tertiary)'
                   }}>
                     {e && !e.is_past
-                      ? <span style={{ color: '#fbbf24' }}>PENDING</span>
+                      ? <span style={{ color: '#D9A441' }}>PENDING</span>
                       : ((e && e.actual_label) || '—')}
                   </div>
                 </div>
                 <div className="tdp-eh__move mono" style={{
                   color: !e || e.actual_move_pct == null ? 'var(--text-tertiary)' :
-                         e.actual_move_pct > 0 ? '#4ade80' : '#f87171'
+                         e.actual_move_pct > 0 ? '#6FA287' : '#C4726A'
                 }}>
                   {e && typeof e.actual_move_pct === 'number'
                     ? `${e.actual_move_pct >= 0 ? '+' : ''}${(e.actual_move_pct * 100).toFixed(2)}%`
@@ -258,8 +258,8 @@ function Body({ data }: { data: Detail }) {
                   {!e || e.win == null
                     ? <span style={{ color: 'var(--text-tertiary)' }}>—</span>
                     : e.win
-                      ? <Check size={16} color="#4ade80" />
-                      : <AlertTriangle size={16} color="#f87171" />}
+                      ? <Check size={16} color="#6FA287" />
+                      : <AlertTriangle size={16} color="#C4726A" />}
                 </div>
               </div>
             ))}
