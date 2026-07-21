@@ -1,12 +1,29 @@
-"""
-Post-hoc probability calibration using isotonic regression.
+"""DEPRECATED — DO NOT RUN. Superseded by data_pipeline/recalibrate_predictions.py.
 
-Trains 3 calibrators (one per class) on the older 70% of predictions
-where outcomes are known, then applies to ALL predictions in the DB.
+This script is one of the two causes of the label leakage documented in CLAUDE.md §6b.
+It fit isotonic calibrators on the older 70% of predictions using their known
+`actual_t5_return`, then applied them to ALL predictions -- including the 70% it had
+just trained on -- and overwrote `direction_prob_*` in place, permanently destroying
+the model's raw output. The result was a backtest reporting a 97.5% win rate from a
+model whose honest walk-forward accuracy is 46.4%.
 
-Usage:
-  docker compose exec backend python -m data_pipeline.calibrate_predictions
+Three separate faults, kept here as a record:
+  1. in-sample application (the 70% was calibrated by a mapping fit on its own outcomes)
+  2. destructive write (no raw_prob_* columns existed, so originals were unrecoverable)
+  3. wrong horizon (calibrated against t5 while the model is labelled on t1)
+
+Use `python -m data_pipeline.recalibrate_predictions` instead: expanding-window fit,
+reads raw_prob_*, writes only the display columns.
 """
+import sys
+
+print(__doc__)
+print("Refusing to run. Use: python -m data_pipeline.recalibrate_predictions")
+sys.exit(1)
+
+# ─── original implementation preserved below for reference, no longer reachable ───
+_ORIGINAL = r"""
+
 from __future__ import annotations
 import joblib
 import numpy as np
@@ -119,3 +136,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+"""
