@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -65,6 +67,8 @@ class DataCollector:
 
     def __post_init__(self) -> None:
         self._profile_cache: dict[str, dict[str, Any]] = {}
+        self._profile_cache_path = Path(self.settings.data_dir) / "profile_cache.json"
+        self._load_profile_cache()
         self.fe = FeatureEngineer()
         self.sec = SECClient(self.settings.sec_user_agent)
         self.fmp = FMPClient(self.settings.financial_modeling_prep_api_key or "")
@@ -116,14 +120,37 @@ class DataCollector:
         negatives = sum(1 for token in tokens if token in NEGATIVE_WORDS)
         return (positives - negatives) / max(len(tokens), 1)
 
+    def _load_profile_cache(self) -> None:
+        try:
+            if self._profile_cache_path.exists():
+                self._profile_cache = json.loads(self._profile_cache_path.read_text())
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("could not read profile cache: %s", exc)
+            self._profile_cache = {}
+
+    def _save_profile_cache(self) -> None:
+        try:
+            self._profile_cache_path.parent.mkdir(parents=True, exist_ok=True)
+            self._profile_cache_path.write_text(json.dumps(self._profile_cache))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("could not write profile cache: %s", exc)
+
     def _profile(self, ticker: str) -> dict[str, Any]:
-        """Cached company profile. FMP charges a call per lookup, so memoize per process."""
+        """Company profile, cached to disk.
+
+        FMP's free tier allows ~250 calls/day and the calendar needs one profile per
+        ticker to fill sector/industry/marketCap (which /stable/earnings-calendar omits).
+        Sector and industry effectively never change, so the cache persists across runs
+        on the ./data volume — a 90-day calendar window costs a few hundred calls once,
+        then close to zero.
+        """
         if ticker in self._profile_cache:
             return self._profile_cache[ticker]
         try:
             profile = self._first_record(self.fmp.profile(ticker))
         except Exception:
             profile = {}
+        # Cache negative results too, so a delisted ticker isn't retried every run.
         self._profile_cache[ticker] = profile
         return profile
 
@@ -154,6 +181,7 @@ class DataCollector:
                     "source": "fmp",
                 }
             )
+        self._save_profile_cache()
         return items
 
     def collect_macro_snapshot(self, as_of_date: date) -> dict[str, Any]:

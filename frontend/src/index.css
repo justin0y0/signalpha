@@ -275,21 +275,48 @@ input, select { font: inherit; color: inherit; }
   border-radius: var(--radius-lg);
   position: relative;
   overflow: hidden;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s ease, transform 0.2s ease;
 }
 
+/* Accent rail — same treatment as .sim-kpi::before, so KPI tiles read identically
+   on Calendar / Performance / Deep-Dive and on the Simulator dashboard. */
 .stat-card::before {
   content: '';
   position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--accent-cyan-glow), transparent);
-  opacity: 0;
-  transition: opacity 0.2s;
+  top: 0; left: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--border-strong);
+  transition: background 0.2s, box-shadow 0.2s;
 }
 
-.stat-card:hover::before { opacity: 1; }
-.stat-card:hover { border-color: var(--border-strong); }
+.stat-card--cyan::before    { background: var(--accent-cyan);    box-shadow: 0 0 12px var(--accent-cyan-glow); }
+.stat-card--purple::before  { background: var(--accent-purple);  box-shadow: 0 0 12px var(--accent-purple-glow); }
+.stat-card--emerald::before { background: var(--accent-emerald); box-shadow: 0 0 12px var(--accent-emerald-glow); }
+.stat-card--rose::before    { background: var(--accent-rose);    box-shadow: 0 0 12px rgba(251, 113, 133, 0.3); }
+.stat-card--amber::before   { background: var(--accent-amber);   box-shadow: 0 0 12px rgba(251, 191, 36, 0.3); }
+
+.stat-card:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+
+.stat-card__head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.stat-card__icon {
+  display: grid; place-items: center;
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.stat-card--cyan    .stat-card__icon { background: rgba(56, 189, 248, 0.1);  color: var(--accent-cyan); }
+.stat-card--purple  .stat-card__icon { background: rgba(167, 139, 250, 0.1); color: var(--accent-purple); }
+.stat-card--emerald .stat-card__icon { background: rgba(52, 211, 153, 0.1);  color: var(--accent-emerald); }
+.stat-card--rose    .stat-card__icon { background: rgba(251, 113, 133, 0.1); color: var(--accent-rose); }
+.stat-card--amber   .stat-card__icon { background: rgba(251, 191, 36, 0.1);  color: var(--accent-amber); }
 
 .stat-label {
   font-size: 0.7rem;

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Calendar, Search, TrendingUp } from 'lucide-react'
+import { Calendar, Clock, Cpu, Search, TrendingUp } from 'lucide-react'
 import { api } from '../api/client'
 import type { CalendarEvent, CalendarResponse } from '../types'
 import { DirectionBadge } from '../components/ui/DirectionBadge'
@@ -78,6 +78,7 @@ export function EarningsCalendarPage() {
       <div className="grid grid-4">
         <StatCard
           label="Tracked Events"
+          icon={<Calendar size={12} />}
           value={total.toLocaleString()}
           helper="rolling 120-day window"
           accent="cyan"
@@ -85,6 +86,7 @@ export function EarningsCalendarPage() {
         />
         <StatCard
           label="Next 7 Days"
+          icon={<Clock size={12} />}
           value={stats.upcoming7}
           helper="upcoming reports"
           accent="purple"
@@ -92,6 +94,7 @@ export function EarningsCalendarPage() {
         />
         <StatCard
           label="With ML Prediction"
+          icon={<Cpu size={12} />}
           value={stats.withPrediction}
           helper={`${Math.round((stats.withPrediction / Math.max(total, 1)) * 100)}% coverage`}
           accent="emerald"
@@ -99,6 +102,7 @@ export function EarningsCalendarPage() {
         />
         <StatCard
           label="Bullish Signals"
+          icon={<TrendingUp size={12} />}
           value={stats.upDirs}
           helper="predicted UP direction"
           accent="cyan"

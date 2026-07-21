@@ -30,7 +30,9 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173", "http://localhost:3000"])
     scheduler_timezone: str = "America/New_York"
-    default_calendar_lookahead_days: int = 14
+    # The Calendar page requests days_forward=90, so collecting only 14 left it
+    # showing a "rolling 120-day window" it never actually had data for.
+    default_calendar_lookahead_days: int = 90
     prediction_confidence_warning_threshold: float = 0.70
     feature_completeness_warning_threshold: float = 0.80
 

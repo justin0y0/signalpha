@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Activity, BarChart3, Grid3x3, Target, TrendingUp } from 'lucide-react'
+import { Activity, BarChart3, Database, Grid3x3, Target, TrendingDown, TrendingUp } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '../api/client'
 import type { PerformanceResponse } from '../types'
@@ -79,6 +79,7 @@ export function PerformanceTrackerPage() {
       <div className="grid grid-4">
         <StatCard
           label="Overall Accuracy"
+          icon={<Target size={12} />}
           value={generalRow?.accuracy != null ? `${(generalRow.accuracy * 100).toFixed(1)}%` : '—'}
           helper={generalRow ? `F1: ${((generalRow.f1_weighted ?? 0) * 100).toFixed(1)}%` : undefined}
           accent="cyan"
@@ -86,6 +87,7 @@ export function PerformanceTrackerPage() {
         />
         <StatCard
           label="Best Sector"
+          icon={<TrendingUp size={12} />}
           value={bestRow?.sector ?? '—'}
           helper={bestRow?.accuracy != null ? `${(bestRow.accuracy * 100).toFixed(1)}% accuracy` : undefined}
           accent="emerald"
@@ -93,6 +95,7 @@ export function PerformanceTrackerPage() {
         />
         <StatCard
           label="Worst Sector"
+          icon={<TrendingDown size={12} />}
           value={worstRow?.sector ?? '—'}
           helper={worstRow?.accuracy != null ? `${(worstRow.accuracy * 100).toFixed(1)}% accuracy` : undefined}
           accent="rose"
@@ -100,6 +103,7 @@ export function PerformanceTrackerPage() {
         />
         <StatCard
           label="Total Samples"
+          icon={<Database size={12} />}
           value={cmTotals.total.toLocaleString()}
           helper={`${data.by_sector.length} sectors evaluated`}
           accent="purple"

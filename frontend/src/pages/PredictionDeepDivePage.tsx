@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Activity, Target, Gauge, Layers } from 'lucide-react'
+import { Activity, ArrowLeft, Compass, Gauge, Layers, Target } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '../api/client'
 import type { PredictionResponse } from '../types'
@@ -136,6 +136,7 @@ export function PredictionDeepDivePage() {
       <div className="grid grid-4">
         <StatCard
           label="Predicted Direction"
+          icon={<Compass size={12} />}
           value={data.predicted_direction}
           helper={`${(data.confidence_score * 100).toFixed(1)}% confidence`}
           accent={
@@ -149,6 +150,7 @@ export function PredictionDeepDivePage() {
         />
         <StatCard
           label="Expected Move"
+          icon={<Activity size={12} />}
           value={<>±{((data.expected_move.point_estimate_pct ?? 0) * 100).toFixed(2)}%</>}
           helper={
             data.expected_move.historical_avg_pct != null
@@ -160,6 +162,7 @@ export function PredictionDeepDivePage() {
         />
         <StatCard
           label="Convergence Band"
+          icon={<Layers size={12} />}
           value={
             data.convergence_band.lower != null && data.convergence_band.upper != null ? (
               <>
@@ -175,6 +178,7 @@ export function PredictionDeepDivePage() {
         />
         <StatCard
           label="Data Completeness"
+          icon={<Gauge size={12} />}
           value={`${(data.data_completeness * 100).toFixed(1)}%`}
           helper={`${data.warnings.length} warning${data.warnings.length === 1 ? '' : 's'}`}
           accent="emerald"
