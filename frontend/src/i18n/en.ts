@@ -28,6 +28,8 @@ export const en = {
   'cal.stat.next7': 'Next 7 days',
   'cal.stat.next7.helper': 'upcoming reports',
   'cal.stat.withPrediction': 'With ML prediction',
+  'cal.stat.coverage': '{pct}% coverage',
+  'cal.sector.all': 'All',
   'cal.stat.quiet': 'Likely quiet',
   'cal.stat.quiet.helper': "P(FLAT) ≥ 60% · the model's one validated skill",
   'cal.search': 'Search',

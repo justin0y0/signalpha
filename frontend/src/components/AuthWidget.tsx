@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useT } from '../i18n'
 
 const ROLES = ['Student', 'Quant / QR', 'Software Engineer', 'PM / Analyst', 'Trader', 'Researcher', 'Other']
 
@@ -8,6 +9,7 @@ type Me = {
 }
 
 export function AuthWidget() {
+  const { t } = useT()
   const [email, setEmail] = useState<string>(() => localStorage.getItem('sa_email') || '')
   const [me, setMe] = useState<Me | null>(null)
   const [open, setOpen] = useState(false)
@@ -60,7 +62,7 @@ export function AuthWidget() {
       <style>{CSS}</style>
 
       {!me && (
-        <button className="sa-cta" onClick={() => { setOpen(true); reset() }}>Start free trial</button>
+        <button className="sa-cta" onClick={() => { setOpen(true); reset() }}>{t('nav.trial')}</button>
       )}
 
       {me && (

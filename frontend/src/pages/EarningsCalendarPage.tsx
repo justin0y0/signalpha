@@ -99,7 +99,7 @@ export function EarningsCalendarPage() {
           label={t('cal.stat.withPrediction')}
           icon={<Cpu size={12} />}
           value={stats.withPrediction}
-          helper={`${Math.round((stats.withPrediction / Math.max(total, 1)) * 100)}% coverage`}
+          helper={t('cal.stat.coverage', { pct: Math.round((stats.withPrediction / Math.max(total, 1)) * 100) })}
           accent="emerald"
           delay={0.15}
         />
@@ -136,7 +136,7 @@ export function EarningsCalendarPage() {
           <div style={{ flex: '1 1 200px' }}>
             <label className="field-label">{t('cal.sector')}</label>
             <select className="select" value={sector} onChange={(e) => setSector(e.target.value)}>
-              {SECTORS.map((s) => <option key={s} value={s}>{s}</option>)}
+              {SECTORS.map((s) => <option key={s} value={s}>{s === 'All' ? t('cal.sector.all') : s}</option>)}
             </select>
           </div>
           <div style={{ marginLeft: 'auto' }}>

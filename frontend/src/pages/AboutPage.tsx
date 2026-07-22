@@ -29,17 +29,17 @@ import {
 // ============================================================
 
 const STAT_ROW: { label: string; value: string; tint: 'cyan' | 'purple' | 'emerald' | 'amber' }[] = [
-  { label: 'Tracked Equities', value: '181', tint: 'cyan' },
-  { label: 'Earnings Events', value: '6,277', tint: 'purple' },
+  { label: 'Tracked Equities', value: '199', tint: 'cyan' },
+  { label: 'Earnings Events', value: '6,322', tint: 'purple' },
   { label: 'Engineered Features', value: '102', tint: 'emerald' },
-  { label: 'Walk-forward Folds', value: '47', tint: 'amber' },
+  { label: 'Sector Models', value: '9', tint: 'amber' },
 ]
 
 const PIPELINE = [
   { icon: Database, label: 'Ingestion', detail: 'yfinance · SEC EDGAR · FRED · FMP', tint: 'cyan' },
   { icon: CircuitBoard, label: 'Feature engineering', detail: 'price · macro · options · sentiment', tint: 'purple' },
   { icon: Brain, label: 'FinBERT NLP', detail: 'news headlines + 10-Q MD&A scoring', tint: 'emerald' },
-  { icon: Network, label: 'Voting ensemble', detail: 'XGBoost + LightGBM + LogReg', tint: 'amber' },
+  { icon: Network, label: 'Sector ensembles', detail: 'XGBoost served · LGBM + LogReg trained', tint: 'amber' },
   { icon: Eye, label: 'SHAP attribution', detail: 'tree-explainer per prediction', tint: 'cyan' },
 ] as const
 
@@ -106,7 +106,7 @@ const TAB_GUIDE = [
     actions: [
       'Calibration curve: when model says 80% confident, is hit rate actually 80%?',
       'Filter by confidence threshold to see precision vs recall tradeoff',
-      'Walk-forward OOS accuracy = 49.3%, against a 49.8% always-FLAT baseline — it does not beat it',
+      'Walk-forward OOS accuracy = 59.9%, against a 60.7% always-FLAT baseline — it does not beat it',
     ],
   },
   {
@@ -184,7 +184,7 @@ const BENCHMARKS = [
     tint: 'muted',
   },
   {
-    label: 'FLAT-only majority',
+    label: 'Always-FLAT baseline (this dataset)',
     value: 50.0,
     detail: 'Always predict no-move (~\u00B12%)',
     source: 'Class distribution',
@@ -202,9 +202,9 @@ const BENCHMARKS = [
   },
   {
     label: 'Signalpha (this project)',
-    value: 49.3,
-    detail: 'Walk-forward OOS — below the 49.8% always-FLAT baseline',
-    source: 'Purged walk-forward, 5,477 held-out events (rebuilt 2026-07-20)',
+    value: 59.9,
+    detail: 'Walk-forward OOS — below the 60.7% always-FLAT baseline',
+    source: 'Purged walk-forward, 5,477 held-out events · per-stock labelling (2026-07-21)',
     sourceLink: null,
     tint: 'cyan',
   },
@@ -554,18 +554,20 @@ export function AboutPage() {
             <span>Where this sits in the literature</span>
           </div>
           <h2 className="about-section__title">
-            49.3% on a 3-class label does not beat the 49.8% always-FLAT baseline. Here is
+            59.9% on a 3-class label does not beat the 60.7% always-FLAT baseline. Here is
             what the model can actually do.
           </h2>
           <p className="about-section__sub">
             Directional earnings prediction on US large-caps is one of the most informationally
             efficient settings in markets — and on this dataset the model has no directional edge:
-            it commits to a direction on 2.5% of events and is right 53.5% of those (n=71,
-            indistinguishable from chance). Where it does show measurable skill is the opposite
-            question: at P(FLAT) ≥ 0.60 it correctly identifies a non-event 66.6% of the time
-            against a 49.8% base rate (n=862, ≈9.9 standard errors). These numbers come from a
-            walk-forward rebuild that replaced an earlier backfill contaminated by look-ahead —
-            the contaminated version reported a 97.5% backtest win rate.
+            it commits to a direction on roughly 2.5% of events and is right about half of
+            those, which is indistinguishable from chance. Where it does show measurable skill
+            is the opposite question: at P(FLAT) ≥ 0.60 it correctly identifies a non-event
+            <b>76.4%</b> of the time against a 60.7% base rate (n=1,058). Each stock is now
+            labelled against half its own historical earnings-reaction sigma rather than a fixed
+            ±2% — MMM at ±2.5%, TSLA at ±4.4% — which lifted that figure from 66.6%. These
+            numbers come from a walk-forward rebuild that replaced an earlier backfill
+            contaminated by look-ahead; the contaminated version reported a 97.5% win rate.
           </p>
         </div>
 

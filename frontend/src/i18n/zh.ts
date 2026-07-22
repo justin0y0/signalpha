@@ -36,6 +36,8 @@ export const zh: Partial<Record<keyof typeof en, string>> = {
   'cal.stat.next7': '未来 7 天',
   'cal.stat.next7.helper': '即将发布',
   'cal.stat.withPrediction': '有模型预测',
+  'cal.stat.coverage': '覆盖率 {pct}%',
+  'cal.sector.all': '全部',
   'cal.stat.quiet': '大概率平静',
   'cal.stat.quiet.helper': 'P(FLAT) ≥ 60% · 模型唯一验证过的能力',
   'cal.search': '搜索',

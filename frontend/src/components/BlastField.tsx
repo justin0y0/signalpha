@@ -201,10 +201,7 @@ export function BlastField({ events }: Props) {
       {tier !== 'still' && <canvas ref={canvasRef} className="blast__canvas" aria-hidden="true" />}
       <div className="blast__overlay">
         <h1 className="blast__title">{t('cal.hero.title')}</h1>
-        <p className="blast__sub">
-          {scored.length} reports ahead. Tight clusters are the ones the model expects to pass
-          quietly — the one call it makes measurably well.
-        </p>
+        <p className="blast__sub">{t('cal.hero.sub', { n: scored.length })}</p>
         <div className="blast__stats">
           <span><b>{scored.length}</b> {t('cal.tracked')}</span>
           <span><b>{quiet}</b> {t('cal.readsQuiet')}</span>
