@@ -270,6 +270,13 @@ export const zh: Partial<Record<keyof typeof en, string>> = {
   'oracle.size': '建议仓位',
   'oracle.source': '来源',
 
+  'about.hero.line1': '一个机器学习财报信号，',
+  'about.hero.line2': '按量化基金的标准做出来。',
+  'about.hero.lede': 'Signalpha 预测美股大盘股在财报后会动多大，用的是一个 102 特征的集成模型，融合价格行为、期权曲面、宏观状态、基本面、分析师一致预期，以及 FinBERT 打分的新闻情绪。经 walk-forward 验证、按板块分层、可用 SHAP 解释，并且对自己在哪里失败保持公开。',
+  'about.nav.kicker': '怎么用这个网站',
+  'about.nav.title': '七个界面。',
+  'about.nav.sub': '每个 tab 负责一层：即将到来的财报日历、每日简报、模型有多好、三个策略工具、盘中扫描器，以及名人信号流。',
+
   // ── 联系 ──────────────────────────────────────────────────────────────────
   'contact.title': '联系我',
   'contact.sub': '问题、反馈，或者你觉得合适的职位。',

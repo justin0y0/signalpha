@@ -265,6 +265,13 @@ export const en = {
   'oracle.size': 'size',
   'oracle.source': 'source',
 
+  'about.hero.line1': 'An ML earnings signal,',
+  'about.hero.line2': 'engineered like a quant fund.',
+  'about.hero.lede': 'Signalpha forecasts how much a US large-cap moves on its earnings, using a 102-feature ensemble across price action, the options surface, macro regime, fundamentals, analyst consensus and FinBERT-scored news. Walk-forward validated, sector-stratified, SHAP-explained, and open about where it fails.',
+  'about.nav.kicker': 'How to navigate',
+  'about.nav.title': 'Seven surfaces.',
+  'about.nav.sub': 'Each tab isolates one layer: the calendar of upcoming events, the daily brief, how good the model is, three strategy harnesses, the intraday scanner, and the celebrity signal feed.',
+
   // ── Contact ───────────────────────────────────────────────────────────────
   'contact.title': 'Get in touch',
   'contact.sub': 'Questions, feedback, or a role you think fits.',

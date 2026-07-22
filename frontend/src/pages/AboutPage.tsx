@@ -365,16 +365,11 @@ export function AboutPage() {
             <span>About this project</span>
           </div>
           <h1 className="about-hero__title">
-            An ML earnings signal,
+            {t('about.hero.line1')}
             <br />
-            <span className="about-hero__title-grad">engineered like a quant fund.</span>
+            <span className="about-hero__title-grad">{t('about.hero.line2')}</span>
           </h1>
-          <p className="about-hero__lede">
-            Signalpha forecasts the post-earnings price reaction of US large-caps using a 102-feature
-            ensemble that fuses price action, options surface, macro regime, fundamentals, analyst
-            consensus, and FinBERT-scored news + 10-Q sentiment. Walk-forward validated. Sector-stratified.
-            SHAP-explained. End-to-end open source.
-          </p>
+          <p className="about-hero__lede">{t('about.hero.lede')}</p>
           <div className="about-hero__stats">
             {STAT_ROW.map((s) => (
               <div key={s.labelKey} className={`about-stat about-stat--${s.tint}`}>
@@ -397,12 +392,10 @@ export function AboutPage() {
         <div className="about-section__header">
           <div className="about-section__kicker">
             <Activity size={12} />
-            <span>How to navigate</span>
+            <span>{t('about.nav.kicker')}</span>
           </div>
-          <h2 className="about-section__title">Five primary surfaces.</h2>
-          <p className="about-section__sub">
-            Each tab isolates a layer of the workflow — calendar, deep-dive prediction, walk-forward diagnostics, backtested signal performance, and a live paper-trading simulator.
-          </p>
+          <h2 className="about-section__title">{t('about.nav.title')}</h2>
+          <p className="about-section__sub">{t('about.nav.sub')}</p>
         </div>
 
         <div className="about-tabs">
