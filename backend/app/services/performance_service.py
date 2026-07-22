@@ -6,10 +6,10 @@ from sqlalchemy.orm import Session
 from backend.app.db.models import ModelPerformance, Outcome, Prediction
 from backend.app.schemas.performance import ConfidenceTier, PerformanceResponse, SectorPerformance
 from backend.app.services.prediction_filters import OUT_OF_SAMPLE_ONLY
-from backend.app.services.flat_band import classify_actual, load_flat_bands
+from backend.app.services.flat_band import classify_actual, load_event_bands
 
 
-def _actual_class(ret: float | None, ticker: str, bands: dict[str, float]) -> str | None:
+def _actual_class(ret: float | None, ticker: str, when, bands: dict) -> str | None:
     """Bucket a realised return into the same 3 classes the model was trained on.
 
     Two things had to be true for this to be meaningful, and until now only one was.
@@ -25,7 +25,7 @@ def _actual_class(ret: float | None, ticker: str, bands: dict[str, float]) -> st
     """
     if ret is None:
         return None
-    return classify_actual(ret, bands.get(ticker))
+    return classify_actual(ret, bands.get((ticker, when)))
 
 
 def _predicted_class(p_up: float | None, p_flat: float | None, p_down: float | None) -> str:
@@ -86,10 +86,10 @@ class PerformanceService:
         if not rows:
             return []
 
-        bands = load_flat_bands(db)
+        bands = load_event_bands(db)
         records = []
         for p, o in rows:
-            ac = _actual_class(o.actual_t1_close_return, p.ticker, bands)
+            ac = _actual_class(o.actual_t1_close_return, p.ticker, p.earnings_date, bands)
             if ac is None:
                 continue
             pc = _predicted_class(p.direction_prob_up, p.direction_prob_flat, p.direction_prob_down)

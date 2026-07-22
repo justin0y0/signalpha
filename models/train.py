@@ -29,7 +29,8 @@ def _prepare_training_frame(database_url: str) -> pd.DataFrame:
         o.actual_t5_return,
         o.actual_t20_return,
         o.convergence_low,
-        o.convergence_high
+        o.convergence_high,
+        o.flat_band
     FROM price_features p
     JOIN outcomes o
       ON p.ticker = o.ticker
@@ -49,28 +50,22 @@ def _prepare_training_frame(database_url: str) -> pd.DataFrame:
     frame["earnings_date"] = pd.to_datetime(frame["earnings_date"])
     expanded = expand_feature_payload(frame, payload_col="feature_payload")
 
-    # Per-stock FLAT band instead of a flat +/-2% for everything.
+    # Per-stock FLAT band, read from the column that every scoring surface also reads.
     #
-    # A 2% earnings move is enormous for a utility and noise for TSLA, so a single
-    # threshold asks the model to learn an incoherent target: low-vol names almost
-    # never produce UP/DOWN, high-vol names almost never produce FLAT. The label then
-    # encodes "which stock is this" more than "what happened".
-    #
-    # label_direction_adaptive has been in models/dataset.py the whole time -- and
-    # train.py even imported it -- but the static labeller was the one actually wired
-    # up. Band = the stock's own historical earnings-reaction sigma, clamped to
-    # [2.5%, 10%]. Sigma is computed EXPANDING (shift(1) so an event never sees its
-    # own outcome), because a full-sample sigma would leak future volatility into a
-    # label the walk-forward split is supposed to keep clean.
+    # This used to compute an expanding per-stock sigma here, which meant training had
+    # its own private definition of the label while Track Record and Performance each
+    # had another. `outcomes.flat_band` is now the one answer key: the median absolute
+    # earnings reaction the ticker had produced BEFORE each event, so it is already
+    # point-in-time and needs no shift here.
     expanded = expanded.sort_values(["ticker", "earnings_date"]).reset_index(drop=True)
     returns = expanded["actual_t1_close_return"].astype(float)
-    expanded["stock_reaction_std"] = (
-        returns.groupby(expanded["ticker"])
-        .transform(lambda s: s.shift(1).expanding(min_periods=4).std())
+    bands = (
+        expanded["flat_band"].astype(float)
+        if "flat_band" in expanded.columns
+        else pd.Series([float("nan")] * len(expanded))
     )
     expanded["direction_label"] = [
-        label_direction_adaptive(value, std)
-        for value, std in zip(returns, expanded["stock_reaction_std"])
+        label_direction_adaptive(value, band) for value, band in zip(returns, bands)
     ]
     expanded["magnitude_target"] = returns.abs()
     expanded = expanded.sort_values("earnings_date").reset_index(drop=True)
@@ -117,7 +112,7 @@ def _evaluate_sector(frame: pd.DataFrame, sector: str) -> dict[str, Any]:
     ]
     # Drop features that are >=70% missing (mostly empty FMP fields adding noise)
     feature_cols = [c for c in candidate_cols if frame[c].notna().mean() >= 0.30]
-    subset = frame[["ticker", "earnings_date", "sector", "actual_t1_close_return", "actual_t5_return", "actual_t20_return", "convergence_low", "convergence_high", "direction_label", "magnitude_target", *feature_cols]].copy()
+    subset = frame[["ticker", "earnings_date", "sector", "actual_t1_close_return", "actual_t5_return", "actual_t20_return", "convergence_low", "convergence_high", "flat_band", "direction_label", "magnitude_target", *feature_cols]].copy()
     subset = subset.replace([np.inf, -np.inf], np.nan)
     subset = subset.sort_values("earnings_date").reset_index(drop=True)
 

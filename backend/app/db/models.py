@@ -143,6 +143,11 @@ class Prediction(Base):
     expected_move_high: Mapped[float | None] = mapped_column(Float)
     convergence_low: Mapped[float | None] = mapped_column(Float)
     convergence_high: Mapped[float | None] = mapped_column(Float)
+    # Point-in-time FLAT band for THIS event: the median absolute earnings reaction
+    # this ticker had produced *before* this date. Persisted rather than recomputed so
+    # training and every scoring surface read one number, and so an event is judged by
+    # what was knowable when it happened. Written by data_pipeline/compute_flat_bands.py.
+    flat_band: Mapped[float | None] = mapped_column(Float)
     model_version: Mapped[str | None] = mapped_column(String(64))
     feature_completeness: Mapped[float | None] = mapped_column(Float)
     warning_flags: Mapped[list | dict | None] = mapped_column(JSON)

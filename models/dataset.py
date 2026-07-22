@@ -18,25 +18,25 @@ def label_direction(value: float, threshold: float = 0.02) -> str:
     return "FLAT"
 
 
-def label_direction_adaptive(value: float, stock_std: float | None, floor: float = 0.025, ceiling: float = 0.10) -> str:
-    """Stock-aware label. Uses 0.5x stock's historical earnings reaction std as FLAT boundary.
-    Bounded between [floor, ceiling] so we don't get crazy thresholds.
-    
-    Examples:
-    - KO with std=0.015 -> FLAT zone is ±0.75% (capped to floor 1.5%)
-    - TSLA with std=0.08 -> FLAT zone is ±4%
-    - SMCI with std=0.15 -> FLAT zone is ±7.5% (capped to ceiling 10%)
+def label_direction_adaptive(value: float, band: float | None, fallback: float = 0.02) -> str:
+    """Label one event against that stock's own FLAT band.
+
+    `band` is the median absolute earnings reaction the ticker had produced before this
+    event, read from `outcomes.flat_band` (see data_pipeline/compute_flat_bands.py).
+    Half of a stock's prints are larger than its median and half are smaller, so this
+    yields a roughly 25/50/25 target by construction — measured 26.8 / 50.8 / 22.5 over
+    5,521 events.
+
+    This replaces `clamp(0.5 * sigma, 2.5%, 10%)`, which was adaptive in name only: 113
+    of 150 tickers had 0.5*sigma below the 2.5% floor, so the floor set the band for
+    three quarters of the universe and FLAT swallowed 60.7% of events. A model whose
+    most common correct answer is "nothing happens" has nothing to sell.
+
+    Examples, from the real distribution:
+      KO   band 1.2%  -> a 1.5% print is a real move for KO
+      TSLA band 5.1%  -> a 4% print is a normal Tuesday and stays FLAT
     """
-    if stock_std is None or stock_std != stock_std:  # NaN check
-        threshold = floor
-    else:
-        # 0.5x sigma, matching this function's own docstring — the implementation had
-        # drifted to 1.0x. At 1.0x the FLAT band swallows ~69% of events (roughly what
-        # +/-1 sigma covers), which both unbalances the 3-class problem and raises the
-        # always-FLAT baseline the model has to beat. At 0.5x, "non-event" means the
-        # stock moved less than half its own typical earnings reaction, which is the
-        # thing actually worth predicting.
-        threshold = max(floor, min(ceiling, abs(stock_std) * 0.5))
+    threshold = fallback if band is None or band != band else band
     if value > threshold:
         return "UP"
     if value < -threshold:
