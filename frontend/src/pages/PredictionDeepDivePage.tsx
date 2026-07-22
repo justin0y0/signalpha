@@ -201,7 +201,7 @@ export function PredictionDeepDivePage() {
       <div className="grid grid-2" style={{ gridTemplateColumns: '1.5fr 1fr' }}>
         <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
           <div className="card-header">
-            <h3 className="card-title"><Target size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />Direction Probabilities</h3>
+            <h3 className="card-title"><Target size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />{t('dd.dirProbs')}</h3>
           </div>
           {probData.map((p) => (
             <div className="prob-row" key={p.label}>
@@ -222,27 +222,27 @@ export function PredictionDeepDivePage() {
 
         <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
           <div className="card-header">
-            <h3 className="card-title"><Gauge size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />Model Metadata</h3>
+            <h3 className="card-title"><Gauge size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />{t('dd.meta')}</h3>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.85rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span className="muted">Model Version</span>
+              <span className="muted">{t('dd.version')}</span>
               <span className="mono" style={{ fontSize: '0.8rem' }}>{data.model_version ?? '—'}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span className="muted">Feature Coverage</span>
+              <span className="muted">{t('dd.coverage')}</span>
               <span className="mono">{(data.data_completeness * 100).toFixed(1)}%</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span className="muted">Key Drivers</span>
+              <span className="muted">{t('dd.keyDrivers')}</span>
               <span className="mono">{data.key_drivers.length}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span className="muted">Similar Cases</span>
+              <span className="muted">{t('dd.similarCases')}</span>
               <span className="mono">{data.similar_cases.length}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span className="muted">Warnings</span>
+              <span className="muted">{t('dd.warnings')}</span>
               <span className="mono">{data.warnings.length}</span>
             </div>
           </div>
@@ -286,15 +286,15 @@ export function PredictionDeepDivePage() {
       {/* === Key Drivers === */}
       <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '1.25rem 1.5rem 1rem' }}>
-          <h3 className="card-title"><Layers size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />Key Drivers · SHAP Contributions</h3>
+          <h3 className="card-title"><Layers size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />{t('dd.keyDriversShap')}</h3>
         </div>
         <table className="data-table">
           <thead>
             <tr>
-              <th>Feature</th>
-              <th style={{ textAlign: 'right' }}>Value</th>
-              <th>Contribution</th>
-              <th style={{ width: 100 }}>Direction</th>
+              <th>{t('col.feature')}</th>
+              <th style={{ textAlign: 'right' }}>{t('col.value')}</th>
+              <th>{t('col.contribution')}</th>
+              <th style={{ width: 100 }}>{t('col.direction')}</th>
             </tr>
           </thead>
           <tbody>
@@ -334,7 +334,7 @@ export function PredictionDeepDivePage() {
                     </div>
                   </td>
                   <td>
-                    {isPositive ? <Badge variant="up">positive</Badge> : <Badge variant="down">negative</Badge>}
+                    {isPositive ? <Badge variant="up">{t('dd.positive')}</Badge> : <Badge variant="down">{t('dd.negative')}</Badge>}
                   </td>
                 </motion.tr>
               )
@@ -347,7 +347,7 @@ export function PredictionDeepDivePage() {
       {historicalData.length > 0 && (
         <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
           <div className="card-header">
-            <h3 className="card-title">Historical Earnings Reactions · Last 8 Quarters</h3>
+            <h3 className="card-title">{t('dd.histReactions')}</h3>
           </div>
           <div style={{ height: 220 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -378,15 +378,15 @@ export function PredictionDeepDivePage() {
       {data.similar_cases.length > 0 && (
         <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }} style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '1.25rem 1.5rem 1rem' }}>
-            <h3 className="card-title">Similar Historical Cases · Nearest Neighbors</h3>
+            <h3 className="card-title">{t('dd.similarNN')}</h3>
           </div>
           <table className="data-table">
             <thead>
               <tr>
-                <th>Ticker</th>
-                <th>Date</th>
-                <th>Sector</th>
-                <th style={{ textAlign: 'right' }}>Similarity</th>
+                <th>{t('col.ticker')}</th>
+                <th>{t('col.date')}</th>
+                <th>{t('col.sector')}</th>
+                <th style={{ textAlign: 'right' }}>{t('col.similarity')}</th>
                 <th style={{ textAlign: 'right' }}>T+1</th>
                 <th style={{ textAlign: 'right' }}>T+5</th>
                 <th style={{ textAlign: 'right' }}>T+20</th>

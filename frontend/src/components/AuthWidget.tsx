@@ -1,7 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useT } from '../i18n'
 
-const ROLES = ['Student', 'Quant / QR', 'Software Engineer', 'PM / Analyst', 'Trader', 'Researcher', 'Other']
+// Value stays English — it is what the API stores and what the admin table reads.
+const ROLES = [
+  { v: 'Student', k: 'role.student' }, { v: 'Quant / QR', k: 'role.quant' },
+  { v: 'Software Engineer', k: 'role.swe' }, { v: 'PM / Analyst', k: 'role.pm' },
+  { v: 'Trader', k: 'role.trader' }, { v: 'Researcher', k: 'role.researcher' },
+  { v: 'Other', k: 'role.other' },
+] as const
 
 type Me = {
   email: string; name?: string; role?: string; tier?: string; verified?: boolean;
@@ -83,7 +89,7 @@ export function AuthWidget() {
                 <a className="sa-menu-btn" href={me.tg_link} target="_blank" rel="noreferrer">Connect Telegram →</a>
               )}
               {me.tg_connected && <div className="sa-menu-row ok">✓ Telegram connected</div>}
-              <button className="sa-menu-out" onClick={signOut}>Sign out</button>
+              <button className="sa-menu-out" onClick={signOut}>{t('auth.signOut')}</button>
             </div>
           )}
         </div>
@@ -97,12 +103,12 @@ export function AuthWidget() {
             {status === 'sent' ? (
               <div className="sa-done">
                 <div className="sa-check">✓</div>
-                <h3 className="sa-title">Check your inbox</h3>
-                <p className="sa-sub">We sent a confirmation link to <b className="sa-em">{email}</b>. Click it to activate your account.</p>
+                <h3 className="sa-title">{t('auth.checkInbox')}</h3>
+                <p className="sa-sub">{t('auth.sentTo')} <b className="sa-em">{email}</b>. {t('auth.sentBody')}</p>
                 <div className="sa-spam">
-                  📬 Not there in a minute? <b>Check your spam / junk folder</b> and mark it “not spam”.
+                  📬 {t('auth.notThere')} <b>{t('auth.checkSpam')}</b> {t('auth.markNotSpam')}
                 </div>
-                <button className="sa-ghost-btn" onClick={reset}>Use a different email</button>
+                <button className="sa-ghost-btn" onClick={reset}>{t('auth.differentEmail')}</button>
               </div>
             ) : (
               <>
@@ -110,33 +116,33 @@ export function AuthWidget() {
                   <span className="sa-logo"><svg viewBox="0 0 24 24" fill="none" width="18" height="18" xmlns="http://www.w3.org/2000/svg"><path d="M16 8.5C14.2 6.3 11.2 5.8 9 7.2C6.8 8.6 6 11.2 7 13.5C8 15.8 10.5 16.8 13 16C14.8 15.4 16 13.8 16 12V18" stroke="white" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"/><path d="M16 16 Q17.5 13.2 19 16 Q20.5 18.8 22 16" stroke="rgba(255,255,255,0.55)" strokeWidth="1.6" strokeLinecap="round" fill="none"/></svg></span>
                   <span className="sa-eyebrow">SignAlpha</span>
                 </div>
-                <h3 className="sa-title">Start your free trial</h3>
-                <p className="sa-sub">30 days of ML earnings predictions, the Oracle signal scanner, and live track records. No card required.</p>
+                <h3 className="sa-title">{t('auth.startTrial')}</h3>
+                <p className="sa-sub">{t('auth.pitch')}</p>
 
-                <label className="sa-label">Email</label>
+                <label className="sa-label">{t('auth.email')}</label>
                 <input className="sa-input" type="email" placeholder="you@email.com" value={form.email}
                   onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
 
-                <label className="sa-label">Name <span className="sa-opt">optional</span></label>
-                <input className="sa-input" type="text" placeholder="Your name" value={form.name}
+                <label className="sa-label">{t('auth.name')} <span className="sa-opt">{t('auth.optional')}</span></label>
+                <input className="sa-input" type="text" placeholder={t('auth.namePlaceholder')} value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
 
-                <label className="sa-label">Background <span className="sa-opt">optional</span></label>
+                <label className="sa-label">{t('auth.background')} <span className="sa-opt">{t('auth.optional')}</span></label>
                 <select className="sa-input" value={form.role}
                   onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                  <option value="">Select one…</option>
-                  {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                  <option value="">{t('auth.selectOne')}</option>
+                  {ROLES.map(r => <option key={r.v} value={r.v}>{t(r.k)}</option>)}
                 </select>
                 {form.role === 'Other' && (
-                  <input className="sa-input sa-other" type="text" placeholder="Tell us your background" value={form.roleOther}
+                  <input className="sa-input sa-other" type="text" placeholder={t('auth.otherPlaceholder')} value={form.roleOther}
                     onChange={e => setForm(f => ({ ...f, roleOther: e.target.value }))} />
                 )}
 
                 {msg && status === 'error' && <div className="sa-err">{msg}</div>}
                 <button className="sa-submit" disabled={status === 'sending'} onClick={submit}>
-                  {status === 'sending' ? 'Sending…' : 'Create account'}
+                  {status === 'sending' ? t('auth.sending') : t('auth.createAccount')}
                 </button>
-                <p className="sa-fine">We'll email a confirmation link. If it's not in your inbox shortly, check your spam folder.</p>
+                <p className="sa-fine">{t('auth.emailNote')}</p>
               </>
             )}
           </div>

@@ -36,6 +36,7 @@ import {
   YAxis,
 } from 'recharts'
 import { formatDate, formatDateShort } from '../utils/date'
+import { useT } from '../i18n'
 
 // ============================================================
 //  Types (subset — matches v3 backend payload)
@@ -452,6 +453,7 @@ function skipReasonLabel(reason: string | null): string | null {
 // ============================================================
 
 export function SimulatorPage() {
+  const { t } = useT()
   const [data, setData] = useState<SimDashboard | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -553,14 +555,14 @@ export function SimulatorPage() {
     return (
       <div className="sim-loading">
         <div className="sim-loading__pulse" />
-        <div>Booting trading desk…</div>
+        <div>{t('sim.booting')}</div>
       </div>
     )
   }
   if (!data) {
     return (
       <div className="sim-loading">
-        <div>Failed to load</div>
+        <div>{t('sim.failed')}</div>
         {error && <div className="sim-loading__err">{error}</div>}
       </div>
     )
@@ -587,7 +589,7 @@ export function SimulatorPage() {
           <div className="sim-hero__topline">
             <div className="sim-eyebrow">
               <Activity size={12} />
-              <span>Live trading simulator</span>
+              <span>{t('sim.liveSim')}</span>
             </div>
             <div className={`sim-market-badge sim-market-badge--${
               etClock.status === 'OPEN' ? 'open'
@@ -602,7 +604,7 @@ export function SimulatorPage() {
           </div>
 
           <div className="sim-equity">
-            <div className="sim-equity__label">Total portfolio value</div>
+            <div className="sim-equity__label">{t('sim.totalValue')}</div>
             <div className="sim-equity__valuewrap">
               <div className={`sim-equity__rings ${inProfit ? 'sim-equity__rings--green' : 'sim-equity__rings--red'}`}>
                 <div className="sim-equity__ring sim-equity__ring--1" />
@@ -630,15 +632,15 @@ export function SimulatorPage() {
         <div className="sim-hero__right">
           <div className="sim-hero__meta">
             <div className="sim-hero__metarow">
-              <span className="sim-hero__metalbl">Last simulation step</span>
+              <span className="sim-hero__metalbl">{t('sim.lastStep')}</span>
               <span className="sim-hero__metaval mono">{state.snapshot_at ? timeAgo(state.snapshot_at) : 'never'}</span>
             </div>
             <div className="sim-hero__metarow">
-              <span className="sim-hero__metalbl">Data refreshed</span>
+              <span className="sim-hero__metalbl">{t('sim.dataRefreshed')}</span>
               <span className="sim-hero__metaval mono">{lastFetchedAt ? timeAgo(lastFetchedAt.toISOString()) : '—'}</span>
             </div>
             <div className="sim-hero__metarow">
-              <span className="sim-hero__metalbl">Auto-step</span>
+              <span className="sim-hero__metalbl">{t('sim.autoStep')}</span>
               <span className="sim-hero__metaval mono">{autoStep ? 'every 60 sec' : 'paused'}</span>
             </div>
           </div>
@@ -665,7 +667,7 @@ export function SimulatorPage() {
               </button>
             ) : (
               <div className="sim-confirm">
-                <span>Wipe all trades?</span>
+                <span>{t('sim.wipe')}</span>
                 <button className="sim-btn sim-btn--danger sim-btn--small" onClick={onReset} disabled={resetting}>
                   {resetting ? '…' : 'Confirm'}
                 </button>
@@ -725,11 +727,11 @@ export function SimulatorPage() {
           <div className="sim-card__kicker">
             <TrendingUp size={12} /> Equity curve
           </div>
-          <div className="sim-card__title">Portfolio value over time</div>
+          <div className="sim-card__title">{t('sim.portfolioValue')}</div>
         </div>
         {equity_curve.length === 0 ? (
           <div className="sim-empty">
-            No history yet. Click <strong>Run next step</strong> or enable <strong>Auto-step</strong>.
+            No history yet. Click <strong>{t('sim.runNext')}</strong> or enable <strong>{t('sim.autoStep')}</strong>.
           </div>
         ) : (
           <EquityCurve data={equity_curve} initial={initial} />
@@ -751,7 +753,7 @@ export function SimulatorPage() {
 
         <div className="sim-realised-grid">
           <div className={`sim-realised-hero ${realised.total_pnl >= 0 ? 'sim-realised-hero--up' : 'sim-realised-hero--down'}`}>
-            <div className="sim-realised-hero__label">Total realised P&amp;L</div>
+            <div className="sim-realised-hero__label">{t('sim.totalPnl')}</div>
             <div className="sim-realised-hero__value mono">{fmtUSD(realised.total_pnl)}</div>
             <div className="sim-realised-hero__sub">
               {realised.n_trades === 0
@@ -767,7 +769,7 @@ export function SimulatorPage() {
 
         {realised.recent_closes.length > 0 && (
           <div className="sim-realised-list">
-            <div className="sim-realised-list__head">Most recent closes</div>
+            <div className="sim-realised-list__head">{t('sim.recentCloses')}</div>
             <div className="sim-realised-list__rows">
               {realised.recent_closes.map((c, i) => {
                 const pnlPos = (c.realized_pnl ?? 0) >= 0
@@ -802,21 +804,21 @@ export function SimulatorPage() {
             <div className="sim-card__title">{positions.length} open</div>
           </div>
           {positions.length === 0 ? (
-            <div className="sim-empty">No open positions.</div>
+            <div className="sim-empty">{t('sim.noOpen')}</div>
           ) : (
             <div className="sim-table-wrap">
               <table className="sim-table">
                 <thead>
                   <tr>
-                    <th>Ticker</th>
-                    <th>Side</th>
-                    <th className="r">Entry</th>
-                    <th className="r">Mark</th>
-                    <th className="r">Notional</th>
-                    <th className="r">Lev</th>
-                    <th className="r">Conf</th>
-                    <th className="r">Unrealized</th>
-                    <th className="r">Exit</th>
+                    <th>{t('col.ticker')}</th>
+                    <th>{t('col.side')}</th>
+                    <th className="r">{t('col.entry')}</th>
+                    <th className="r">{t('col.mark')}</th>
+                    <th className="r">{t('col.notional')}</th>
+                    <th className="r">{t('col.lev')}</th>
+                    <th className="r">{t('col.conf')}</th>
+                    <th className="r">{t('sim.unrealized')}</th>
+                    <th className="r">{t('col.exit')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -858,7 +860,7 @@ export function SimulatorPage() {
             <div className="sim-card__title">Last {trades.length} executions</div>
           </div>
           {trades.length === 0 ? (
-            <div className="sim-empty">No trades yet.</div>
+            <div className="sim-empty">{t('sim.noTrades')}</div>
           ) : (
             <div className="sim-tape">
               <AnimatePresence initial={false}>
@@ -921,7 +923,7 @@ export function SimulatorPage() {
           <div className="sim-card__title">Upcoming earnings the strategy is watching ({pending.length})</div>
         </div>
         {pending.length === 0 ? (
-          <div className="sim-empty">No qualifying setups in the next 5 days.</div>
+          <div className="sim-empty">{t('sim.noSetups')}</div>
         ) : (
           <div className="sim-pending-grid">
             {pending.map((p) => {
@@ -947,11 +949,11 @@ export function SimulatorPage() {
                   </div>
                   <div className="sim-pending-card__stats">
                     <div className="sim-pending-card__stat">
-                      <span className="lbl">Confidence</span>
+                      <span className="lbl">{t('col.confidence')}</span>
                       <span className="val mono">{(p.confidence * 100).toFixed(1)}%</span>
                     </div>
                     <div className="sim-pending-card__stat">
-                      <span className="lbl">Expected move</span>
+                      <span className="lbl">{t('col.expMove')}</span>
                       <span className="val mono">±{((p.expected_move_pct ?? 0) * 100).toFixed(1)}%</span>
                     </div>
                   </div>
@@ -981,7 +983,7 @@ export function SimulatorPage() {
           <div className="sim-card__kicker">
             <DollarSign size={12} /> Strategy parameters
           </div>
-          <div className="sim-card__title">Hard-coded for transparency</div>
+          <div className="sim-card__title">{t('sim.hardcoded')}</div>
         </div>
         <div className="sim-meta-grid">
           <MetaCell label="Confidence threshold" value={`≥ ${(config.confidence_threshold * 100).toFixed(0)}%`} />

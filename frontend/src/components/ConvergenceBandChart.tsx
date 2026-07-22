@@ -1,4 +1,5 @@
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { useT } from '../i18n'
 
 type Props = {
   lower?: number | null
@@ -8,6 +9,7 @@ type Props = {
 }
 
 export function ConvergenceBandChart({ lower, upper, currentPrice, horizonDays }: Props) {
+  const { t } = useT()
   const startLower = currentPrice ?? lower ?? 0
   const startUpper = currentPrice ?? upper ?? 0
   const data = Array.from({ length: horizonDays }, (_, index) => {
@@ -22,7 +24,7 @@ export function ConvergenceBandChart({ lower, upper, currentPrice, horizonDays }
 
   return (
     <div className="card chart-card">
-      <h3>Convergence zone</h3>
+      <h3>{t('conv.zone')}</h3>
       <ResponsiveContainer width="100%" height={260}>
         <AreaChart data={data}>
           <CartesianGrid strokeDasharray="3 3" />

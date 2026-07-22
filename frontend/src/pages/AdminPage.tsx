@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useT } from '../i18n'
 
 type Urow = {
   email: string; name?: string; role?: string; tier?: string; verified?: boolean;
@@ -16,6 +17,7 @@ const fmtDate = (s?: string) => {
 }
 
 export function AdminPage() {
+  const { t } = useT()
   const [token, setToken] = useState<string>(() => localStorage.getItem('sa_admin') || '')
   const [input, setInput] = useState('')
   const [data, setData] = useState<Data | null>(null)
@@ -53,10 +55,10 @@ export function AdminPage() {
 
       {!data ? (
         <div className="adm-gate">
-          <div className="adm-eyebrow">SignAlpha · Admin</div>
-          <h1 className="adm-gate-title">Restricted</h1>
-          <p className="adm-gate-sub">Enter your admin token to view registered users.</p>
-          <input className="adm-input" type="password" placeholder="Admin token" value={input}
+          <div className="adm-eyebrow">{t('adm.eyebrow')}</div>
+          <h1 className="adm-gate-title">{t('adm.gate.title')}</h1>
+          <p className="adm-gate-sub">{t('adm.gate.sub')}</p>
+          <input className="adm-input" type="password" placeholder={t('adm.gate.placeholder')} value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') unlock() }} />
           {err && <div className="adm-err">{err}</div>}
@@ -68,29 +70,29 @@ export function AdminPage() {
         <div className="adm-dash">
           <div className="adm-head">
             <div>
-              <div className="adm-eyebrow">SignAlpha · Admin</div>
-              <h1 className="adm-h1">Users</h1>
+              <div className="adm-eyebrow">{t('adm.eyebrow')}</div>
+              <h1 className="adm-h1">{t('adm.users')}</h1>
             </div>
             <div className="adm-head-actions">
               <button className="adm-ghost" onClick={() => load(token)} disabled={loading}>
                 {loading ? '…' : 'Refresh'}
               </button>
-              <button className="adm-ghost" onClick={lock}>Lock</button>
+              <button className="adm-ghost" onClick={lock}>{t('adm.lock')}</button>
             </div>
           </div>
 
           <div className="adm-stats">
             <div className="adm-stat">
               <div className="adm-stat-n">{data.total}</div>
-              <div className="adm-stat-l">Total signups</div>
+              <div className="adm-stat-l">{t('adm.stat.signups')}</div>
             </div>
             <div className="adm-stat">
               <div className="adm-stat-n">{data.verified}</div>
-              <div className="adm-stat-l">Verified</div>
+              <div className="adm-stat-l">{t('adm.stat.verified')}</div>
             </div>
             <div className="adm-stat">
               <div className="adm-stat-n adm-cyan">{data.telegram_connected}</div>
-              <div className="adm-stat-l">Telegram connected</div>
+              <div className="adm-stat-l">{t('adm.stat.telegram')}</div>
             </div>
           </div>
 
@@ -106,9 +108,9 @@ export function AdminPage() {
             <table className="adm-table">
               <thead>
                 <tr>
-                  <th>Email</th><th>Name</th><th>Role</th><th>Tier</th>
-                  <th className="adm-c">Verified</th><th className="adm-c">TG</th>
-                  <th className="adm-c">Joined</th><th className="adm-c">Last seen</th>
+                  <th>{t('col.email')}</th><th>{t('col.name')}</th><th>{t('col.role')}</th><th>{t('col.tier')}</th>
+                  <th className="adm-c">{t('adm.th.verified')}</th><th className="adm-c">{t('adm.th.tg')}</th>
+                  <th className="adm-c">{t('adm.th.joined')}</th><th className="adm-c">{t('adm.th.lastSeen')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -125,7 +127,7 @@ export function AdminPage() {
                   </tr>
                 ))}
                 {data.users.length === 0 && (
-                  <tr><td colSpan={8} className="adm-empty">No signups yet.</td></tr>
+                  <tr><td colSpan={8} className="adm-empty">{t('adm.empty')}</td></tr>
                 )}
               </tbody>
             </table>

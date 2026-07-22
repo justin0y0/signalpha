@@ -1,9 +1,11 @@
 import { useEffect, useState, type MouseEvent } from 'react'
+import { useT } from '../i18n'
 
 type Candle = { t: string; o: number; h: number; l: number; c: number }
 const isNum = (x: any): x is number => typeof x === 'number' && isFinite(x)
 
 export function OhlcChart({ ticker, since, entry, dir }: { ticker: string; since?: string; entry?: number; dir?: string }) {
+  const { t } = useT()
   const [data, setData] = useState<Candle[] | null>(null)
   const [err, setErr] = useState(false)
   const [hov, setHov] = useState<number | null>(null)
@@ -23,9 +25,9 @@ export function OhlcChart({ ticker, since, entry, dir }: { ticker: string; since
     return () => { on = false }
   }, [ticker, since])
 
-  if (err) return <div className="orc2-chart-msg">chart unavailable</div>
-  if (!data) return <div className="orc2-chart-msg">loading…</div>
-  if (data.length < 2) return <div className="orc2-chart-msg">no price history</div>
+  if (err) return <div className="orc2-chart-msg">{t('chart.unavailable')}</div>
+  if (!data) return <div className="orc2-chart-msg">{t('chart.loading')}</div>
+  if (data.length < 2) return <div className="orc2-chart-msg">{t('chart.noHistory')}</div>
 
   const W = 760, H = 244, padR = 56, padT = 22, padB = 26
   let lo = Math.min(...data.map(d => d.l)), hi = Math.max(...data.map(d => d.h))

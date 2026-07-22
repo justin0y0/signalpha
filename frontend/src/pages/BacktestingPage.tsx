@@ -51,13 +51,14 @@ function ConfMatrix({cm}:{cm:number[][]}) {
 }
 
 function DirCard({d}:{d:{direction:string;signals:number;hits:number;hit_rate:number;avg_return_pct:number}}) {
+  const { t } = useT()
   const isUp=d.direction==='UP'; const color=isUp?C.green:C.red; const Icon=isUp?TrendingUp:TrendingDown
   return (
     <motion.div className="bt-dir" initial={{opacity:0,x:isUp?-8:8}} animate={{opacity:1,x:0}} transition={{delay:0.2}} style={{borderLeft:`3px solid ${color}`}}>
       <div className="bt-dir__head" style={{color}}><Icon size={13}/><span>{d.direction} signals</span></div>
-      <div className="bt-dir__row"><span>Signals taken</span><b>{d.signals.toLocaleString()}</b></div>
-      <div className="bt-dir__row"><span>Hit rate</span><b style={{color}}>{(d.hit_rate*100).toFixed(1)}%</b></div>
-      <div className="bt-dir__row"><span>Avg return</span><b style={{color:d.avg_return_pct>=0?C.green:C.red}}>{d.avg_return_pct>=0?'+':''}{d.avg_return_pct.toFixed(2)}%</b></div>
+      <div className="bt-dir__row"><span>{t('bt.signalsTaken')}</span><b>{d.signals.toLocaleString()}</b></div>
+      <div className="bt-dir__row"><span>{t('bt.hitRate')}</span><b style={{color}}>{(d.hit_rate*100).toFixed(1)}%</b></div>
+      <div className="bt-dir__row"><span>{t('bt.avgReturn')}</span><b style={{color:d.avg_return_pct>=0?C.green:C.red}}>{d.avg_return_pct>=0?'+':''}{d.avg_return_pct.toFixed(2)}%</b></div>
     </motion.div>
   )
 }
@@ -148,17 +149,17 @@ export function BacktestingPage() {
       <motion.div className="bt-hero" initial={{opacity:0,y:-8}} animate={{opacity:1,y:0}}>
         <div className="bt-hero__badge"><span className="bt-hero__dot"/>BACKTESTER</div>
         <h1 className="bt-hero__title">{t('bt.title')}</h1>
-        <p className="bt-hero__sub">Replay the ML signal on 5,393 historical earnings events. Adjust confidence threshold and scope to explore risk/return tradeoffs.</p>
+        <p className="bt-hero__sub">{t('bt.replay', { n: '5,477' })}</p>
       </motion.div>
 
       <motion.div className="bt-config" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{delay:0.08}}>
         <div className="bt-config__grid">
           <div className="bt-field">
-            <label>Ticker</label>
+            <label>{t('col.ticker')}</label>
             <input value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} placeholder="All tickers" className="bt-input"/>
           </div>
           <div className="bt-field">
-            <label>Sector</label>
+            <label>{t('col.sector')}</label>
             <div className="bt-select-wrap">
               <select value={sector} onChange={e=>setSector(e.target.value)} className="bt-select">
                 {SECTORS.map(s=><option key={s} value={s}>{s||'All sectors'}</option>)}
@@ -206,7 +207,7 @@ export function BacktestingPage() {
             <motion.div className="bt-card" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:0.15}}>
               <div className="bt-card__title">
                 <TrendingUp size={13}/>{t('bt.equity')}
-                <span className="bt-bench-legend"><span className="bt-bench-legend__dash"/>SPY benchmark</span>
+                <span className="bt-bench-legend"><span className="bt-bench-legend__dash"/>{t('bt.spy')}</span>
                 <span className="bt-card__pill" style={{color:ret>=0?C.green:C.red,background:ret>=0?'rgba(74,222,128,0.1)':'rgba(248,113,113,0.1)'}}>{pct(ret)}</span>
               </div>
               <div style={{height:220}}>
@@ -252,18 +253,18 @@ export function BacktestingPage() {
 
             <div className="bt-grid-2">
               <motion.div className="bt-card" initial={{opacity:0,x:-12}} animate={{opacity:1,x:0}} transition={{delay:0.2}}>
-                <div className="bt-card__title">Confusion Matrix <span className="bt-card__sub">signal vs actual direction</span></div>
+                <div className="bt-card__title">Confusion Matrix <span className="bt-card__sub">{t('bt.cm.sub')}</span></div>
                 <ConfMatrix cm={result.confusion_matrix}/>
-                <div className="bt-cm-note">Rows = predicted signal · Cols = actual outcome · Diagonal = correct</div>
+                <div className="bt-cm-note">{t('bt.cm.legend')}</div>
               </motion.div>
               <motion.div className="bt-card" initial={{opacity:0,x:12}} animate={{opacity:1,x:0}} transition={{delay:0.2}}>
                 <div className="bt-card__title">{t('bt.dirBreakdown')}</div>
                 <div style={{display:'flex',flexDirection:'column',gap:'0.75rem',marginTop:'0.5rem'}}>
                   {result.direction_stats.map(d=><DirCard key={d.direction} d={d}/>)}
                   <div className="bt-dir" style={{borderLeft:`3px solid ${C.muted}`}}>
-                    <div className="bt-dir__head" style={{color:C.muted}}><Minus size={13}/><span>FLAT / skipped</span></div>
-                    <div className="bt-dir__row"><span>Events skipped</span><b>{(result.total_samples-result.total_trades).toLocaleString()}</b></div>
-                    <div className="bt-dir__row"><span>Skip rate</span><b>{((result.total_samples-result.total_trades)/result.total_samples*100).toFixed(1)}%</b></div>
+                    <div className="bt-dir__head" style={{color:C.muted}}><Minus size={13}/><span>{t('bt.flatSkipped')}</span></div>
+                    <div className="bt-dir__row"><span>{t('bt.skipped')}</span><b>{(result.total_samples-result.total_trades).toLocaleString()}</b></div>
+                    <div className="bt-dir__row"><span>{t('bt.skipRate')}</span><b>{((result.total_samples-result.total_trades)/result.total_samples*100).toFixed(1)}%</b></div>
                   </div>
                 </div>
                 <div className="bt-ml-grid">
@@ -276,15 +277,15 @@ export function BacktestingPage() {
           </motion.div>
         )}
         {result&&result.total_samples===0&&(
-          <motion.div className="bt-empty" initial={{opacity:0}} animate={{opacity:1}}>No events matched your filters.</motion.div>
+          <motion.div className="bt-empty" initial={{opacity:0}} animate={{opacity:1}}>{t('bt.noMatch')}</motion.div>
         )}
       </AnimatePresence>
 
       {!result&&!error&&(
         <motion.div className="bt-empty" initial={{opacity:0}} animate={{opacity:1}}>
           <Play size={28} style={{opacity:0.25,marginBottom:10}}/>
-          <p>Configure parameters above and run the backtest.</p>
-          <p style={{fontSize:'0.78rem',marginTop:4,color:'#475569'}}>Strategy: LONG on UP · SHORT on DOWN · SKIP on FLAT</p>
+          <p>{t('bt.configure')}</p>
+          <p style={{fontSize:'0.78rem',marginTop:4,color:'#475569'}}>{t('bt.strategyLine')}</p>
         </motion.div>
       )}
     </div>

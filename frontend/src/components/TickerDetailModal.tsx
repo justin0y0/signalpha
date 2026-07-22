@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, TrendingUp, TrendingDown, Check, AlertTriangle } from 'lucide-react'
 import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis } from 'recharts'
 import { StockLogo } from './StockLogo'
+import { useT } from '../i18n'
 
 interface Props { ticker: string | null; onClose: () => void }
 interface Detail {
@@ -36,6 +37,7 @@ function fmtSigned(v: any, digits = 2): string {
 }
 
 export function TickerDetailModal({ ticker, onClose }: Props) {
+  const { t } = useT()
   const [data, setData] = useState<Detail | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -80,7 +82,7 @@ export function TickerDetailModal({ ticker, onClose }: Props) {
               </div>
             )}
             {data && (
-              <ErrorBoundary fallback={<div className="tdp-loading">Render error</div>}>
+              <ErrorBoundary fallback={<div className="tdp-loading">{t('render.error')}</div>}>
                 <Body data={data} />
               </ErrorBoundary>
             )}
@@ -92,6 +94,7 @@ export function TickerDetailModal({ ticker, onClose }: Props) {
 }
 
 function Body({ data }: { data: Detail }) {
+  const { t } = useT()
   const p = data?.pulse || null
   const sig = data?.active_signal || null
   const earnings = Array.isArray(data?.earnings_history) ? data.earnings_history : []
@@ -122,7 +125,7 @@ function Body({ data }: { data: Detail }) {
                 )}
               </>
             ) : (
-              <span>Not in active scan universe</span>
+              <span>{t('ticker.notInUniverse')}</span>
             )}
           </div>
         </div>

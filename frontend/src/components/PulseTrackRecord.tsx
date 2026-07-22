@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Activity, TrendingUp, TrendingDown } from 'lucide-react'
 import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts'
+import { useT } from '../i18n'
 
 interface TR {
   total_signals: number; closed: number; open: number
@@ -12,6 +13,7 @@ interface TR {
 }
 
 export function PulseTrackRecord() {
+  const { t } = useT()
   const [d, setD] = useState<TR | null>(null)
   useEffect(() => {
     const f = () => fetch('/api/v1/pulse/track-record')
@@ -49,12 +51,12 @@ export function PulseTrackRecord() {
           <div className="ptr__stat">
             <span>AVG RETURN</span>
             <b className={d.avg_return_pct > 0 ? 'pos' : 'neg'}>{(d.avg_return_pct * 100).toFixed(2)}%</b>
-            <small>per trade</small>
+            <small>{t('ptr.perTrade')}</small>
           </div>
           <div className="ptr__stat">
             <span>HIT RATIO</span>
             <b>{d.closed > 0 ? ((d.wins / d.closed) * 100).toFixed(0) : '—'}%</b>
-            <small>of closed</small>
+            <small>{t('ptr.ofClosed')}</small>
           </div>
         </div>
         {d.equity_curve.length > 1 && (

@@ -100,7 +100,7 @@ export function PulsePage() {
     <div className="mc-loading">
       <div className="mc-loading__scan" />
       <div className="mc-loading__text">SCANNING MARKET</div>
-      <div className="mc-loading__sub">Computing multi-factor conviction scores…</div>
+      <div className="mc-loading__sub">{t('pulse.computing')}</div>
     </div>
   )
 
@@ -139,12 +139,12 @@ export function PulsePage() {
         </motion.div>
       )}
       {data.signals.length === 0 && (
-        <div className="mc-panel"><div className="mc-empty">Market is quiet. No signals above threshold.</div></div>
+        <div className="mc-panel"><div className="mc-empty">{t('pulse.quiet')}</div></div>
       )}
       <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.21 }}>
         <div className="mc-panel__title">
           🗺️ SECTOR TREEMAP
-          <span className="mc-panel__sub">click any stock for full details · color = conviction</span>
+          <span className="mc-panel__sub">{t('pulse.clickHint')}</span>
         </div>
         {/* ACTIVE SIGNALS BANNER */}
       <PulseTrackRecord />
@@ -155,7 +155,7 @@ export function PulsePage() {
       <div className="treemap-legend">
         <div className="treemap-legend__item">
           <span className="treemap-legend__dot" style={{ background: '#4ade80' }} />
-          <span>Bullish</span>
+          <span>{t('pulse.bullish')}</span>
         </div>
         <div className="treemap-legend__scale">
           <span className="treemap-legend__num">-2</span>
@@ -164,7 +164,7 @@ export function PulsePage() {
         </div>
         <div className="treemap-legend__item">
           <span className="treemap-legend__dot" style={{ background: '#f87171' }} />
-          <span>Bearish</span>
+          <span>{t('pulse.bearish')}</span>
         </div>
         <div className="treemap-legend__hint">
           <b>Σ-Score</b> = Avellaneda-Lee + Gao 2018 + Connors RSI(2) · |≥1.0| high conviction
@@ -213,13 +213,13 @@ export function PulsePage() {
             </div>
             {hoveredCell.sScore !== null && hoveredCell.sScore !== undefined && (
               <div className="treemap-hovercard__row">
-                <span>s-score</span><b className="mono">{(hoveredCell.sScore || 0) >= 0 ? '+' : ''}{(hoveredCell.sScore || 0).toFixed(2)}</b>
+                <span>{t('pulse.sScore')}</span><b className="mono">{(hoveredCell.sScore || 0) >= 0 ? '+' : ''}{(hoveredCell.sScore || 0).toFixed(2)}</b>
               </div>
             )}
             <div className="treemap-hovercard__row">
-              <span>Market Cap</span><b className="mono">{hoveredCell.mcap >= 1000 ? `$${(hoveredCell.mcap/1000).toFixed(1)}T` : `$${hoveredCell.mcap}B`}</b>
+              <span>{t('col.marketCap')}</span><b className="mono">{hoveredCell.mcap >= 1000 ? `$${(hoveredCell.mcap/1000).toFixed(1)}T` : `$${hoveredCell.mcap}B`}</b>
             </div>
-            <div className="treemap-hovercard__cta">click for full details →</div>
+            <div className="treemap-hovercard__cta">{t('pulse.clickDetail')} →</div>
           </motion.div>
         )}
       </div>
@@ -276,28 +276,30 @@ function PulseHero({ data, now, highConv }: { data: PulseData; now: Date; highCo
  * said out loud rather than left for a user to discover.
  */
 function ResearchDisclaimer() {
+  const { t } = useT()
   return (
     <div className="pulse-disclaimer">
       <div>
         200 closed trades since 2026-06-03 · 71.5% win rate · profit factor 0.979 before costs ·{' '}
-        <a href="/about#methodology">methodology</a>
+        <a href="/about#methodology">{t('pulse.methodologyLink')}</a>
       </div>
     </div>
   )
 }
 
 function NotifBanner({ status, sent }: { status: PulseData['notifications']; sent: number }) {
+  const { t } = useT()
   if (status.configured) return (
     <div className="pulse-notif pulse-notif--on">
       <Bell size={14} />
-      <span><b>Telegram alerts ON</b> · {sent} sent this scan · {status.sent_last_hour} in last hour</span>
+      <span><b>{t('pulse.tgOn')}</b> · {sent} sent this scan · {status.sent_last_hour} in last hour</span>
     </div>
   )
   return (
     <div className="pulse-notif pulse-notif--off">
       <BellOff size={14} />
       <span>
-        <b>Phone alerts not configured.</b> Set <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code> in server <code>.env</code> to receive high-conviction signals.
+        <b>{t('pulse.noPhone')}</b> Set <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code> in server <code>.env</code> to receive high-conviction signals.
       </span>
     </div>
   )
@@ -467,6 +469,7 @@ function SignalCard({ sig, onClick }: { sig: Signal; onClick?: () => void }) {
 }
 
 function PortfolioPanel({ portfolio: p }: { portfolio: PulseData['portfolio'] }) {
+  const { t } = useT()
   const eq = useCountUp(p.final_equity, 900)
   const ret = useCountUp(p.total_return * 100, 900)
   return (
@@ -526,10 +529,10 @@ function PortfolioPanel({ portfolio: p }: { portfolio: PulseData['portfolio'] })
                    eng === 'CONNORS' ? 'Connors RSI(2)' : eng}
                 </div>
                 <div className="pulse-engine-card__row">
-                  <span>Trades</span><b className="mono">{d.trades}</b>
+                  <span>{t('col.trades')}</span><b className="mono">{d.trades}</b>
                 </div>
                 <div className="pulse-engine-card__row">
-                  <span>Win rate</span>
+                  <span>{t('col.winRate')}</span>
                   <b className="mono" style={{ color: d.win_rate > 0.55 ? '#4ade80' : d.win_rate > 0.50 ? '#fbbf24' : '#f87171' }}>
                     {(d.win_rate * 100).toFixed(0)}%
                   </b>

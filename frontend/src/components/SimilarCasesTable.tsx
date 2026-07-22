@@ -1,4 +1,5 @@
 import type { SimilarCase } from '../types'
+import { useT } from '../i18n'
 
 type Props = {
   items: SimilarCase[]
@@ -10,15 +11,16 @@ function formatPct(value?: number | null) {
 }
 
 export function SimilarCasesTable({ items }: Props) {
+  const { t } = useT()
   return (
     <div className="card table-card">
-      <h3>Comparable setups</h3>
+      <h3>{t('sim.comparable')}</h3>
       <table>
         <thead>
           <tr>
-            <th>Ticker</th>
-            <th>Date</th>
-            <th>Similarity</th>
+            <th>{t('col.ticker')}</th>
+            <th>{t('col.date')}</th>
+            <th>{t('col.similarity')}</th>
             <th>T+1</th>
             <th>T+5</th>
             <th>T+20</th>

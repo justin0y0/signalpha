@@ -148,7 +148,7 @@ export function ShowdownPage() {
     <div className="mc-loading">
       <div className="mc-loading__scan" />
       <div className="mc-loading__text">{t('sd.booting')}</div>
-      <div className="mc-loading__sub">Loading 5 trading agents…</div>
+      <div className="mc-loading__sub">{t('sd.loadingAgents')}</div>
     </div>
   )
 
@@ -308,7 +308,7 @@ export function ShowdownPage() {
       <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
         <div className="mc-panel__title">
           <Radio size={14} /> EVENT LOG
-          <span className="mc-panel__sub">last 30 trade events with precise timestamps</span>
+          <span className="mc-panel__sub">{t('sd.recentSub')}</span>
         </div>
         <div className="mc-log">
           {data.live_feed.map((e, i) => {
@@ -431,6 +431,7 @@ function BigBoard({ strategy: s, equity, rank, isActive, isLeader, onClick }: {
 
 
 function SignalCalendar({ data }: { data: Showdown }) {
+  const { t } = useT()
   // Group pending signals by date
   const byDate = new Map<string, { date: string; signals: (PendingSignal & { strategy: Strategy })[] }>()
   data.strategies.forEach(s => {
@@ -446,10 +447,10 @@ function SignalCalendar({ data }: { data: Showdown }) {
     <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
       <div className="mc-panel__title">
         <Target size={14} /> SIGNAL CALENDAR
-        <span className="mc-panel__sub">next 14 days · which strategies will fire on which earnings</span>
+        <span className="mc-panel__sub">{t('sd.pendingSub')}</span>
       </div>
       {days.length === 0 ? (
-        <div className="mc-empty">No pending signals. All strategies sitting in cash.</div>
+        <div className="mc-empty">{t('sd.noPending')}</div>
       ) : (
         <div className="mc-cal">
           {days.slice(0, 14).map((d) => {

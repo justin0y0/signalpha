@@ -183,7 +183,7 @@ export function PerformanceTrackerPage() {
           </h3>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', margin: '0.25rem 0 1.25rem' }}>
             The headline accuracy treats all predictions equally — but trading only uses high-conviction calls.
-            Filter by confidence threshold and the picture changes. <em>Directional</em> excludes FLAT predictions and FLAT actuals.
+            Filter by confidence threshold and the picture changes. <em>{t('perf.directionalCol')}</em> excludes FLAT predictions and FLAT actuals.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem' }}>
             {data.confidence_tiers.map((t: any) => (
@@ -225,13 +225,13 @@ export function PerformanceTrackerPage() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Sector</th>
-              <th style={{ textAlign: 'right' }}>Accuracy</th>
-              <th style={{ textAlign: 'right' }}>Precision</th>
-              <th style={{ textAlign: 'right' }}>Recall</th>
+              <th>{t('col.sector')}</th>
+              <th style={{ textAlign: 'right' }}>{t('col.accuracy')}</th>
+              <th style={{ textAlign: 'right' }}>{t('col.precision')}</th>
+              <th style={{ textAlign: 'right' }}>{t('col.recall')}</th>
               <th style={{ textAlign: 'right' }}>F1</th>
               <th style={{ textAlign: 'right' }}>MAE</th>
-              <th style={{ textAlign: 'right' }}>Sharpe</th>
+              <th style={{ textAlign: 'right' }}>{t('col.sharpe')}</th>
             </tr>
           </thead>
           <tbody>
@@ -244,7 +244,7 @@ export function PerformanceTrackerPage() {
                 style={{ background: heatmapBg(s.accuracy), cursor: 'default' }}
               >
                 <td style={{ fontWeight: 600 }}>
-                  {s.sector === 'general' ? <Badge variant="accent">General</Badge> : s.sector}
+                  {s.sector === 'general' ? <Badge variant="accent">{t('perf.general')}</Badge> : s.sector}
                 </td>
                 <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: accuracyColor(s.accuracy) }}>
                   {s.accuracy != null ? `${(s.accuracy * 100).toFixed(1)}%` : '—'}

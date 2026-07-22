@@ -42,9 +42,9 @@ function Section({ title, icon, rows, tone }: { title: string; icon: React.React
       <table className="data-table brief-table">
         <thead>
           <tr>
-            <th>Ticker</th><th>Company</th><th>Date</th>
-            <th>Quiet Score · Distribution</th>
-            <th style={{ textAlign: 'right' }}>Expected Move</th>
+            <th>{t('col.ticker')}</th><th>{t('col.company')}</th><th>{t('col.date')}</th>
+            <th>{t('brief.quietDist')}</th>
+            <th style={{ textAlign: 'right' }}>{t('col.expMove')}</th>
             <th style={{ textAlign: 'right' }}>{t('brief.col.iv')}</th>
           </tr>
         </thead>
@@ -65,7 +65,7 @@ function Section({ title, icon, rows, tone }: { title: string; icon: React.React
       </table>
       {tone === 'quiet' && (
         <p className="brief-note">
-          Highest-conviction <b>non-events</b> — 66.6% correct against a 49.8% base rate.
+          Highest-conviction <b>{t('brief.nonEvents')}</b> — 66.6% correct against a 49.8% base rate.
           The IV column is here because that combination is what premium sellers screen for.
         </p>
       )}

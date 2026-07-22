@@ -1,11 +1,13 @@
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { HistoricalReaction } from '../types'
+import { useT } from '../i18n'
 
 type Props = {
   items: HistoricalReaction[]
 }
 
 export function HistoricalReactionsChart({ items }: Props) {
+  const { t } = useT()
   const data = [...items]
     .sort((a, b) => a.earnings_date.localeCompare(b.earnings_date))
     .map((item) => ({
@@ -15,7 +17,7 @@ export function HistoricalReactionsChart({ items }: Props) {
 
   return (
     <div className="card chart-card">
-      <h3>Last 8 quarters</h3>
+      <h3>{t('hist.last8')}</h3>
       <ResponsiveContainer width="100%" height={260}>
         <BarChart data={data}>
           <CartesianGrid strokeDasharray="3 3" />

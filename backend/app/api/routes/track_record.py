@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from backend.app.api.deps import get_db
 from backend.app.db.models import Prediction, Outcome, EarningsEvent
 from backend.app.services.prediction_filters import OUT_OF_SAMPLE_ONLY
+from backend.app.services.flat_band import classify_actual, load_flat_bands
 
 router = APIRouter(prefix="/track-record", tags=["track-record"])
 
@@ -27,16 +28,16 @@ def _classify_prediction(p: Prediction) -> str:
     }
     return max(probs, key=probs.get)
 
-def _classify_actual(t1: float | None, threshold: float = 0.02) -> str | None:
-    """Classify realised T+1 close return into UP/FLAT/DOWN buckets.
-    Threshold of 1.5% mirrors the labelling used at training time."""
+def _classify_actual(t1: float | None, ticker: str, bands: dict[str, float]) -> str | None:
+    """Classify a realised T+1 close return against *this stock's* FLAT band.
+
+    Previously a flat +/-2% for every ticker, with a docstring that claimed 1.5% —
+    neither of which was the rule the model was trained on. See services/flat_band.py
+    for why that made every accuracy number on this page wrong.
+    """
     if t1 is None or abs(t1) < 1e-9:
         return None
-    if t1 > threshold:
-        return "UP"
-    if t1 < -threshold:
-        return "DOWN"
-    return "FLAT"
+    return classify_actual(t1, bands.get(ticker))
 
 
 # ── 1. Summary KPIs ──────────────────────────────────────────────────────────
@@ -57,14 +58,19 @@ def summary(db: Session = Depends(get_db)) -> dict:
         .where(Outcome.actual_t1_close_return.is_not(None))
         .where(OUT_OF_SAMPLE_ONLY)
     ).all()
+    bands = load_flat_bands(db)
 
     if not rows:
         return {"total": 0, "hit_rate": 0, "avg_actual_move_pct": 0,
                 "best_sector": None, "by_confidence": {}}
 
-    total = len(rows)
+    # Denominator must be rows we actually scored, not rows we fetched. Rows whose
+    # outcome is unusable are `continue`d below, but `total` used to be len(rows),
+    # so every unscored row silently counted as a miss and depressed the hit rate.
+    scored = 0
     hits = 0
     moves = []
+    actual_counts = {"UP": 0, "FLAT": 0, "DOWN": 0}
     by_conf = {"HIGH": [0, 0], "MEDIUM": [0, 0], "LOW": [0, 0]}
     by_sector: dict[str, list[int]] = {}
     for r in rows:
@@ -73,9 +79,11 @@ def summary(db: Session = Depends(get_db)) -> dict:
             direction_prob_flat=r.direction_prob_flat,
             direction_prob_down=r.direction_prob_down,
         ))())
-        actual = _classify_actual(r.actual_t1_close_return)
+        actual = _classify_actual(r.actual_t1_close_return, r.ticker, bands)
         if actual is None:
             continue
+        scored += 1
+        actual_counts[actual] += 1
         hit = pred == actual
         if hit: hits += 1
         moves.append(abs(r.actual_t1_close_return) * 100)
@@ -95,9 +103,23 @@ def summary(db: Session = Depends(get_db)) -> dict:
             best_rate = h / n
             best_sector = {"name": sec, "hit_rate": round(h/n, 4), "n": n}
 
+    if not scored:
+        return {"total": 0, "hit_rate": 0, "avg_actual_move_pct": 0,
+                "best_sector": None, "by_confidence": {}}
+
+    # The number that actually matters. A 3-class accuracy means nothing without the
+    # majority-class rule it has to beat — "always predict FLAT" is free, and if the
+    # model can't clear it, the model is not adding anything. Computed here rather
+    # than hardcoded in the frontend, which had it as a stale 33.3%/50%.
+    baseline_class = max(actual_counts, key=actual_counts.get)
+    baseline = actual_counts[baseline_class] / scored
+
     return {
-        "total": total,
-        "hit_rate": round(hits / total, 4),
+        "total": scored,
+        "hit_rate": round(hits / scored, 4),
+        "baseline": round(baseline, 4),
+        "baseline_class": baseline_class,
+        "actual_distribution": {k: round(v / scored, 4) for k, v in actual_counts.items()},
         "avg_actual_move_pct": round(sum(moves) / len(moves), 2) if moves else 0,
         "best_sector": best_sector,
         "by_confidence": {
@@ -118,7 +140,7 @@ def summary(db: Session = Depends(get_db)) -> dict:
 def confusion(db: Session = Depends(get_db)) -> dict:
     rows = db.execute(
         select(
-            Prediction.direction_prob_up, Prediction.direction_prob_flat,
+            Prediction.ticker, Prediction.direction_prob_up, Prediction.direction_prob_flat,
             Prediction.direction_prob_down, Outcome.actual_t1_close_return,
         )
         .join(Outcome, and_(
@@ -128,18 +150,24 @@ def confusion(db: Session = Depends(get_db)) -> dict:
         .where(Outcome.actual_t1_close_return.is_not(None))
         .where(OUT_OF_SAMPLE_ONLY)
     ).all()
+    bands = load_flat_bands(db)
 
     classes = ["UP", "FLAT", "DOWN"]
     matrix = {p: {a: 0 for a in classes} for p in classes}
+    scored = 0
     for r in rows:
         probs = {"UP": r.direction_prob_up or 0,
                  "FLAT": r.direction_prob_flat or 0,
                  "DOWN": r.direction_prob_down or 0}
         pred = max(probs, key=probs.get)
-        actual = _classify_actual(r.actual_t1_close_return)
-        if actual: matrix[pred][actual] += 1
+        actual = _classify_actual(r.actual_t1_close_return, r.ticker, bands)
+        if actual:
+            matrix[pred][actual] += 1
+            scored += 1
 
-    return {"classes": classes, "matrix": matrix, "total": len(rows)}
+    # `total` drives every percentage in the matrix cells, so it has to be the number
+    # of events that landed in a cell — not the number of rows fetched.
+    return {"classes": classes, "matrix": matrix, "total": scored}
 
 
 # ── 3. Calibration Curve (reliability diagram) ───────────────────────────────
@@ -149,7 +177,7 @@ def calibration(db: Session = Depends(get_db)) -> dict:
     Bin predictions by confidence into deciles, return predicted vs actual."""
     rows = db.execute(
         select(
-            Prediction.direction_prob_up, Prediction.direction_prob_flat,
+            Prediction.ticker, Prediction.direction_prob_up, Prediction.direction_prob_flat,
             Prediction.direction_prob_down, Prediction.confidence_score,
             Outcome.actual_t1_close_return,
         )
@@ -161,6 +189,7 @@ def calibration(db: Session = Depends(get_db)) -> dict:
         .where(OUT_OF_SAMPLE_ONLY)
         .where(Prediction.confidence_score.is_not(None))
     ).all()
+    bands = load_flat_bands(db)
 
     bins = [(i/10, (i+1)/10) for i in range(3, 10)]
     out = []
@@ -173,7 +202,7 @@ def calibration(db: Session = Depends(get_db)) -> dict:
                      "FLAT": r.direction_prob_flat or 0,
                      "DOWN": r.direction_prob_down or 0}
             pred = max(probs, key=probs.get)
-            actual = _classify_actual(r.actual_t1_close_return)
+            actual = _classify_actual(r.actual_t1_close_return, r.ticker, bands)
             if actual: in_bin.append(pred == actual)
         if not in_bin: continue
         out.append({
@@ -190,7 +219,7 @@ def calibration(db: Session = Depends(get_db)) -> dict:
 def rolling(window: int = Query(90, ge=14, le=365), db: Session = Depends(get_db)) -> dict:
     rows = db.execute(
         select(
-            Prediction.earnings_date,
+            Prediction.ticker, Prediction.earnings_date,
             Prediction.direction_prob_up, Prediction.direction_prob_flat,
             Prediction.direction_prob_down, Outcome.actual_t1_close_return,
         )
@@ -202,6 +231,7 @@ def rolling(window: int = Query(90, ge=14, le=365), db: Session = Depends(get_db
         .where(OUT_OF_SAMPLE_ONLY)
         .order_by(Prediction.earnings_date)
     ).all()
+    bands = load_flat_bands(db)
 
     if not rows: return {"points": []}
 
@@ -211,7 +241,7 @@ def rolling(window: int = Query(90, ge=14, le=365), db: Session = Depends(get_db
                  "FLAT": r.direction_prob_flat or 0,
                  "DOWN": r.direction_prob_down or 0}
         pred = max(probs, key=probs.get)
-        actual = _classify_actual(r.actual_t1_close_return)
+        actual = _classify_actual(r.actual_t1_close_return, r.ticker, bands)
         if actual: items.append((r.earnings_date, pred == actual))
 
     if not items: return {"points": []}
@@ -262,13 +292,14 @@ def recent(
     if min_confidence > 0: q = q.where(Prediction.confidence_score >= min_confidence)
 
     rows = db.execute(q).all()
+    bands = load_flat_bands(db)
     items = []
     for r in rows:
         probs = {"UP": r.direction_prob_up or 0,
                  "FLAT": r.direction_prob_flat or 0,
                  "DOWN": r.direction_prob_down or 0}
         pred = max(probs, key=probs.get)
-        actual = _classify_actual(r.actual_t1_close_return)
+        actual = _classify_actual(r.actual_t1_close_return, r.ticker, bands)
         hit = pred == actual if actual else None
         if verdict == "hit" and hit is not True: continue
         if verdict == "miss" and hit is not False: continue
@@ -296,7 +327,7 @@ def confidence_breakdown(db: Session = Depends(get_db)) -> dict:
     """Show accuracy at each confidence threshold — key for investor credibility."""
     rows = db.execute(
         select(
-            Prediction.direction_prob_up, Prediction.direction_prob_flat,
+            Prediction.ticker, Prediction.direction_prob_up, Prediction.direction_prob_flat,
             Prediction.direction_prob_down, Prediction.confidence_score,
             Outcome.actual_t1_close_return,
         )
@@ -308,6 +339,7 @@ def confidence_breakdown(db: Session = Depends(get_db)) -> dict:
         .where(OUT_OF_SAMPLE_ONLY)
         .where(Prediction.confidence_score.is_not(None))
     ).all()
+    bands = load_flat_bands(db)
 
     thresholds = [0.0, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9]
     result = []
@@ -320,7 +352,7 @@ def confidence_breakdown(db: Session = Depends(get_db)) -> dict:
                      "FLAT": r.direction_prob_flat or 0,
                      "DOWN": r.direction_prob_down or 0}
             pred = max(probs, key=probs.get)
-            actual = _classify_actual(r.actual_t1_close_return)
+            actual = _classify_actual(r.actual_t1_close_return, r.ticker, bands)
             if actual:
                 subset.append(pred == actual)
         if not subset:

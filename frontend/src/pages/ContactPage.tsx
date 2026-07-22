@@ -11,6 +11,7 @@ import {
   Sparkles,
   TerminalSquare,
 } from 'lucide-react'
+import { useT } from '../i18n'
 
 // ============================================================
 //  Signalpha — Contact Page
@@ -164,6 +165,7 @@ function CopyPill({ value, label }: { value: string; label: string }) {
 // ============================================================
 
 export function ContactPage() {
+  const { t } = useT()
   return (
     <div className="contact-page">
       {/* Background canvas of slowly drifting orbs */}
@@ -182,7 +184,7 @@ export function ContactPage() {
       >
         <div className="contact-hero__kicker">
           <Sparkles size={13} />
-          <span>Get in touch</span>
+          <span>{t('contact.getInTouch')}</span>
         </div>
         <h1 className="contact-hero__title">
           Let's <span className="contact-hero__title-grad">build something</span> at the intersection of
@@ -225,7 +227,7 @@ export function ContactPage() {
                   <AtSign size={16} />
                 </div>
                 <div className="contact-row__body">
-                  <div className="contact-row__label">Email</div>
+                  <div className="contact-row__label">{t('col.email')}</div>
                   <div className="contact-row__value">{EMAIL}</div>
                 </div>
                 <div className="contact-row__actions">
@@ -281,7 +283,7 @@ export function ContactPage() {
         viewport={{ once: true }}
         transition={{ duration: 0.55, delay: 0.05 }}
       >
-        <div className="contact-focus__title">What I'd love to talk about</div>
+        <div className="contact-focus__title">{t('contact.loveToTalk')}</div>
         <div className="contact-focus__chips">
           {[
             'ML & Data Science',

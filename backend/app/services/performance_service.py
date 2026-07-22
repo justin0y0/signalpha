@@ -6,32 +6,26 @@ from sqlalchemy.orm import Session
 from backend.app.db.models import ModelPerformance, Outcome, Prediction
 from backend.app.schemas.performance import ConfidenceTier, PerformanceResponse, SectorPerformance
 from backend.app.services.prediction_filters import OUT_OF_SAMPLE_ONLY
+from backend.app.services.flat_band import classify_actual, load_flat_bands
 
 
-# Per-stock FLAT band, matching how the model is now labelled (see
-# models/train.py). A single +/-2% cut calls a 2% move on a utility the same event
-# as a 2% move on TSLA, which is not the same event at all.
-FLAT_THRESHOLD = 0.02
-ADAPTIVE_FLOOR, ADAPTIVE_CEILING = 0.025, 0.10
-
-
-def _actual_class(ret: float | None) -> str | None:
+def _actual_class(ret: float | None, ticker: str, bands: dict[str, float]) -> str | None:
     """Bucket a realised return into the same 3 classes the model was trained on.
 
-    Must be fed the T+1 close return. The model's direction label comes from
-    `actual_t1_close_return` (models/train.py -> label_direction), and Backtest and
-    Track Record both score against T+1. This function used to be handed
-    `actual_t5_return`, so the confidence-tier block was grading a T+1 model against a
-    T+5 outcome — an apples-to-oranges comparison that produced a flat ~33% (exactly
-    3-class random) at every confidence threshold.
+    Two things had to be true for this to be meaningful, and until now only one was.
+
+    It must be fed the T+1 close return: the direction label comes from
+    `actual_t1_close_return`, and this used to be handed `actual_t5_return`, which
+    graded a T+1 model against a T+5 outcome and produced a flat ~33% at every
+    confidence threshold.
+
+    It must also use *this stock's* FLAT band. The comment above this function claimed
+    it did while the code applied a fixed 2% to everything — the adaptive floor and
+    ceiling were declared and never read. See services/flat_band.py.
     """
     if ret is None:
         return None
-    if ret > FLAT_THRESHOLD:
-        return "UP"
-    if ret < -FLAT_THRESHOLD:
-        return "DOWN"
-    return "FLAT"
+    return classify_actual(ret, bands.get(ticker))
 
 
 def _predicted_class(p_up: float | None, p_flat: float | None, p_down: float | None) -> str:
@@ -92,9 +86,10 @@ class PerformanceService:
         if not rows:
             return []
 
+        bands = load_flat_bands(db)
         records = []
         for p, o in rows:
-            ac = _actual_class(o.actual_t1_close_return)
+            ac = _actual_class(o.actual_t1_close_return, p.ticker, bands)
             if ac is None:
                 continue
             pc = _predicted_class(p.direction_prob_up, p.direction_prob_flat, p.direction_prob_down)

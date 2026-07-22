@@ -2,14 +2,16 @@ import { motion } from 'framer-motion'
 import { ArrowDown, ArrowUp, Loader2 } from 'lucide-react'
 import { useQuote } from '../../hooks/useQuote'
 import { Sparkline } from './Sparkline'
+import { useT } from '../../i18n'
 
 type Props = { ticker: string }
 
 export function PriceTicker({ ticker }: Props) {
+  const { t } = useT()
   const { data, loading, error } = useQuote(ticker, 60_000)
 
   if (error) {
-    return <div className="price-live"><span className="tertiary">Quote unavailable</span></div>
+    return <div className="price-live"><span className="tertiary">{t('quote.unavailable')}</span></div>
   }
   if (!data) {
     return (

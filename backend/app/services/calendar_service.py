@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import text, Select, and_, select
+from sqlalchemy import Select, and_, select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models import EarningsEvent, Prediction
 from backend.app.schemas.calendar import CalendarEvent, CalendarResponse
+from backend.app.services.flat_band import load_flat_bands
 
 
 class CalendarService:
@@ -37,22 +38,11 @@ class CalendarService:
 
         rows = db.execute(stmt).all()
 
-        # Each ticker's own FLAT band, from its realised earnings reactions — the same
-        # 0.5-sigma rule models/dataset.py labels against, clamped to [2.5%, 10%].
-        # Computed once per request rather than per row.
-        flat_bands: dict[str, float] = {}
+        # Each ticker's own FLAT band, scoped to the tickers actually on screen.
+        # The rule itself lives in services/flat_band.py so Calendar, Track Record and
+        # Performance cannot drift apart again.
         tickers = {event.ticker for event, _ in rows}
-        if tickers:
-            band_rows = db.execute(
-                text("""SELECT ticker,
-                               greatest(0.025, least(0.10, 0.5 * stddev_samp(actual_t1_close_return))) AS band
-                        FROM outcomes
-                        WHERE ticker = ANY(:tickers) AND actual_t1_close_return IS NOT NULL
-                        GROUP BY ticker
-                        HAVING count(*) >= 4"""),
-                {"tickers": list(tickers)},
-            ).fetchall()
-            flat_bands = {r[0]: float(r[1]) for r in band_rows if r[1] is not None}
+        flat_bands = load_flat_bands(db, list(tickers)) if tickers else {}
 
         items: list[CalendarEvent] = []
         for event, prediction in rows:

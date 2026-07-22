@@ -37,122 +37,38 @@ const STAT_ROW: { labelKey: string; value: string; tint: 'cyan' | 'purple' | 'em
 ]
 
 const PIPELINE = [
-  { icon: Database, label: 'Ingestion', detail: 'yfinance · SEC EDGAR · FRED · FMP', tint: 'cyan' },
-  { icon: CircuitBoard, label: 'Feature engineering', detail: 'price · macro · options · sentiment', tint: 'purple' },
-  { icon: Brain, label: 'FinBERT NLP', detail: 'news headlines + 10-Q MD&A scoring', tint: 'emerald' },
-  { icon: Network, label: 'Sector ensembles', detail: 'XGBoost served · LGBM + LogReg trained', tint: 'amber' },
-  { icon: Eye, label: 'SHAP attribution', detail: 'tree-explainer per prediction', tint: 'cyan' },
+  { icon: Database, k: 'about.pl.ingest', tint: 'cyan' },
+  { icon: CircuitBoard, k: 'about.pl.feat', tint: 'purple' },
+  { icon: Brain, k: 'about.pl.nlp', tint: 'emerald' },
+  { icon: Network, k: 'about.pl.ens', tint: 'amber' },
+  { icon: Eye, k: 'about.pl.shap', tint: 'cyan' },
 ] as const
 
 const TAB_GUIDE = [
-  {
-    name: 'Calendar',
-    to: '/',
-    icon: Calendar,
-    tag: 'Live',
-    blurb:
-      'Every upcoming earnings release, scored for stillness rather than direction. Each row shows the full probability distribution the model produced — UP, FLAT and DOWN held in superposition — with the flat score leading, because that is the call the model can actually make.',
-    actions: [
-      'Cluster tightness in the hero is P(FLAT); the cursor pushes through the field',
-      'Rows stay superposed until an outcome exists, then collapse to one state',
-      'Click any row for the per-stock deep dive',
-    ],
-  },
-  {
-    name: 'Brief',
-    to: '/brief',
-    icon: ClipboardList,
-    tag: 'Daily',
-    blurb:
-      'The next seven days of earnings, split into likely non-events and likely moves, with implied vol alongside. Rendered from data with no model in the loop, so it cannot invent a number. Sign in and star tickers to narrow it to your own names.',
-    actions: [
-      'Quiet list is the model\u2019s one validated skill: 76.4% against a 60.7% base rate',
-      'ATM IV sits next to the quiet score because that pairing is what premium sellers screen for',
-      'Watchlist personalisation requires an account; the brief itself is public',
-    ],
-  },
-  {
-    name: 'Model',
-    to: '/model',
-    icon: BarChart3,
-    tag: 'Diagnostic',
-    blurb:
-      'How good the model is, stated against the bar it has to clear. Accuracy is shown next to the always-FLAT baseline, because a three-class accuracy figure means nothing on its own. Includes per-sector metrics, SHAP attribution, a confusion matrix, and the full prediction record joined to realised outcomes.',
-    actions: [
-      'Accuracy vs baseline is computed from the confusion matrix on the same page',
-      'Confidence tiers rise only because the model is choosing FLAT \u2014 watch the directional column',
-      'Prediction Record shows every out-of-sample call, including the losing ones',
-    ],
-  },
-  {
-    name: 'Strategy',
-    to: '/strategy',
-    icon: ChartLine,
-    tag: 'Research',
-    blurb:
-      'Three harnesses over the same signal: an interactive backtest, five strategy personas racing on T+5, and a $1M paper account. Above them sits each stock\u2019s own flat band drawn to scale \u2014 the reason a 2% move means different things to different names.',
-    actions: [
-      'Backtest settles on T+1; Showdown on T+5 with the gap removed for post-earnings entries',
-      'Probabilities are calibrated, so useful thresholds sit near 0.40 rather than 0.65',
-      'Paper account resolves stops against the realised price path, not the closing mark',
-    ],
-  },
-  {
-    name: 'Pulse',
-    to: '/pulse',
-    icon: Activity,
-    tag: 'Real-time',
-    blurb:
-      'Intraday scanner over roughly 100 large-caps. \u03a3 combines Avellaneda\u2013Lee mean reversion (0.55), Gao 2018 intraday momentum (0.25) and a Connors RSI(2) regime term (0.15), damped by a volume z-score. Trades fire at |\u03a3| \u2265 0.50; alerts at 0.60.',
-    actions: [
-      'Background turbulence is driven by the same breadth the page reports',
-      'Track record is public: 200 closed trades, profit factor 0.979 before costs',
-      'The conviction score has no measured relationship to outcome \u2014 Spearman +0.04',
-    ],
-  },
-  {
-    name: 'Oracle',
-    to: '/oracle',
-    icon: Trophy,
-    tag: 'Signals',
-    blurb:
-      'Ten market-moving figures, watched for stock mentions. An LLM extracts ticker, direction and conviction from news and posts; every ticker is price-validated before it is stored. The feed shows subsequent price action honestly, including the calls that went wrong.',
-    actions: [
-      'Avatars are symbolic pixel art, never real likenesses',
-      'X/Twitter is unreachable from the server, so Musk and Serenity stay quiet',
-      'A negative return badge is not a bug \u2014 that figure was wrong that time',
-    ],
-  },
-  {
-    name: 'Contact',
-    to: '/contact',
-    icon: CandlestickChart,
-    tag: 'Reach out',
-    blurb:
-      'Questions, corrections, or a role you think fits. If you find a number on this site you think is wrong, that is the most useful message you can send.',
-    actions: [
-      'Every figure here is reproducible from the repository',
-      'Corrections are published, not quietly patched',
-      'Research and education only \u2014 not investment advice',
-    ],
-  },
+  { name: 'Calendar', to: '/', icon: Calendar, tag: 'Live', k: 'about.tab.cal' , nav: 'nav.calendar', tagK: 'about.tag.cal' },
+  { name: 'Brief', to: '/brief', icon: ClipboardList, tag: 'Daily', k: 'about.tab.brief' , nav: 'nav.brief', tagK: 'about.tag.brief' },
+  { name: 'Model', to: '/model', icon: BarChart3, tag: 'Diagnostic', k: 'about.tab.model' , nav: 'nav.model', tagK: 'about.tag.model' },
+  { name: 'Strategy', to: '/strategy', icon: ChartLine, tag: 'Research', k: 'about.tab.strategy' , nav: 'nav.strategy', tagK: 'about.tag.strategy' },
+  { name: 'Pulse', to: '/pulse', icon: Activity, tag: 'Real-time', k: 'about.tab.pulse' , nav: 'nav.pulse', tagK: 'about.tag.pulse' },
+  { name: 'Oracle', to: '/oracle', icon: Trophy, tag: 'Signals', k: 'about.tab.oracle' , nav: 'nav.oracle', tagK: 'about.tag.oracle' },
+  { name: 'Contact', to: '/contact', icon: CandlestickChart, tag: 'Reach out', k: 'about.tab.contact' , nav: 'nav.contact', tagK: 'about.tag.contact' },
 ] as const
 
 const FEATURE_GROUPS = [
   {
-    title: 'Price & momentum',
+    k: 'about.fg.price',
     items: ['RSI', 'MACD', 'Bollinger position', 'Dist 52w high/low', 'Pre-earn momentum 5/10/20d'],
   },
   {
-    title: 'Macro regime',
+    k: 'about.fg.macro',
     items: ['VIX / VIX9D', 'Yield curve slope', '10y yield', 'CPI / PCE YoY', 'HYG-LQD spread', 'Fed funds rate'],
   },
   {
-    title: 'Options surface',
+    k: 'about.fg.options',
     items: ['IV rank', 'IV 52w high', 'ATM straddle / spot', 'Put/call ratio', 'Put/call skew', 'Expected move %'],
   },
   {
-    title: 'Fundamentals & analyst',
+    k: 'about.fg.funda',
     items: [
       'EPS surprise %',
       'Forward EPS avg / low / high',
@@ -166,62 +82,45 @@ const FEATURE_GROUPS = [
     ],
   },
   {
-    title: 'Positioning',
+    k: 'about.fg.pos',
     items: ['Short ratio', 'Short % float', 'Institutional ownership', 'Days to cover'],
   },
   {
-    title: 'Sentiment (FinBERT)',
+    k: 'about.fg.sent',
     items: ['News headline sentiment', 'Positive news ratio', '10-Q MD&A sentiment', 'Forward-looking sentiment', 'Risk language intensity'],
   },
 ] as const
 
+// Author-year citations stay in the original regardless of locale — translating
+// "Zuckerman (2019)" would make the source harder to look up, not easier.
+const CITATIONS: Record<string, string> = {
+  'about.bm.rentec': 'Zuckerman, The Man Who Solved the Market (2019)',
+  'about.bm.pead': 'Kaczmarek & Zaremba (2025); Cohen-Malloy-Nguyen, Lazy Prices (JoF 2020)',
+  'about.bm.gpt': 'Kim, Muhn & Nikolaev, arXiv 2407.17866 (2024)',
+}
+
 const BENCHMARKS = [
+  { k: 'about.bm.random', value: 33.3, sourceLink: null, tint: 'muted' },
+  // The always-FLAT bar is computed from the same 5,477 held-out events the model is
+  // scored on, using each stock's own band. It read 50.0% with a "~±2%" note while the
+  // paragraph above it said 60.7% — two numbers for one quantity, on one page.
+  { k: 'about.bm.flat', value: 60.7, sourceLink: null, tint: 'muted' },
   {
-    label: 'Random baseline',
-    value: 33.3,
-    detail: '3-class equally-weighted prior',
-    source: 'Theoretical',
-    sourceLink: null,
-    tint: 'muted',
-  },
-  {
-    label: 'Always-FLAT baseline (this dataset)',
-    value: 50.0,
-    detail: 'Always predict no-move (~\u00B12%)',
-    source: 'Class distribution',
-    sourceLink: null,
-    tint: 'muted',
-  },
-  {
-    label: 'Renaissance Medallion (live)',
+    k: 'about.bm.rentec',
     value: 50.75,
-    detail: 'Per-trade directional accuracy across ~300k trades/yr',
-    source: 'Zuckerman, The Man Who Solved the Market (2019)',
-    sourceLink:
-      'https://novelinvestor.com/notes/the-man-who-solved-the-market-by-gregory-zuckerman/',
+    sourceLink: 'https://novelinvestor.com/notes/the-man-who-solved-the-market-by-gregory-zuckerman/',
     tint: 'amber',
   },
+  { k: 'about.bm.self', value: 59.9, sourceLink: null, tint: 'cyan' },
   {
-    label: 'Signalpha (this project)',
-    value: 59.9,
-    detail: 'Walk-forward OOS — below the 60.7% always-FLAT baseline',
-    source: 'Purged walk-forward, 5,477 held-out events · per-stock labelling (2026-07-21)',
-    sourceLink: null,
-    tint: 'cyan',
-  },
-  {
-    label: 'PEAD academic literature',
+    k: 'about.bm.pead',
     value: 56.0,
-    detail: 'Best-published direction models w/ rigorous walk-forward',
-    source: 'Kaczmarek & Zaremba (2025); Cohen-Malloy-Nguyen, Lazy Prices (JoF 2020)',
     sourceLink: 'https://onlinelibrary.wiley.com/doi/abs/10.1111/jofi.12885',
     tint: 'emerald',
   },
   {
-    label: 'GPT-4 + chain-of-thought (experimental)',
+    k: 'about.bm.gpt',
     value: 60.4,
-    detail: 'On standardised statements, narrow universe',
-    source: 'Kim, Muhn & Nikolaev, arXiv 2407.17866 (2024)',
     sourceLink: 'https://arxiv.org/abs/2407.17866',
     tint: 'purple',
   },
@@ -229,7 +128,7 @@ const BENCHMARKS = [
 
 const ROADMAP = [
   {
-    phase: 'Now',
+    k: 'about.rm.now',
     state: 'shipped',
     items: [
       'Walk-forward CV with 47 folds',
@@ -239,7 +138,7 @@ const ROADMAP = [
     ],
   },
   {
-    phase: 'Next',
+    k: 'about.rm.next',
     state: 'in-progress',
     items: [
       'Combinatorial Purged CV (L\u00F3pez de Prado)',
@@ -249,7 +148,7 @@ const ROADMAP = [
     ],
   },
   {
-    phase: 'Research',
+    k: 'about.rm.research',
     state: 'planned',
     items: [
       'Lazy-Prices YoY transcript similarity',
@@ -265,7 +164,11 @@ const ROADMAP = [
 // ============================================================
 
 function HeroBackdrop() {
+  // Two <path> elements previously shared one ref. React assigns in order, so the
+  // second overwrote the first and only the faint 0.6px/40%-opacity echo ever
+  // received a `d` attribute — the main 1.6px wave was never drawn at all.
   const pathRef = useRef<SVGPathElement>(null)
+  const echoRef = useRef<SVGPathElement>(null)
   useEffect(() => {
     const path = pathRef.current
     if (!path) return
@@ -282,7 +185,9 @@ function HeroBackdrop() {
         const y = h / 2 + Math.sin(t + i * 0.4) * 30 + Math.cos(t * 0.6 + i * 0.21) * 18
         segs.push(`${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`)
       }
-      path.setAttribute('d', segs.join(' '))
+      const d = segs.join(' ')
+      path.setAttribute('d', d)
+      echoRef.current?.setAttribute('d', d)
       raf = requestAnimationFrame(loop)
     }
     loop()
@@ -308,7 +213,7 @@ function HeroBackdrop() {
       </defs>
       <rect width="1200" height="320" fill="url(#grid)" />
       <path ref={pathRef} stroke="url(#waveGrad)" strokeWidth="1.6" fill="none" />
-      <path ref={pathRef as any} stroke="url(#waveGrad)" strokeWidth="0.6" fill="none" opacity="0.4" />
+      <path ref={echoRef} stroke="url(#waveGrad)" strokeWidth="0.6" fill="none" opacity="0.4" />
     </svg>
   )
 }
@@ -399,11 +304,14 @@ export function AboutPage() {
         </div>
 
         <div className="about-tabs">
-          {TAB_GUIDE.map((t, i) => {
-            const Icon = t.icon
+          {/* The map variable used to be named `t`, which shadowed the i18n `t` inside
+              this entire block — the reason these seven cards stayed English while the
+              rest of the page translated. */}
+          {TAB_GUIDE.map((tab, i) => {
+            const Icon = tab.icon
             return (
               <motion.div
-                key={t.name}
+                key={tab.name}
                 className="about-tab-card"
                 initial={{ opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -415,20 +323,20 @@ export function AboutPage() {
                   <div className="about-tab-card__iconwrap">
                     <Icon size={20} />
                   </div>
-                  <div className="about-tab-card__tag">{t.tag}</div>
+                  <div className="about-tab-card__tag">{t(tab.tagK as never)}</div>
                 </div>
-                <div className="about-tab-card__name">{t.name}</div>
-                <p className="about-tab-card__blurb">{t.blurb}</p>
+                <div className="about-tab-card__name">{t(tab.nav as never)}</div>
+                <p className="about-tab-card__blurb">{t(`${tab.k}.blurb` as never)}</p>
                 <ul className="about-tab-card__actions">
-                  {t.actions.map((a) => (
-                    <li key={a}>
+                  {[0, 1, 2].map((ai) => (
+                    <li key={ai}>
                       <span className="about-tab-card__bullet" />
-                      {a}
+                      {t(`${tab.k}.a${ai}` as never)}
                     </li>
                   ))}
                 </ul>
-                <NavLink to={t.to} className="about-tab-card__cta">
-                  Open {t.name}
+                <NavLink to={tab.to} className="about-tab-card__cta">
+                  {t('about.tab.open', { name: t(tab.nav as never) })}
                   <ArrowRight size={14} />
                 </NavLink>
               </motion.div>
@@ -448,16 +356,16 @@ export function AboutPage() {
         <div className="about-section__header">
           <div className="about-section__kicker">
             <Cpu size={12} />
-            <span>The pipeline</span>
+            <span>{t('about.pipeline.kicker')}</span>
           </div>
-          <h2 className="about-section__title">From raw filing to signal in five stages.</h2>
+          <h2 className="about-section__title">{t('about.pipeline.title')}</h2>
         </div>
 
         <div className="about-pipeline">
           {PIPELINE.map((step, i) => {
             const Icon = step.icon
             return (
-              <div key={step.label} className="about-pipeline__step">
+              <div key={step.k} className="about-pipeline__step">
                 <motion.div
                   className={`about-pipeline__node about-pipeline__node--${step.tint}`}
                   initial={{ opacity: 0, scale: 0.7 }}
@@ -474,8 +382,8 @@ export function AboutPage() {
                   viewport={{ once: true }}
                   transition={{ duration: 0.4, delay: 0.15 + i * 0.12 }}
                 >
-                  <div className="about-pipeline__name">{step.label}</div>
-                  <div className="about-pipeline__detail">{step.detail}</div>
+                  <div className="about-pipeline__name">{t(step.k as never)}</div>
+                  <div className="about-pipeline__detail">{t(`${step.k}.d` as never)}</div>
                 </motion.div>
                 {i < PIPELINE.length - 1 && (
                   <motion.div
@@ -503,26 +411,23 @@ export function AboutPage() {
         <div className="about-section__header">
           <div className="about-section__kicker">
             <GitBranch size={12} />
-            <span>Feature taxonomy</span>
+            <span>{t('about.tax.kicker')}</span>
           </div>
-          <h2 className="about-section__title">102 engineered features across six families.</h2>
-          <p className="about-section__sub">
-            Every feature is computed point-in-time so no information that wouldn't have been available
-            ahead of the earnings event leaks into the prediction.
-          </p>
+          <h2 className="about-section__title">{t('about.tax.title')}</h2>
+          <p className="about-section__sub">{t('about.tax.sub')}</p>
         </div>
 
         <div className="about-features">
           {FEATURE_GROUPS.map((g, i) => (
             <motion.div
-              key={g.title}
+              key={g.k}
               className="about-feature-group"
               initial={{ opacity: 0, y: 14 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.4, delay: i * 0.06 }}
             >
-              <div className="about-feature-group__title">{g.title}</div>
+              <div className="about-feature-group__title">{t(g.k as never)}</div>
               <div className="about-feature-group__list">
                 {g.items.map((it) => (
                   <span key={it} className="about-feature-chip">
@@ -546,27 +451,16 @@ export function AboutPage() {
         <div className="about-section__header">
           <div className="about-section__kicker">
             <Target size={12} />
-            <span>Where this sits in the literature</span>
+            <span>{t('about.lit.kicker')}</span>
           </div>
           <h2 className="about-section__title">{t('about.finding.title')}</h2>
-          <p className="about-section__sub">
-            Directional earnings prediction on US large-caps is one of the most informationally
-            efficient settings in markets — and on this dataset the model has no directional edge:
-            it commits to a direction on roughly 2.5% of events and is right about half of
-            those, which is indistinguishable from chance. Where it does show measurable skill
-            is the opposite question: at P(FLAT) ≥ 0.60 it correctly identifies a non-event
-            <b>76.4%</b> of the time against a 60.7% base rate (n=1,058). Each stock is now
-            labelled against half its own historical earnings-reaction sigma rather than a fixed
-            ±2% — MMM at ±2.5%, TSLA at ±4.4% — which lifted that figure from 66.6%. These
-            numbers come from a walk-forward rebuild that replaced an earlier backfill
-            contaminated by look-ahead; the contaminated version reported a 97.5% win rate.
-          </p>
+          <p className="about-section__sub">{t('about.finding.body')}</p>
         </div>
 
         <div className="benchmark-stack">
           {BENCHMARKS.map((b, i) => (
             <motion.div
-              key={b.label}
+              key={b.k}
               className={`benchmark-row benchmark-row--${b.tint}`}
               initial={{ opacity: 0, x: -20 }}
               whileInView={{ opacity: 1, x: 0 }}
@@ -574,7 +468,7 @@ export function AboutPage() {
               transition={{ duration: 0.5, delay: i * 0.1 }}
             >
               <div className="benchmark-row__head">
-                <div className="benchmark-row__label">{b.label}</div>
+                <div className="benchmark-row__label">{t(b.k as never)}</div>
                 <div className="benchmark-row__value">
                   <Counter value={b.value} />
                   <span className="benchmark-row__pct">%</span>
@@ -590,14 +484,14 @@ export function AboutPage() {
                 />
               </div>
               <div className="benchmark-row__foot">
-                <span className="benchmark-row__detail">{b.detail}</span>
+                <span className="benchmark-row__detail">{t(`${b.k}.d` as never)}</span>
                 <span className="benchmark-row__source">
                   {b.sourceLink ? (
                     <a href={b.sourceLink} target="_blank" rel="noreferrer noopener">
-                      {b.source}
+                      {CITATIONS[b.k]}
                     </a>
                   ) : (
-                    b.source
+                    t(`${b.k}.s` as never)
                   )}
                 </span>
               </div>
@@ -610,16 +504,8 @@ export function AboutPage() {
             <TrendingUp size={18} />
           </div>
           <div className="about-callout__body">
-            <div className="about-callout__title">A note on the Renaissance comparison.</div>
-            <p>
-              Medallion's per-trade directional accuracy of roughly 50.75% is famous because it is paired
-              with breadth on the order of 300,000 trades per year — Grinold's fundamental law,
-              IR &asymp; IC&nbsp;&times;&nbsp;&radic;Breadth, is doing most of the work. Signalpha is
-              the opposite shape: a narrow window (a few hundred earnings events per year), which means
-              the per-event accuracy bar is meaningfully higher. Anything materially above 60% on liquid
-              US mega-caps is, in the published literature, a strong indicator of data leakage rather
-              than alpha.
-            </p>
+            <div className="about-callout__title">{t('about.rentec.title')}</div>
+            <p>{t('about.rentec.body')}</p>
           </div>
         </div>
       </motion.section>
@@ -635,15 +521,15 @@ export function AboutPage() {
         <div className="about-section__header">
           <div className="about-section__kicker">
             <LineChart size={12} />
-            <span>Roadmap</span>
+            <span>{t('about.roadmap.kicker')}</span>
           </div>
-          <h2 className="about-section__title">What's shipped, what's next, what's research.</h2>
+          <h2 className="about-section__title">{t('about.roadmap.title')}</h2>
         </div>
 
         <div className="about-roadmap">
           {ROADMAP.map((r, i) => (
             <motion.div
-              key={r.phase}
+              key={r.k}
               className={`about-roadmap__col about-roadmap__col--${r.state}`}
               initial={{ opacity: 0, y: 16 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -652,7 +538,7 @@ export function AboutPage() {
             >
               <div className="about-roadmap__phase">
                 <span className="about-roadmap__dot" />
-                {r.phase}
+                {t(r.k as never)}
               </div>
               <ul className="about-roadmap__list">
                 {r.items.map((it) => (
@@ -675,9 +561,9 @@ export function AboutPage() {
         <div className="about-section__header">
           <div className="about-section__kicker">
             <CircuitBoard size={12} />
-            <span>Tech stack</span>
+            <span>{t('about.stack.kicker')}</span>
           </div>
-          <h2 className="about-section__title">Pragmatic and production-shaped.</h2>
+          <h2 className="about-section__title">{t('about.stack.title')}</h2>
         </div>
 
         <div className="about-stack-grid">
@@ -705,17 +591,15 @@ export function AboutPage() {
         viewport={{ once: true }}
         transition={{ duration: 0.5 }}
       >
-        <div className="about-cta__title">Curious about the implementation?</div>
-        <p className="about-cta__sub">
-          Walk through the live signals, dig into the diagnostics, run the backtest, or watch the paper-trading simulator deploy the model on a virtual $1M book.
-        </p>
+        <div className="about-cta__title">{t('about.cta.title')}</div>
+        <p className="about-cta__sub">{t('about.cta.sub')}</p>
         <div className="about-cta__actions">
           <NavLink to="/" className="about-cta__primary">
-            Open the calendar
+            {t('about.cta.primary')}
             <ArrowRight size={14} />
           </NavLink>
           <NavLink to="/contact" className="about-cta__secondary">
-            Contact me
+            {t('about.cta.secondary')}
           </NavLink>
         </div>
       </motion.section>

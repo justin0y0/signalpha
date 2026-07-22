@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useRenderTier } from '../hooks/useRenderTier'
+import { useT } from '../i18n'
 
 /**
  * Concept F — the IV crush chamber, for a single stock's deep dive.
@@ -26,6 +27,7 @@ type Props = {
 }
 
 export function CrushChamber({ daysUntil, expectedMove, quiet }: Props) {
+  const { t } = useT()
   const ref = useRef<HTMLCanvasElement | null>(null)
   const tier = useRenderTier()
 
@@ -150,7 +152,7 @@ export function CrushChamber({ daysUntil, expectedMove, quiet }: Props) {
     <div className="chamber">
       {tier !== 'still' && <canvas ref={ref} className="chamber__canvas" aria-hidden="true" />}
       <div className="chamber__meta">
-        <span className="chamber__kicker">Implied vol into the print</span>
+        <span className="chamber__kicker">{t('crush.ivInto')}</span>
         <p className="chamber__copy">
           Vol builds while the number is unknown and collapses the moment it is published,
           whichever way the stock goes. The model reads this one as{' '}

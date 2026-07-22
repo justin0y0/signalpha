@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { Zap, TrendingUp, TrendingDown } from 'lucide-react'
 import { StockLogo } from './StockLogo'
+import { useT } from '../i18n'
 
 interface Signal {
   ticker: string
@@ -21,6 +22,7 @@ const STRAT_TAG: Record<string, string> = {
 }
 
 export function ActiveSignalsBanner({ signals, onSelect }: Props) {
+  const { t } = useT()
   const longs = signals.filter((s: any) => s.side === 'LONG').length
   const shorts = signals.filter((s: any) => s.side === 'SHORT').length
   return (
@@ -36,7 +38,7 @@ export function ActiveSignalsBanner({ signals, onSelect }: Props) {
           <span className="asb__long">{longs}L</span>
           <span className="asb__short">{shorts}S</span>
         </span>
-        <span className="asb__hint">click any to view details</span>
+        <span className="asb__hint">{t('signals.clickAny')}</span>
       </div>
       {signals.length === 0 ? (
         <div className="asb__empty">

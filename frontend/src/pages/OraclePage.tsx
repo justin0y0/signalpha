@@ -133,11 +133,11 @@ export function OraclePage() {
         <div className="orc2-orb" aria-hidden />
         <div className="orc2-hero-main">
           <h1 className="orc2-title">{t('oracle.title')}</h1>
-          <p className="orc2-sub">Market-moving voices, read in real time — their words distilled into a signal, a sizing, and the call's realized P&amp;L.</p>
+          <p className="orc2-sub">{t('oracle.sub')}</p>
           <div className="orc2-stats">
-            <div className="orc2-stat"><b>{todayCount}</b><span>signals · 24h</span></div>
-            <div className="orc2-stat"><b>{activeCount}</b><span>tracking</span></div>
-            <div className="orc2-stat"><b className={avgCall >= 0 ? 'pos' : 'neg'}>{avgCall >= 0 ? '+' : ''}{avgCall.toFixed(1)}%</b><span>avg call</span></div>
+            <div className="orc2-stat"><b>{todayCount}</b><span>{t('oracle.stat.signals')}</span></div>
+            <div className="orc2-stat"><b>{activeCount}</b><span>{t('oracle.stat.tracking')}</span></div>
+            <div className="orc2-stat"><b className={avgCall >= 0 ? 'pos' : 'neg'}>{avgCall >= 0 ? '+' : ''}{avgCall.toFixed(1)}%</b><span>{t('oracle.stat.avg')}</span></div>
           </div>
         </div>
         <button className={'orc2-scan' + (scanning ? ' is-scanning' : '')} onClick={scan} disabled={scanning}>
@@ -149,8 +149,8 @@ export function OraclePage() {
         <section className="orc2-lb-wrap">
           <div className="orc2-lb-head">
             <h2>{t('oracle.whoMoves')}</h2>
-            <span className="orc2-lb-sub">ranked by realized return on their calls</span>
-            {figFilter && <button className="orc2-lb-clear" onClick={() => setFigFilter(null)}>clear filter ✕</button>}
+            <span className="orc2-lb-sub">{t('oracle.lb.sub')}</span>
+            {figFilter && <button className="orc2-lb-clear" onClick={() => setFigFilter(null)}>{t('oracle.lb.clear')} ✕</button>}
           </div>
           <div className="orc2-lb">
             {board.map((b, i) => {
@@ -209,7 +209,7 @@ export function OraclePage() {
         </div>
 
         {loaded && shown.length === 0 && (
-          <div className="orc2-empty"><span className="orc2-empty-orb" />No signals yet — hit “Scan now” to sweep your tracked voices.</div>
+          <div className="orc2-empty"><span className="orc2-empty-orb" />{t('oracle.empty')}</div>
         )}
 
         <div className="orc2-siglist">
@@ -249,13 +249,13 @@ export function OraclePage() {
                       <span className="orc2-pulse-tag">Pulse {s.pulse_score > 0 ? '+' : ''}{s.pulse_score.toFixed(2)}</span>
                     )}
                     <span className="orc2-size">size ${Math.round(100 + Math.min(1, Math.max(0, ((s.confidence || 0) - 0.5) / 0.5)) * 400)}</span>
-                    {s.source_url && <a className="orc2-src" href={s.source_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>source ↗</a>}
+                    {s.source_url && <a className="orc2-src" href={s.source_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{t('oracle.source')} ↗</a>}
                   </div>
                 </div>
                 {ret !== null ? (
                   <div className={'orc2-ret ' + (ret >= 0 ? 'pos' : 'neg')}>
                     <b>{ret >= 0 ? '+' : ''}{ret.toFixed(1)}%</b>
-                    <span>since signal</span>
+                    <span>{t('oracle.sinceSignal')}</span>
                   </div>
                 ) : (
                   <div className="orc2-conf" style={{ ['--p' as any]: pct, ['--accent' as any]: bull ? 'var(--bull)' : 'var(--bear)' }}>

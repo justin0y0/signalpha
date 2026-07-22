@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRenderTier } from '../hooks/useRenderTier'
+import { useT } from '../i18n'
 
 /**
  * A cold-start self-test, played once per session.
@@ -18,6 +19,7 @@ import { useRenderTier } from '../hooks/useRenderTier'
 type Line = { label: string; value: string; tone?: 'ok' | 'warn' | 'plain' }
 
 export function BootSequence() {
+  const { t } = useT()
   const tier = useRenderTier()
   const [done, setDone] = useState(true)
   const [step, setStep] = useState(0)
@@ -106,7 +108,7 @@ export function BootSequence() {
             </div>
           ))}
         </div>
-        <div className="boot__hint">press any key to skip</div>
+        <div className="boot__hint">{t('boot.pressSkip')}</div>
       </div>
     </div>
   )

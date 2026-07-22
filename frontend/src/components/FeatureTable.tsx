@@ -1,12 +1,15 @@
+import { useT } from '../i18n'
+
 type Props = {
   data: Record<string, unknown>
 }
 
 export function FeatureTable({ data }: Props) {
+  const { t } = useT()
   const entries = Object.entries(data).sort(([a], [b]) => a.localeCompare(b))
   return (
     <div className="card table-card">
-      <h3>Raw and engineered features</h3>
+      <h3>{t('feat.rawEng')}</h3>
       <div className="feature-grid">
         {entries.map(([key, value]) => (
           <div className="feature-row" key={key}>

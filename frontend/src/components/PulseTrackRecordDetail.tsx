@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, ChevronUp, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react'
+import { useT } from '../i18n'
 
 interface Trade {
   id: number; ticker: string; side: string; score: number; strategy: string
@@ -19,6 +20,7 @@ interface Detail {
 }
 
 export function PulseTrackRecordDetail() {
+  const { t } = useT()
   const [d, setD] = useState<Detail | null>(null)
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState<'all'|'open'|'closed'>('all')
@@ -48,8 +50,8 @@ export function PulseTrackRecordDetail() {
       {open && (
         <motion.div className="ptrd__body" initial={{height:0, opacity:0}} animate={{height:'auto', opacity:1}} exit={{height:0, opacity:0}}>
           <div className="ptrd__tabs">
-            <button className={tab==='trades'?'on':''} onClick={()=>setTab('trades')}>All Trades</button>
-            <button className={tab==='cohorts'?'on':''} onClick={()=>setTab('cohorts')}>Loss Analysis</button>
+            <button className={tab==='trades'?'on':''} onClick={()=>setTab('trades')}>{t('ptr.allTrades')}</button>
+            <button className={tab==='cohorts'?'on':''} onClick={()=>setTab('cohorts')}>{t('ptr.lossAnalysis')}</button>
           </div>
           {tab==='trades' && (
             <>
@@ -60,7 +62,7 @@ export function PulseTrackRecordDetail() {
               </div>
               <div className="ptrd__tbl-wrap">
                 <table className="ptrd__tbl"><thead><tr>
-                  <th>Ticker</th><th>Side</th><th>Strategy</th><th>Entry</th><th>Exit</th><th>Hold</th><th>Return</th><th>P&L</th><th>Status</th>
+                  <th>{t('col.ticker')}</th><th>{t('col.side')}</th><th>{t('col.strategy')}</th><th>{t('col.entry')}</th><th>{t('col.exit')}</th><th>{t('col.hold')}</th><th>{t('col.return')}</th><th>P&L</th><th>{t('col.status')}</th>
                 </tr></thead><tbody>
                 {trades.slice(0, 100).map(t => (
                   <tr key={t.id}>

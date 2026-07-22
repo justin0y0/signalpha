@@ -10,6 +10,7 @@ const API = '/api/v1/track-record'
 
 type Summary = {
   total: number; hit_rate: number; avg_actual_move_pct: number
+  baseline: number; baseline_class: string
   best_sector: { name: string; hit_rate: number; n: number } | null
   by_confidence: Record<string, { n: number; hits: number; hit_rate: number }>
   by_sector: { name: string; n: number; hits: number; hit_rate: number }[]
@@ -47,11 +48,12 @@ function KpiCard({ label, value, sub, accent = CYAN }:
 }
 
 function ConfusionMatrix({ data }: { data: Confusion }) {
+  const { t } = useT()
   const { classes, matrix, total } = data
   const maxVal = Math.max(...classes.flatMap(p => classes.map(a => matrix[p]?.[a] ?? 0)))
   return (
     <div className="tr-card">
-      <div className="tr-card__title">Confusion Matrix <span className="tr-card__sub">predicted → actual</span></div>
+      <div className="tr-card__title">{t('tr.confusion.title')} <span className="tr-card__sub">{t('tr.confusion.sub')}</span></div>
       <div className="tr-confusion">
         <div className="tr-confusion__corner" />
         {classes.map(a => (
@@ -82,24 +84,25 @@ function ConfusionMatrix({ data }: { data: Confusion }) {
 }
 
 function CalibrationChart({ data }: { data: CalibPt[] }) {
+  const { t } = useT()
   const pts = data.map(d => ({ ...d, confidence_bin: +(d.confidence_bin * 100).toFixed(0) }))
   return (
     <div className="tr-card">
       <div className="tr-card__title">
-        Calibration Curve
-        <span className="tr-card__sub">when model says X% confident, actual hit rate should match</span>
+        {t('tr.calib.title')}
+        <span className="tr-card__sub">{t('tr.calib.sub')}</span>
       </div>
       <ResponsiveContainer width="100%" height={220}>
         <ScatterChart margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
           <XAxis dataKey="confidence_bin" type="number" domain={[30, 100]}
             tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={v => `${v}%`}
-            label={{ value: 'Predicted confidence', fill: '#64748b', fontSize: 11, position: 'insideBottom', offset: -4 }} />
+            label={{ value: t('tr.calib.xaxis'), fill: '#64748b', fontSize: 11, position: 'insideBottom', offset: -4 }} />
           <YAxis dataKey="actual_rate" type="number" domain={[0.3, 1]}
             tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={v => `${(v * 100).toFixed(0)}%`} />
           <ReferenceLine stroke="rgba(255,255,255,0.2)"
             segment={[{ x: 30, y: 0.3 }, { x: 100, y: 1.0 }]}
-            strokeDasharray="6 3" label={{ value: 'Perfect', fill: '#64748b', fontSize: 10, position: 'insideTopRight' }} />
+            strokeDasharray="6 3" label={{ value: t('tr.calib.perfect'), fill: '#64748b', fontSize: 10, position: 'insideTopRight' }} />
           <Tooltip
             cursor={{ strokeDasharray: '3 3' }}
             content={({ payload }) => {
@@ -107,9 +110,9 @@ function CalibrationChart({ data }: { data: CalibPt[] }) {
               const d = payload[0].payload as CalibPt & { confidence_bin: number }
               return (
                 <div className="tr-tooltip">
-                  <div>Confidence: <b>{d.confidence_bin}%</b></div>
-                  <div>Actual hit rate: <b style={{ color: CYAN }}>{fmt(d.actual_rate)}</b></div>
-                  <div>Sample size: <b>{d.n}</b></div>
+                  <div>{t('tr.calib.confidence')}: <b>{d.confidence_bin}%</b></div>
+                  <div>{t('tr.calib.actualRate')}: <b style={{ color: CYAN }}>{fmt(d.actual_rate)}</b></div>
+                  <div>{t('tr.calib.sample')}: <b>{d.n}</b></div>
                 </div>
               )
             }}
@@ -125,11 +128,12 @@ function CalibrationChart({ data }: { data: CalibPt[] }) {
   )
 }
 
-function RollingChart({ data }: { data: RollingPt[] }) {
+function RollingChart({ data, baseline }: { data: RollingPt[]; baseline: number }) {
+  const { t } = useT()
   const pts = data.map(d => ({ ...d, pct: +(d.accuracy * 100).toFixed(1) }))
   return (
     <div className="tr-card">
-      <div className="tr-card__title">Rolling 90-Day Accuracy <span className="tr-card__sub">weekly snapshots</span></div>
+      <div className="tr-card__title">{t('tr.rolling.title')} <span className="tr-card__sub">{t('tr.rolling.sub')}</span></div>
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={pts} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
@@ -138,9 +142,9 @@ function RollingChart({ data }: { data: RollingPt[] }) {
           <YAxis domain={[30, 100]} tick={{ fill: '#94a3b8', fontSize: 11 }}
             tickFormatter={v => `${v}%`} />
           <ReferenceLine y={33.3} stroke="rgba(248,113,113,0.4)" strokeDasharray="4 3"
-            label={{ value: 'Random', fill: '#f87171', fontSize: 10, position: 'right' }} />
-          <ReferenceLine y={50} stroke="rgba(251,191,36,0.4)" strokeDasharray="4 3"
-            label={{ value: 'FLAT-only', fill: '#fbbf24', fontSize: 10, position: 'right' }} />
+            label={{ value: t('tr.rolling.random'), fill: '#f87171', fontSize: 10, position: 'right' }} />
+          <ReferenceLine y={+(baseline * 100).toFixed(1)} stroke="rgba(251,191,36,0.55)" strokeDasharray="4 3"
+            label={{ value: `${t('tr.rolling.flatOnly')} ${(baseline * 100).toFixed(1)}%`, fill: '#fbbf24', fontSize: 10, position: 'right' }} />
           <Tooltip
             content={({ payload, label }) => {
               if (!payload?.length) return null
@@ -148,8 +152,8 @@ function RollingChart({ data }: { data: RollingPt[] }) {
               return (
                 <div className="tr-tooltip">
                   <div>{label}</div>
-                  <div>Accuracy: <b style={{ color: CYAN }}>{d.pct}%</b></div>
-                  <div>Sample: <b>{d.n} events</b></div>
+                  <div>{t('tr.rolling.accuracy')}: <b style={{ color: CYAN }}>{d.pct}%</b></div>
+                  <div>{t('tr.rolling.sampleN')}: <b>{d.n} {t('tr.rolling.events')}</b></div>
                 </div>
               )
             }}
@@ -167,23 +171,24 @@ const DIR_ICON = { UP: '↑', FLAT: '—', DOWN: '↓' }
 
 function RecentTable({ items, total, onFilter, verdict, setVerdict, minConf, setMinConf }:
   { items: RecentItem[]; total: number; onFilter: (v: string) => void; verdict: string; setVerdict: (v: string) => void; minConf: number; setMinConf: (v: number) => void }) {
+  const { t } = useT()
   return (
     <div className="tr-card tr-card--full">
       <div className="tr-card__header">
-        <div className="tr-card__title">All Predictions <span className="tr-card__sub">{total.toLocaleString()} with known outcomes</span></div>
+        <div className="tr-card__title">{t('tr.table.title')} <span className="tr-card__sub">{t('tr.table.sub', { n: total.toLocaleString() })}</span></div>
         <div className="tr-filters">
           <div className="tr-conf-filter">
-            <span>Min confidence:</span>
+            <span>{t('tr.table.minConf')}</span>
             <select value={minConf} onChange={e => setMinConf(+e.target.value)} className="tr-conf-select">
               {[0, 0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85].map(v => (
-                <option key={v} value={v}>{v === 0 ? 'All' : `≥${(v*100).toFixed(0)}%`}</option>
+                <option key={v} value={v}>{v === 0 ? t('tr.table.all') : `≥${(v*100).toFixed(0)}%`}</option>
               ))}
             </select>
           </div>
           {(['all', 'hit', 'miss'] as const).map(v => (
             <button key={v} className={`tr-filter-btn ${verdict === v ? 'tr-filter-btn--active' : ''}`}
               onClick={() => { setVerdict(v); onFilter(v) }}>
-              {v === 'all' ? 'All' : v === 'hit' ? '✓ Hits' : '✗ Misses'}
+              {v === 'all' ? t('tr.table.all') : v === 'hit' ? `✓ ${t('tr.table.hits')}` : `✗ ${t('tr.table.misses')}`}
             </button>
           ))}
         </div>
@@ -192,10 +197,10 @@ function RecentTable({ items, total, onFilter, verdict, setVerdict, minConf, set
         <table className="tr-table">
           <thead>
             <tr>
-              <th>Date</th><th>Ticker</th><th>Sector</th>
-              <th>Predicted</th><th>Confidence</th>
-              <th>Actual</th><th>T+1 Return</th><th>T+5 Return</th>
-              <th>Verdict</th>
+              <th>{t('tr.th.date')}</th><th>{t('tr.th.ticker')}</th><th>{t('tr.th.sector')}</th>
+              <th>{t('tr.th.predicted')}</th><th>{t('tr.th.confidence')}</th>
+              <th>{t('tr.th.actual')}</th><th>{t('tr.th.t1')}</th><th>{t('tr.th.t5')}</th>
+              <th>{t('tr.th.verdict')}</th>
             </tr>
           </thead>
           <tbody>
@@ -232,7 +237,7 @@ function RecentTable({ items, total, onFilter, verdict, setVerdict, minConf, set
                 </td>
                 <td>
                   <span className={`tr-verdict ${r.hit ? 'tr-verdict--hit' : 'tr-verdict--miss'}`}>
-                    {r.hit ? '✓ HIT' : '✗ MISS'}
+                    {r.hit ? `✓ ${t('tr.verdict.hit')}` : `✗ ${t('tr.verdict.miss')}`}
                   </span>
                 </td>
               </tr>
@@ -279,7 +284,7 @@ export function TrackRecordPage() {
   if (loading) return (
     <div className="tr-loading">
       <div className="tr-loading__spinner" />
-      <div>Loading track record…</div>
+      <div>{t('tr.loading')}</div>
     </div>
   )
 
@@ -287,22 +292,7 @@ export function TrackRecordPage() {
     <div className="tr-page">
       <div className="tr-hero">
         <h1 className="tr-hero__title">{t('tr.title')}</h1>
-        <p className="tr-hero__sub">
-          ML prediction tracking isn't wired up on the backend yet.
-          Live signal performance is on the Pulse page.
-        </p>
-      </div>
-    </div>
-  )
-
-  if (!summary || typeof summary.total !== 'number') return (
-    <div className="tr-page">
-      <div className="tr-hero">
-        <h1 className="tr-hero__title">Track Record</h1>
-        <p className="tr-hero__sub">
-          ML prediction tracking isn't wired up on the backend yet.
-          Live signal performance is on the Pulse page.
-        </p>
+        <p className="tr-hero__sub">{t('tr.empty')}</p>
       </div>
     </div>
   )
@@ -311,22 +301,21 @@ export function TrackRecordPage() {
     <div className="tr-page">
       <div className="tr-hero">
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="tr-hero__title">Track Record</h1>
-          <p className="tr-hero__sub">
-            Every prediction the model has made — joined against realised outcomes.
-            No cherry-picking. All {summary?.total.toLocaleString()} events.
-          </p>
+          <h1 className="tr-hero__title">{t('tr.title')}</h1>
+          <p className="tr-hero__sub">{t('tr.hero.sub', { n: summary?.total.toLocaleString() ?? '' })}</p>
         </motion.div>
       </div>
 
       {summary && (
         <div className="tr-kpi-strip">
-          <KpiCard label="Total Predictions" value={summary.total.toLocaleString()} sub="with known outcomes" accent={CYAN} />
-          <KpiCard label="Overall Hit Rate" value={fmt(summary.hit_rate)} sub="vs 33.3% random baseline" accent={summary.hit_rate > 0.5 ? GREEN : AMBER} />
-          <KpiCard label="HIGH Confidence" value={fmt(summary.by_confidence.HIGH?.hit_rate ?? 0)} sub={`${summary.by_confidence.HIGH?.n.toLocaleString()} predictions`} accent={CYAN} />
-          <KpiCard label="Avg Actual Move" value={`±${summary.avg_actual_move_pct}%`} sub="T+1 absolute return" accent={PURPLE} />
+          <KpiCard label={t('tr.kpi.total')} value={summary.total.toLocaleString()} sub={t('tr.kpi.totalSub')} accent={CYAN} />
+          <KpiCard label={t('tr.kpi.hitRate')} value={fmt(summary.hit_rate)}
+            sub={t('tr.kpi.hitRateSub', { b: fmt(summary.baseline ?? 0) })}
+            accent={summary.hit_rate > (summary.baseline ?? 0) ? GREEN : AMBER} />
+          <KpiCard label={t('tr.kpi.highConf')} value={fmt(summary.by_confidence.HIGH?.hit_rate ?? 0)} sub={t('tr.kpi.highConfSub', { n: summary.by_confidence.HIGH?.n.toLocaleString() ?? '0' })} accent={CYAN} />
+          <KpiCard label={t('tr.kpi.avgMove')} value={`±${summary.avg_actual_move_pct}%`} sub={t('tr.kpi.avgMoveSub')} accent={PURPLE} />
           {summary.best_sector && (
-            <KpiCard label="Best Sector" value={summary.best_sector.name.replace(' Services','').replace(' Cyclical','').replace(' Defensive','')} 
+            <KpiCard label={t('tr.kpi.bestSector')} value={summary.best_sector.name.replace(' Services','').replace(' Cyclical','').replace(' Defensive','')} 
               sub={`${fmt(summary.best_sector.hit_rate)} · ${summary.best_sector.n} events`} accent={GREEN} />
           )}
         </div>
@@ -337,7 +326,7 @@ export function TrackRecordPage() {
         {calib.length > 0 && <CalibrationChart data={calib} />}
       </div>
 
-      {rolling.length > 0 && <RollingChart data={rolling} />}
+      {rolling.length > 0 && <RollingChart data={rolling} baseline={summary?.baseline ?? 0} />}
 
       {summary && (
         <div className="tr-card">
@@ -360,8 +349,8 @@ export function TrackRecordPage() {
       {confBreak.length > 0 && (
         <div className="tr-card">
           <div className="tr-card__title">
-            Accuracy by Confidence Threshold
-            <span className="tr-card__sub">higher confidence → higher hit rate · threshold = ±2% T+1 return</span>
+            {t('tr.confbreak.title')}
+            <span className="tr-card__sub">{t('tr.confbreak.sub')}</span>
           </div>
           <div className="tr-confbreak">
             {confBreak.map(r => (
@@ -373,7 +362,8 @@ export function TrackRecordPage() {
                     background: r.hit_rate >= 0.85 ? '#4ade80' : r.hit_rate >= 0.75 ? '#38bdf8' : r.hit_rate >= 0.6 ? '#a78bfa' : '#64748b'
                   }} />
                   <div className="tr-confbreak__baseline" style={{ left: '33.3%' }} />
-                  <div className="tr-confbreak__baseline tr-confbreak__baseline--amber" style={{ left: '50%' }} />
+                  <div className="tr-confbreak__baseline tr-confbreak__baseline--amber"
+                    style={{ left: `${(summary?.baseline ?? 0.5) * 100}%` }} />
                 </div>
                 <div className="tr-confbreak__stat">
                   <span className="tr-confbreak__pct" style={{
@@ -383,10 +373,7 @@ export function TrackRecordPage() {
                 </div>
               </div>
             ))}
-            <div className="tr-confbreak__note">
-              ⚠ Overall accuracy includes in-sample predictions. True walk-forward OOS accuracy = 49.3% (5,393 events, 47 folds).
-              High-confidence ≥75% subset reflects stronger model conviction.
-            </div>
+            <div className="tr-confbreak__note">{t('tr.confbreak.note')}</div>
           </div>
         </div>
       )}
