@@ -8,6 +8,7 @@ import type { CalendarEvent } from '../types'
 import { BacktestingPage } from './BacktestingPage'
 import { ShowdownPage } from './ShowdownPage'
 import { SimulatorPage } from './SimulatorPage'
+import { useT } from '../i18n'
 
 /**
  * "Strategy" — the three ways the same ML signal gets turned into trades.
@@ -20,18 +21,18 @@ import { SimulatorPage } from './SimulatorPage'
  * The section is kept in the URL (?view=) so old links keep working.
  */
 
-const ITEMS = [
-  { key: 'backtest', label: 'Backtest', icon: <FlaskConical size={13} /> },
-  { key: 'showdown', label: 'Showdown', icon: <Swords size={13} /> },
-  { key: 'paper', label: 'Paper Account', icon: <Wallet size={13} /> },
-]
 
-const VALID = new Set(ITEMS.map((i) => i.key))
 
 export function StrategyPage() {
+  const { t } = useT()
+  const ITEMS = [
+  { key: 'backtest', label: t('strategy.tab.backtest'), icon: <FlaskConical size={13} /> },
+  { key: 'showdown', label: t('strategy.tab.showdown'), icon: <Swords size={13} /> },
+  { key: 'paper', label: t('strategy.tab.paper'), icon: <Wallet size={13} /> },
+  ]
   const [params, setParams] = useSearchParams()
   const requested = params.get('view') ?? ''
-  const [view, setView] = useState(VALID.has(requested) ? requested : 'backtest')
+  const [view, setView] = useState(['backtest','showdown','paper'].includes(requested) ? requested : 'backtest')
 
   const change = (key: string) => {
     setView(key)

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRenderTier } from '../../hooks/useRenderTier'
+import { useT } from '../../i18n'
 
 /**
  * A forecast rendered as a forecast.
@@ -36,6 +37,7 @@ const STATES = [
 ] as const
 
 export function Superposition({ up, flat, down, outcome = null, compact = false }: Props) {
+  const { t } = useT()
   const tier = useRenderTier()
   const [hover, setHover] = useState(false)
   const [phase, setPhase] = useState(0)
@@ -99,7 +101,7 @@ export function Superposition({ up, flat, down, outcome = null, compact = false 
       <div className="sup__head">
         <span className={`sup__score sup__score--${tone}`}>{(quiet * 100).toFixed(0)}%</span>
         <span className="sup__label">
-          {collapsed ? `resolved ${outcome}` : quiet >= 0.6 ? 'likely quiet' : quiet >= 0.5 ? 'leaning quiet' : 'move expected'}
+          {collapsed ? `resolved ${outcome}` : quiet >= 0.6 ? t('forecast.likelyQuiet') : quiet >= 0.5 ? t('forecast.leaningQuiet') : t('forecast.moveExpected')}
         </span>
       </div>
 

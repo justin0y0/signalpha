@@ -4,6 +4,7 @@ import { Gauge, ListChecks } from 'lucide-react'
 import { SubNav } from '../components/ui/SubNav'
 import { PerformanceTrackerPage } from './PerformanceTrackerPage'
 import { TrackRecordPage } from './TrackRecordPage'
+import { useT } from '../i18n'
 
 /**
  * "Model" — everything about how good the model is, in one place.
@@ -17,12 +18,13 @@ import { TrackRecordPage } from './TrackRecordPage'
  * The section is kept in the URL (?view=) so a link to either half still works.
  */
 
-const ITEMS = [
-  { key: 'quality', label: 'Model Quality', icon: <Gauge size={13} /> },
-  { key: 'record', label: 'Prediction Record', icon: <ListChecks size={13} /> },
-]
 
 export function ModelPage() {
+  const { t } = useT()
+  const ITEMS = [
+  { key: 'quality', label: t('model.tab.quality'), icon: <Gauge size={13} /> },
+  { key: 'record', label: t('model.tab.record'), icon: <ListChecks size={13} /> },
+  ]
   const [params, setParams] = useSearchParams()
   const initial = params.get('view') === 'record' ? 'record' : 'quality'
   const [view, setView] = useState(initial)

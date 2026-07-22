@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { CalendarEvent } from '../types'
 import { useRenderTier, budgetFor } from '../hooks/useRenderTier'
+import { useT } from '../i18n'
 
 /**
  * The calendar as a field of pending detonations.
@@ -25,6 +26,7 @@ type Props = { events: CalendarEvent[] }
 type Particle = { bx: number; by: number; bz: number; x: number; y: number; vx: number; vy: number; hue: number; seed: number }
 
 export function BlastField({ events }: Props) {
+  const { t } = useT()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const tier = useRenderTier()
 
@@ -198,15 +200,15 @@ export function BlastField({ events }: Props) {
     <div className="blast">
       {tier !== 'still' && <canvas ref={canvasRef} className="blast__canvas" aria-hidden="true" />}
       <div className="blast__overlay">
-        <h1 className="blast__title">Which earnings will be non-events</h1>
+        <h1 className="blast__title">{t('cal.hero.title')}</h1>
         <p className="blast__sub">
           {scored.length} reports ahead. Tight clusters are the ones the model expects to pass
           quietly — the one call it makes measurably well.
         </p>
         <div className="blast__stats">
-          <span><b>{scored.length}</b> tracked</span>
-          <span><b>{quiet}</b> read quiet</span>
-          <span><b>{loud}</b> read loud</span>
+          <span><b>{scored.length}</b> {t('cal.tracked')}</span>
+          <span><b>{quiet}</b> {t('cal.readsQuiet')}</span>
+          <span><b>{loud}</b> {t('cal.readsLoud')}</span>
         </div>
       </div>
     </div>

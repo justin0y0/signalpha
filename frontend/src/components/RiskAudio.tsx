@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Volume2, VolumeX } from 'lucide-react'
+import { useT } from '../i18n'
 
 /**
  * Concept G — the week has a sound.
@@ -25,6 +26,7 @@ const ROOT = 138.59 // C#3 — low enough to sit under a page without fighting s
 const INTERVALS = [1, 1.5, 2, 3, 4, 4.5] // just fifths and octaves: consonant by construction
 
 export function RiskAudio({ quietScores }: Props) {
+  const { t } = useT()
   const [on, setOn] = useState(false)
   const ctxRef = useRef<AudioContext | null>(null)
   const nodesRef = useRef<{ osc: OscillatorNode; gain: GainNode }[]>([])
@@ -111,7 +113,7 @@ export function RiskAudio({ quietScores }: Props) {
       title={on ? 'Mute' : `Hear this week — ${mean >= 0.6 ? 'consonant, reads quiet' : 'detuned, reads unsettled'}`}
     >
       {on ? <Volume2 size={14} /> : <VolumeX size={14} />}
-      <span className="riskaudio__label">{on ? 'muting' : 'hear the week'}</span>
+      <span className="riskaudio__label">{on ? t('audio.mute') : t('audio.hear')}</span>
       {on && (
         <span className="riskaudio__bars" aria-hidden="true">
           <i style={{ animationDelay: '0ms' }} />

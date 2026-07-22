@@ -247,10 +247,11 @@ function PulseHero({ data, now, highConv }: { data: PulseData; now: Date; highCo
         <div className="mc-hero__main">
           <div>
             <div className="mc-hero__eyebrow">MULTI-FACTOR CONVICTION SCANNER</div>
-            <h1 className="mc-hero__title">Anomaly Detection · 6-Factor Score</h1>
+            <h1 className="mc-hero__title">Anomaly Detection · 4-Factor Score</h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0.4rem 0 0', maxWidth: 720, lineHeight: 1.55 }}>
-              Each ticker scored by 6 independent factors: RSI, MA distance, momentum, volume, gap, sector.
-              Trades fire when |score| ≥ {data.thresholds.signal}. Phone alerts when |score| ≥ {data.thresholds.notify}.
+              Σ = Avellaneda–Lee mean reversion (0.55) + Gao 2018 intraday momentum (0.25)
+              + Connors RSI(2) regime (0.15), damped by a volume z-score. Trades fire at
+              |Σ| ≥ {data.thresholds.signal}, phone alerts at |Σ| ≥ {data.thresholds.notify}.
             </p>
             <ResearchDisclaimer />
           </div>

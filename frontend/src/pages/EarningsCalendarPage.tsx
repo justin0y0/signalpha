@@ -10,11 +10,13 @@ import { StatCard } from '../components/ui/StatCard'
 import { Superposition } from '../components/ui/Superposition'
 import { BlastField } from '../components/BlastField'
 import { RiskAudio } from '../components/RiskAudio'
+import { useT } from '../i18n'
 import { formatDate, daysUntil } from '../utils/date'
 
 const SECTORS = ['All', 'Technology', 'Financial Services', 'Healthcare', 'Consumer Cyclical', 'Consumer Defensive', 'Industrials', 'Energy', 'Communication Services']
 
 export function EarningsCalendarPage() {
+  const { t } = useT()
   const navigate = useNavigate()
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [total, setTotal] = useState(0)
@@ -78,23 +80,23 @@ export function EarningsCalendarPage() {
 
       <div className="grid grid-4">
         <StatCard
-          label="Tracked Events"
+          label={t('cal.stat.tracked')}
           icon={<Calendar size={12} />}
           value={total.toLocaleString()}
-          helper="rolling 120-day window"
+          helper={t('cal.stat.tracked.helper')}
           accent="cyan"
           delay={0.05}
         />
         <StatCard
-          label="Next 7 Days"
+          label={t('cal.stat.next7')}
           icon={<Clock size={12} />}
           value={stats.upcoming7}
-          helper="upcoming reports"
+          helper={t('cal.stat.next7.helper')}
           accent="purple"
           delay={0.1}
         />
         <StatCard
-          label="With ML Prediction"
+          label={t('cal.stat.withPrediction')}
           icon={<Cpu size={12} />}
           value={stats.withPrediction}
           helper={`${Math.round((stats.withPrediction / Math.max(total, 1)) * 100)}% coverage`}
@@ -102,10 +104,10 @@ export function EarningsCalendarPage() {
           delay={0.15}
         />
         <StatCard
-          label="Likely Quiet"
+          label={t('cal.stat.quiet')}
           icon={<TrendingUp size={12} />}
           value={stats.quiet}
-          helper="P(FLAT) ≥ 60% · the model's one validated skill"
+          helper={t('cal.stat.quiet.helper')}
           accent="cyan"
           delay={0.2}
         />
@@ -119,7 +121,7 @@ export function EarningsCalendarPage() {
       >
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div style={{ flex: '2 1 260px' }}>
-            <label className="field-label">Search</label>
+            <label className="field-label">{t('cal.search')}</label>
             <div style={{ position: 'relative' }}>
               <Search size={16} style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
               <input
@@ -127,18 +129,18 @@ export function EarningsCalendarPage() {
                 style={{ paddingLeft: '2.3rem' }}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Ticker or company…"
+                placeholder={t('cal.search.placeholder')}
               />
             </div>
           </div>
           <div style={{ flex: '1 1 200px' }}>
-            <label className="field-label">Sector</label>
+            <label className="field-label">{t('cal.sector')}</label>
             <select className="select" value={sector} onChange={(e) => setSector(e.target.value)}>
               {SECTORS.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div style={{ marginLeft: 'auto' }}>
-            <Badge variant="live">Live data</Badge>
+            <Badge variant="live">{t('cal.live')}</Badge>
           </div>
         </div>
       </motion.div>
@@ -159,17 +161,17 @@ export function EarningsCalendarPage() {
         ) : error ? (
           <div className="empty-state">{error}</div>
         ) : filtered.length === 0 ? (
-          <div className="empty-state">No events match your filters.</div>
+          <div className="empty-state">{t('cal.empty')}</div>
         ) : (
           <table className="data-table">
             <thead>
               <tr>
-                <th>Ticker</th>
-                <th>Company</th>
-                <th>Sector</th>
-                <th>Earnings Date</th>
-                <th>Forecast · superposed</th>
-                <th style={{ textAlign: 'right' }}>Expected Move</th>
+                <th>{t('cal.col.ticker')}</th>
+                <th>{t('cal.col.company')}</th>
+                <th>{t('cal.col.sector')}</th>
+                <th>{t('cal.col.date')}</th>
+                <th>{t('cal.col.forecast')}</th>
+                <th style={{ textAlign: 'right' }}>{t('cal.col.move')}</th>
                 <th style={{ width: 40 }}></th>
               </tr>
             </thead>

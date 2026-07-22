@@ -3,6 +3,7 @@ import type React from 'react'
 import { useRenderTier } from '../hooks/useRenderTier'
 import type { CalendarEvent } from '../types'
 import { parseLocalDate } from '../utils/date'
+import { useT } from '../i18n'
 
 /**
  * Concept B — the calendar as a scrubbed timeline, with each stock's own flat band
@@ -24,6 +25,7 @@ type Props = { events: CalendarEvent[] }
 const WINDOW_DAYS = 21
 
 export function BandTimeline({ events }: Props) {
+  const { t } = useT()
   const tier = useRenderTier()
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [offset, setOffset] = useState(0)
@@ -107,8 +109,8 @@ export function BandTimeline({ events }: Props) {
       >
         <div className="bandtl__head">
           <div>
-            <div className="bandtl__kicker">Flat band, to scale</div>
-            <h3 className="bandtl__title">What counts as a move depends on the stock</h3>
+            <div className="bandtl__kicker">{t('band.kicker')}</div>
+            <h3 className="bandtl__title">{t('band.title')}</h3>
             <p className="bandtl__sub">
               The grey slab is how far this name has to travel before the model calls it a
               direction — its own historical reaction sigma, not a fixed 2%. The bar is the move
@@ -116,7 +118,7 @@ export function BandTimeline({ events }: Props) {
             </p>
           </div>
           <div className="bandtl__scrubhint">
-            {tier === 'still' ? `${rows.length} events` : 'sweep across to scrub'}
+            {tier === 'still' ? `${rows.length} events` : t('band.hint')}
           </div>
         </div>
 
@@ -158,9 +160,9 @@ export function BandTimeline({ events }: Props) {
         </div>
 
         <div className="bandtl__legend">
-          <span><i className="bandtl__swatch bandtl__swatch--band" />flat band for this stock</span>
-          <span><i className="bandtl__swatch bandtl__swatch--bar" />expected move</span>
-          <span><i className="bandtl__swatch bandtl__swatch--breach" />expected to break out</span>
+          <span><i className="bandtl__swatch bandtl__swatch--band" />{t('band.legend.band')}</span>
+          <span><i className="bandtl__swatch bandtl__swatch--bar" />{t('band.legend.bar')}</span>
+          <span><i className="bandtl__swatch bandtl__swatch--breach" />{t('band.legend.breach')}</span>
         </div>
       </div>
     </div>

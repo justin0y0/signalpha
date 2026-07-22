@@ -5,6 +5,7 @@ import { StatCard } from '../components/ui/StatCard'
 import { OutcomeBar } from '../components/ui/OutcomeBar'
 import { SplitFlap } from '../components/ui/SplitFlap'
 import { formatDateShort } from '../utils/date'
+import { useT } from '../i18n'
 
 /**
  * Alpha Brief — the daily surface.
@@ -31,6 +32,7 @@ type Brief = {
 }
 
 function Section({ title, icon, rows, tone }: { title: string; icon: React.ReactNode; rows: Row[]; tone: 'quiet' | 'loud' }) {
+  const { t } = useT()
   if (!rows.length) return null
   return (
     <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
@@ -43,7 +45,7 @@ function Section({ title, icon, rows, tone }: { title: string; icon: React.React
             <th>Ticker</th><th>Company</th><th>Date</th>
             <th>Quiet Score · Distribution</th>
             <th style={{ textAlign: 'right' }}>Expected Move</th>
-            <th style={{ textAlign: 'right' }}>ATM IV</th>
+            <th style={{ textAlign: 'right' }}>{t('brief.col.iv')}</th>
           </tr>
         </thead>
         <tbody>
@@ -72,6 +74,7 @@ function Section({ title, icon, rows, tone }: { title: string; icon: React.React
 }
 
 export function BriefPage() {
+  const { t } = useT()
   const [data, setData] = useState<Brief | null>(null)
   const [error, setError] = useState<string | null>(null)
   const email = typeof localStorage !== 'undefined' ? localStorage.getItem('sa_email') : null
@@ -102,7 +105,7 @@ export function BriefPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="hero-headline">Alpha Brief</h1>
+        <h1 className="hero-headline">{t('brief.title')}</h1>
         <p className="hero-sub">
           Earnings in the next {data.horizon_days} days, sorted by how likely the model thinks each one
           is to be a non-event.
@@ -113,16 +116,16 @@ export function BriefPage() {
       </motion.div>
 
       <div className="grid grid-4">
-        <StatCard label="Earnings Ahead" icon={<Clock size={12} />} value={data.counts.total} helper={`next ${data.horizon_days} days`} accent="cyan" delay={0.05} />
-        <StatCard label="Likely Quiet" icon={<Moon size={12} />} value={data.counts.quiet} helper="P(flat) ≥ 60%" accent="purple" delay={0.1} />
-        <StatCard label="Move Expected" icon={<Zap size={12} />} value={data.counts.loud} helper="P(flat) ≤ 40%" accent="amber" delay={0.15} />
-        <StatCard label="Watchlist" icon={<Star size={12} />} value={data.watchlist_size} helper={data.personalised ? 'personalised' : 'not signed in'} accent="emerald" delay={0.2} />
+        <StatCard label={t('brief.stat.ahead')} icon={<Clock size={12} />} value={data.counts.total} helper={`next ${data.horizon_days} days`} accent="cyan" delay={0.05} />
+        <StatCard label={t('brief.stat.quiet')} icon={<Moon size={12} />} value={data.counts.quiet} helper="P(flat) ≥ 60%" accent="purple" delay={0.1} />
+        <StatCard label={t('brief.stat.loud')} icon={<Zap size={12} />} value={data.counts.loud} helper="P(flat) ≤ 40%" accent="amber" delay={0.15} />
+        <StatCard label={t('brief.stat.watchlist')} icon={<Star size={12} />} value={data.watchlist_size} helper={data.personalised ? 'personalised' : 'not signed in'} accent="emerald" delay={0.2} />
       </div>
 
-      <Section title="Likely quiet" icon={<Moon size={13} />} rows={data.quiet} tone="quiet" />
-      <Section title="Move expected" icon={<Zap size={13} />} rows={data.loud} tone="loud" />
+      <Section title={t('brief.section.quiet')} icon={<Moon size={13} />} rows={data.quiet} tone="quiet" />
+      <Section title={t('brief.section.loud')} icon={<Zap size={13} />} rows={data.loud} tone="loud" />
 
-      {data.counts.total === 0 && <div className="empty-state">No earnings in this window.</div>}
+      {data.counts.total === 0 && <div className="empty-state">{t('brief.empty')}</div>}
     </div>
   )
 }

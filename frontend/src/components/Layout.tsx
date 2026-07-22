@@ -2,9 +2,12 @@ import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import { BootSequence } from './BootSequence'
+import { LocaleToggle } from './ui/LocaleToggle'
+import { useT } from '../i18n'
 import { AuthWidget } from './AuthWidget'
 
 export function Layout() {
+  const { t } = useT()
   const [open, setOpen] = useState(false)
   const location = useLocation()
 
@@ -20,14 +23,14 @@ export function Layout() {
     // Record/Showdown were five views of one ML signal; they now live as sections
     // under Model and Strategy (see ModelPage.tsx / StrategyPage.tsx). The old paths
     // still resolve via redirects in App.tsx.
-    { to: '/', label: 'Calendar', end: true },
-    { to: '/brief', label: 'Brief' },
-    { to: '/model', label: 'Model' },
-    { to: '/strategy', label: 'Strategy' },
-    { to: '/pulse', label: 'Pulse' },
-    { to: '/oracle', label: 'Oracle' },
-    { to: '/about', label: 'About' },
-    { to: '/contact', label: 'Contact' },
+    { to: '/', label: t('nav.calendar'), end: true },
+    { to: '/brief', label: t('nav.brief') },
+    { to: '/model', label: t('nav.model') },
+    { to: '/strategy', label: t('nav.strategy') },
+    { to: '/pulse', label: t('nav.pulse') },
+    { to: '/oracle', label: t('nav.oracle') },
+    { to: '/about', label: t('nav.about') },
+    { to: '/contact', label: t('nav.contact') },
   ]
 
   return (
@@ -59,6 +62,7 @@ export function Layout() {
           ))}
         </nav>
 
+        <LocaleToggle />
         <AuthWidget />
 
         {/* Mobile hamburger */}
