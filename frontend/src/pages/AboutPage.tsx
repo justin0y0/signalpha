@@ -103,7 +103,7 @@ const BENCHMARKS = [
   { k: 'about.bm.random', value: 33.3, sourceLink: null, tint: 'muted' },
   // The always-FLAT bar is computed from the same 5,477 held-out events the model is
   // scored on, using each stock's own band. It read 50.0% with a "~±2%" note while the
-  // paragraph above it said 60.7% — two numbers for one quantity, on one page.
+  // paragraph above it said 60.6% — two numbers for one quantity, on one page.
   { k: 'about.bm.flat', value: 60.7, sourceLink: null, tint: 'muted' },
   {
     k: 'about.bm.rentec',
@@ -131,7 +131,7 @@ const ROADMAP = [
     k: 'about.rm.now',
     state: 'shipped',
     items: [
-      'Walk-forward CV with 47 folds',
+      'Purged walk-forward CV, 81 folds across 9 sector models',
       'Manual class upsampling vs FLAT-bias',
       'FinBERT 10-Q MD&A sentiment',
       'SHAP per-prediction attribution',

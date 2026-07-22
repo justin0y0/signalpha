@@ -16,13 +16,13 @@
 Owner：**Justin**，USC Applied & Computational Mathematics，GitHub `justin0y0`。
 沟通用中文 + 英文术语，要直接诚实、不要 filler、不要编造结果。
 
-**核心 ML**：9 个 sector 分层模型，**102 features**（含 FinBERT 情绪、期权 IV、宏观），Purged K-Fold CV 防泄漏，做的是财报驱动的价格反应（PEAD）。Walk-forward OOS ≈ **49.3%**（3 分类 UP/FLAT/DOWN，47 folds，5,393 events）。
+**核心 ML**：9 个 sector 分层模型，**102 features**（含 FinBERT 情绪、期权 IV、宏观），Purged K-Fold CV 防泄漏，做的是财报驱动的价格反应（PEAD）。Walk-forward OOS ≈ **59.8%**（3 分类 UP/FLAT/DOWN，81 folds 跨 9 个 sector 模型，5,468 个可判分事件）——注意这**低于** 60.6% 的「全押 FLAT」基线，模型没有方向性优势；它真正可测的能力是识别「非事件」。
 
 > ⚠ **描述与实现不符**：文档和 About 页都说是「XGBoost + LightGBM + LogisticRegression 的 VotingClassifier」。`models/ensemble.py:92` 确实构造了三模型 soft-voting VotingClassifier，`fit()` 也训练了全部三个——但 `predict()`（`ensemble.py:224`）调的是 `direction_model.named_estimators_["xgb"]`，**只用 XGBoost，绕开了投票**。LightGBM 和 LogisticRegression 训练了但推理时从不参与。
-> 好消息是 `models/train.py:118` 的评估走的是**同一条 xgb-only 路径**，所以 **49.3% 这个数字测的就是线上真正跑的东西，数字本身诚实**，只有「三模型集成」这个说法不实。
-> 两条路（需 Justin 定）：① 把描述改成 XGBoost（零风险）；② 把推理切到真正的 soft-vote —— 但那样 49.3% 就不再描述线上，必须重测。
+> 好消息是 `models/train.py:118` 的评估走的是**同一条 xgb-only 路径**，所以 **这个准确率测的就是线上真正跑的东西，数字本身诚实**，只有「三模型集成」这个说法不实。
+> 两条路（需 Justin 定）：① 把描述改成 XGBoost（零风险）；② 把推理切到真正的 soft-vote —— 但那样当前的准确率就不再描述线上，必须重测。
 
-**诚实定位（对外必须这么说）**：49.3% 是**3 分类准确率，不是胜率**，只比"全押 FLAT"的 baseline 高一点点，**不能包装成"能跑赢市场"**。可辩护的价值是：透明（赢和亏都展示）、每日复用、个性化、分发渠道。卖的是研究和教育，不是投资建议——每个用户可见的界面都要有 "not investment advice"。
+**诚实定位（对外必须这么说）**：**59.84% 是 3 分类准确率，不是胜率**，而且它**低于**"全押 FLAT"的 60.63% 基线——模型没有方向预测能力，给方向时只有 25.45% 正确（n=165），比三分类瞎猜的 33.3% 还低。**绝不能包装成"能跑赢市场"**。真正站得住的一句话是：「在 P(FLAT)≥0.60 时，它能以 76.30% 的准确率识别出哪些财报不会有大动作，基准率 60.63%，n=1,055，z=10.4。」可辩护的价值是：透明（赢和亏都展示）、每日复用、个性化、分发渠道。卖的是研究和教育，不是投资建议——每个用户可见的界面都要有 "not investment advice"。
 
 ---
 
@@ -187,8 +187,29 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 | 25 | **MANUAL.md**：7 页全覆盖到每个数字的算式，4 处读不出的标 TODO 未编造 | — |
 
 > ⚠️ **校准的副作用（产品层面要知道）**：概率压回基准率后，模型在 **97.5%** 事件上 argmax 落 FLAT，只在 2.5% 事件给方向（给方向时 53.5%，n=71，无统计意义）。Calendar 的 PREDICTION 列因此基本全是 FLAT。
-> 核心结论仍成立：conf≥0.60 且预测 FLAT 时准确率 **66.59%**（基线 49.84%，n=862）。
+> 核心结论仍成立（2026-07-22 按每股票区间重算）：P(FLAT)≥0.60 时准确率 **76.30%**（基线 60.63%，n=1,055，z=10.4）。
 > **待定**：Calendar 该列建议改为展示三类概率分布而非 argmax 标签——argmax 对一个无方向 edge 的校准模型没有信息量。未改，等 Justin 定。
+
+### 6a-2. 2026-07-22：判分口径统一 + i18n 全量接线
+
+| # | 内容 | 验证 |
+|---|------|------|
+| 26 | **判分口径统一**：新建 `backend/app/services/flat_band.py` 作为「什么算非事件」的唯一定义。此前训练用每股票 0.5σ、Calendar 用同规则的 SQL、Track Record 用固定 ±2%（docstring 却写 1.5%）、Performance 用固定 2.0%（注释却声称是 per-stock）。四处口径不一致，正是同一个模型在一页显示 49.3%、另一页显示 59.9% 的原因 | 一次性容器实测：Track Record 49.32% → **59.84%**，与 About 页 59.8% 一致；混淆矩阵对角线与 summary 完全吻合 |
+| 27 | **分母 bug**：`/summary` 与 `/confusion` 用 `len(rows)` 做分母，但循环里 `continue` 掉的行没被扣除 —— 每个无法判分的行都被静默计成一次 miss | 分母改为 `scored`；5,477 → 5,468 |
+| 28 | **baseline 由后端算**：`/summary` 新增 `baseline` / `baseline_class` / `actual_distribution`，前端不再硬编码 33.3% 和 50% | 实测 baseline=60.63% (FLAT) |
+| 29 | **4 个 endpoint 缺 select 列**：confusion / calibration / rolling / confidence_breakdown 的 SELECT 里没有 `ticker`，而 per-stock 查表需要它 —— 上线即 AttributeError | 静态检查 + 容器实跑全通过 |
+| 30 | **i18n 接线 104 → 245 key**，21 个文件。About 页之所以一直是英文：它的 tab 卡片 `map((t, i) =>` 用 `t` 做循环变量，**遮蔽了 i18n 的 `t`** | 线上 DOM 采样：7 个页面中 6 个中文模式下 0 英文残留 |
+| 31 | **`orc.*` 命名空间合并回 `oracle.*`** —— 我自己造了个和既有 key 重复的平行命名空间 | 字典去重，`orc.` 计数归 0 |
+| 32 | **前端过期数字清理**：Brief 页「66.6% / 49.8% 基线」（改标注方案前的旧值）、Backtest 页「5,393 events」、Track Record 脚注「49.3%，47 folds」、About benchmark 条「Always-FLAT 50.0% / ±2%」（与同页正文的 60.7% 自相矛盾） | 全部改为实测值 |
+| 33 | **方向性能力的说法纠正**：此前网站说「给方向时约一半正确，与随机无异」。新口径实测是 **25.45%（n=165），低于三分类随机的 33.3%** | 已改为实测表述 |
+| 34 | **HeroBackdrop 双 ref**：两个 `<path>` 绑同一个 ref，后者覆盖前者，主线（1.6px）永远拿不到 `d`，只有 0.6px/40% 透明度的副线在动 | 拆成两个 ref |
+
+> **fold 数实测**：81 个 fold 跨 9 个 sector 模型（Industrials/Technology/Consumer Cyclical/Energy/
+> Financial Services/Healthcare 各 10，Communication Services/Consumer Defensive 各 9，general 3）。
+> 文档和 About 页此前都写「47 folds」，是旧数。
+
+> **band 分布实测**：150 个 ticker 有足够样本算出自己的区间。中位数 2.50%（即多数股票落在 floor 上），
+> 最大 6.88%。TSLA ±4.30%、NVDA ±3.94%，而 KO / JNJ / PG / MMM 都在 2.50% 的下限。
 
 ### 6b. 仍未解决
 
@@ -208,11 +229,15 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 
    **模型没有方向预测能力，但有显著的"平静事件"识别能力。**
 
+   > ⚠️ **下表已于 2026-07-22 用「每股票自适应区间」重算**。旧版用固定 ±2% 判分，
+   > 而模型是按每只股票 0.5σ 训练的——等于拿错的答案卷判分。详见第 26 条。
+
    | 情形 | 准确率 | 基线 | 样本 | 结论 |
    |---|---|---|---|---|
-   | conf≥0.85 且预测 **FLAT** | **66.7%** | 49.8% | 1219 | **+16.9pp ≈ 11.8 个标准误，强显著** |
-   | conf≥0.85 且预测 **方向** | **40.7%** | 50% | 145 | 比抛硬币还差 |
-   | 全样本 3 分类准确率 | 46.41% | 49.84%(全押FLAT) | 5477 | **低于最蠢基线 3.4pp** |
+   | P(FLAT)≥0.60（识别非事件） | **76.30%** | 60.63% | 1,055 | **+15.68pp，z=10.4，强显著** |
+   | P(FLAT)≥0.70 | **78.48%** | 60.63% | 409 | +17.86pp，z=7.4 |
+   | 模型给出**方向**时 | **25.45%** | 33.3%(三分类随机) | 165 | **比瞎猜还差**（z≈−2.1） |
+   | 全样本 3 分类准确率 | **59.84%** | 60.63%(全押FLAT) | 5,468 | **低于最蠢基线 0.79pp** |
 
    独立交叉验证：用 `/performance` 页早就在显示的 `model_performance` 混淆矩阵算，准确率 48.12% vs 全押FLAT 49.96%，**同样低于基线**——说明这不是重生成引入的，是一直如此，只是从来没和正确基线对比过。
 

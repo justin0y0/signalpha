@@ -13,7 +13,7 @@ import { useT } from '../i18n'
  * Deliberately organised around quiet-vs-loud rather than up-vs-down. The model has
  * no directional edge (59.8% 3-class against a 60.6% always-FLAT baseline; it commits
  * to a direction on 2.5% of events and gets 53.5% of those right on n=71), but it
- * identifies non-events at 76.4% against a 60.7% base rate on n=1,058. Leading with a
+ * identifies non-events at 76.3% against a 60.6% base rate on n=1,055. Leading with a
  * direction call would be selling a capability the data says does not exist.
  */
 

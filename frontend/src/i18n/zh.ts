@@ -74,7 +74,7 @@ export const zh: Partial<Record<keyof typeof en, string>> = {
   'brief.section.quiet': '大概率平静',
   'brief.section.loud': '预期有动作',
   'brief.note':
-    '模型最有把握的「非事件」——准确率 76.4%，而基准率是 60.7%。IV 那一列放在这里，是因为「模型说没事 + IV 却很高」正是卖 premium 的人在找的组合。',
+    '模型最有把握的「非事件」——准确率 76.3%，而基准率是 60.6%。IV 那一列放在这里，是因为「模型说没事 + IV 却很高」正是卖 premium 的人在找的组合。',
   'brief.empty': '这个时间窗内没有财报。',
   'brief.col.iv': '平值 IV',
 
@@ -89,7 +89,7 @@ export const zh: Partial<Record<keyof typeof en, string>> = {
   'model.baseline.random': '随机（三选一）',
   'model.baseline.edge': '相对基线的差值',
   'model.baseline.note':
-    '三分类准确率低于多数类基线。模型真正可测的能力在另一边：当 P(FLAT) ≥ 0.60 时，它识别「非事件」的准确率是 76.4%，而基准率为 60.7%（n=1,058）。',
+    '三分类准确率低于多数类基线。模型真正可测的能力在另一边：当 P(FLAT) ≥ 0.60 时，它识别「非事件」的准确率是 76.3%，而基准率为 60.6%（n=1,055）。',
 
   // ── 策略 ──────────────────────────────────────────────────────────────────
   'strategy.tab.backtest': '回测',
@@ -155,7 +155,7 @@ export const zh: Partial<Record<keyof typeof en, string>> = {
   'about.finding.kicker': '数据实际说了什么',
   'about.finding.title': '没有方向预测能力。但在「平静」上有真本事。',
   'about.finding.body':
-    '在 purged walk-forward 评估下，模型三分类准确率 59.9%，而「全押 FLAT」的基线是 60.7%——它没有跑赢这条最简单的规则。它只在约 2.5% 的事件上给出方向判断，其中约一半正确，与抛硬币无法区分。它真正可测的能力在相反的问题上：当它有把握某场财报不会有事时，准确率是 76.4%，而基准率为 60.7%，样本 1,058 例。',
+    '在 purged walk-forward 评估下，模型三分类准确率 59.8%，而「全押 FLAT」的基线是 60.6%——它没有跑赢这条最简单的规则。它只在 3.0% 的事件上给出方向判断（n=165），其中正确率 25%——比三分类瞎猜的 33% 还低。它真正可测的能力在相反的问题上：当它有把握某场财报不会有事时，准确率是 76.3%，而基准率为 60.6%，样本 1,055 例。',
   'about.honesty.kicker': '哪里变了，以及为什么现在的数字更可信',
   'about.honesty.title': '之前的数字是错的。这是修复经过。',
   'about.honesty.body':
@@ -163,7 +163,7 @@ export const zh: Partial<Record<keyof typeof en, string>> = {
   'about.labels.kicker': '按股票分别标注',
   'about.labels.title': '2% 的波动，对不同股票意义完全不同',
   'about.labels.body':
-    '2% 的财报波动对一只工业股是巨震，对一只高 beta 股只是噪声。所以模型不再用固定的 ±2% 标注所有股票，而是用每只股票自己历史财报反应 sigma 的一半，并限制在 [2.5%, 10%] 之间——MMM 是 ±2.5%，TSLA 是 ±4.4%。把预测目标变得自洽之后，高置信「非事件」判断的准确率从 66.6% 提升到 76.4%。',
+    '2% 的财报波动对一只工业股是巨震，对一只高 beta 股只是噪声。所以模型不再用固定的 ±2% 标注所有股票，而是用每只股票自己历史财报反应 sigma 的一半，并限制在 [2.5%, 10%] 之间——MMM 是 ±2.5%，TSLA 是 ±4.4%。把预测目标变得自洽之后，高置信「非事件」判断的准确率从 66.6% 提升到 76.3%。',
   'about.arch.kicker': '它是怎么工作的',
   'about.arch.title': '数据管线',
   'about.model.note':
@@ -379,12 +379,12 @@ export const zh: Partial<Record<keyof typeof en, string>> = {
   'about.bm.random.s': '理论值',
   'about.bm.flat': '「全押 FLAT」基线（本数据集）',
   'about.bm.flat.d': '永远预测「不动」，按每只股票自己的区间判分',
-  'about.bm.flat.s': '5,477 个样本外事件的类别分布',
+  'about.bm.flat.s': '5,468 个可判分事件，跨 81 个 fold的类别分布',
   'about.bm.rentec': '文艺复兴 Medallion（实盘）',
   'about.bm.rentec.d': '每年约 30 万笔交易的单笔方向准确率',
   'about.bm.self': 'Signalpha（本项目）',
   'about.bm.self.d': 'Walk-forward 样本外 —— 低于「全押 FLAT」基线',
-  'about.bm.self.s': 'Purged walk-forward，5,477 个样本外事件 · 按股票自适应标注',
+  'about.bm.self.s': 'Purged walk-forward，5,468 个可判分事件，跨 81 个 fold · 按股票自适应标注',
   'about.bm.pead': 'PEAD 学术文献',
   'about.bm.pead.d': '已发表的、做了严格 walk-forward 的最好方向模型',
   'about.bm.gpt': 'GPT-4 + 思维链（实验性）',
@@ -399,7 +399,7 @@ export const zh: Partial<Record<keyof typeof en, string>> = {
   'about.tab.cal.a1': '在真实结果出现之前，每一行都保持三态叠加，出结果后坍缩成一个状态',
   'about.tab.cal.a2': '点任意一行进入该股票的深度分析',
   'about.tab.brief.blurb': '未来七天的财报，分成「大概率没事」和「大概率有动作」两栏，旁边配上隐含波动率。整页由数据直接渲染，中间没有 LLM，所以它编不出数字。登录并收藏股票，就能只看自己关心的标的。',
-  'about.tab.brief.a0': '「安静」这一栏是模型唯一验证过的能力：76.4%，基准率 60.7%',
+  'about.tab.brief.a0': '「安静」这一栏是模型唯一验证过的能力：76.3%，基准率 60.6%',
   'about.tab.brief.a1': 'ATM IV 紧挨着安静分数，因为这个组合正是卖期权的人在筛的东西',
   'about.tab.brief.a2': '自选股需要账号；简报本身对所有人公开',
   'about.tab.model.blurb': '模型到底有多好，并且永远贴着它必须跨过的那条线来说。准确率旁边一定放着「全押 FLAT」基线，因为孤立的三分类准确率毫无意义。包含分板块指标、SHAP 归因、混淆矩阵，以及全部预测与真实结果的对照记录。',

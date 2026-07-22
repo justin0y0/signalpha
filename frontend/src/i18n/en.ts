@@ -67,7 +67,7 @@ export const en = {
   'brief.section.quiet': 'Likely quiet',
   'brief.section.loud': 'Move expected',
   'brief.note':
-    'Highest-conviction non-events — 76.4% correct against a 60.7% base rate. The IV column is here because that combination is what premium sellers screen for.',
+    'Highest-conviction non-events — 76.3% correct against a 60.6% base rate. The IV column is here because that combination is what premium sellers screen for.',
   'brief.empty': 'No earnings in this window.',
   'brief.col.iv': 'ATM IV',
 
@@ -82,7 +82,7 @@ export const en = {
   'model.baseline.random': 'Random (1 of 3)',
   'model.baseline.edge': 'Edge over baseline',
   'model.baseline.note':
-    'Below the majority-class baseline on 3-class accuracy. The model’s measurable skill is elsewhere: at P(FLAT) ≥ 0.60 it identifies a non-event 76.4% of the time against a 60.7% base rate (n=1,058).',
+    'Below the majority-class baseline on 3-class accuracy. The model’s measurable skill is elsewhere: at P(FLAT) ≥ 0.60 it identifies a non-event 76.3% of the time against a 60.6% base rate (n=1,055).',
 
   // ── Strategy ──────────────────────────────────────────────────────────────
   'strategy.tab.backtest': 'Backtest',
@@ -150,7 +150,7 @@ export const en = {
   'about.finding.kicker': 'What the data actually says',
   'about.finding.title': 'No directional edge. A real one on stillness.',
   'about.finding.body':
-    'On purged walk-forward evaluation the model scores 59.9% three-class accuracy against a 60.7% always-FLAT baseline — it does not beat the trivial rule. It commits to a direction on roughly 2.5% of events and is right about half of those, which is indistinguishable from chance. Where it does show measurable skill is the opposite question: when it is confident an event will be a non-event, it is right 76.4% of the time against a 60.7% base rate on 1,058 cases.',
+    'On purged walk-forward evaluation the model scores 59.8% three-class accuracy against a 60.6% always-FLAT baseline — it does not beat the trivial rule. It commits to a direction on 3.0% of events (n=165) and is right 25% of the time — below the 33% a coin-flip over three classes would give you. Where it does show measurable skill is the opposite question: when it is confident an event will be a non-event, it is right 76.3% of the time against a 60.6% base rate on 1,055 cases.',
   'about.honesty.kicker': 'What changed, and why you should trust these numbers more',
   'about.honesty.title': 'The previous numbers were wrong. Here is what was fixed.',
   'about.honesty.body':
@@ -158,7 +158,7 @@ export const en = {
   'about.labels.kicker': 'Per-stock labelling',
   'about.labels.title': 'A 2% move means different things to different stocks',
   'about.labels.body':
-    'A 2% earnings move is enormous for an industrial and noise for a high-beta name, so the model no longer labels everything against a fixed ±2%. Each stock is scored against half its own historical earnings-reaction sigma, clamped to [2.5%, 10%] — MMM at ±2.5%, TSLA at ±4.4%. Making the target coherent lifted high-confidence non-event accuracy from 66.6% to 76.4%.',
+    'A 2% earnings move is enormous for an industrial and noise for a high-beta name, so the model no longer labels everything against a fixed ±2%. Each stock is scored against half its own historical earnings-reaction sigma, clamped to [2.5%, 10%] — MMM at ±2.5%, TSLA at ±4.4%. Making the target coherent lifted high-confidence non-event accuracy from 66.6% to 76.3%.',
   'about.arch.kicker': 'How it works',
   'about.arch.title': 'Pipeline',
   'about.model.note':
@@ -379,7 +379,7 @@ export const en = {
   'about.bm.rentec.d': 'Per-trade directional accuracy across ~300k trades/yr',
   'about.bm.self': 'Signalpha (this project)',
   'about.bm.self.d': 'Walk-forward OOS — below the always-FLAT baseline',
-  'about.bm.self.s': 'Purged walk-forward, 5,477 held-out events · per-stock labelling',
+  'about.bm.self.s': 'Purged walk-forward, 5,468 scored events across 81 folds · per-stock labelling',
   'about.bm.pead': 'PEAD academic literature',
   'about.bm.pead.d': 'Best-published direction models with rigorous walk-forward',
   'about.bm.gpt': 'GPT-4 + chain-of-thought (experimental)',
@@ -394,7 +394,7 @@ export const en = {
   'about.tab.cal.a1': 'Rows stay superposed until an outcome exists, then collapse to one state',
   'about.tab.cal.a2': 'Click any row for the per-stock deep dive',
   'about.tab.brief.blurb': 'The next seven days of earnings, split into likely non-events and likely moves, with implied vol alongside. Rendered from data with no model in the loop, so it cannot invent a number. Sign in and star tickers to narrow it to your own names.',
-  'about.tab.brief.a0': 'Quiet list is the model’s one validated skill: 76.4% against a 60.7% base rate',
+  'about.tab.brief.a0': 'Quiet list is the model’s one validated skill: 76.3% against a 60.6% base rate',
   'about.tab.brief.a1': 'ATM IV sits next to the quiet score because that pairing is what premium sellers screen for',
   'about.tab.brief.a2': 'Watchlist personalisation requires an account; the brief itself is public',
   'about.tab.model.blurb': 'How good the model is, stated against the bar it has to clear. Accuracy is shown next to the always-FLAT baseline, because a three-class accuracy figure means nothing on its own. Includes per-sector metrics, SHAP attribution, a confusion matrix, and the full prediction record joined to realised outcomes.',
