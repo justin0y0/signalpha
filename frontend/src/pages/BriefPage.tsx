@@ -11,9 +11,9 @@ import { useT } from '../i18n'
  * Alpha Brief — the daily surface.
  *
  * Deliberately organised around quiet-vs-loud rather than up-vs-down. The model has
- * no directional edge (49.3% 3-class against a 49.8% always-FLAT baseline; it commits
+ * no directional edge (59.8% 3-class against a 60.6% always-FLAT baseline; it commits
  * to a direction on 2.5% of events and gets 53.5% of those right on n=71), but it
- * identifies non-events at 66.6% against a 49.8% base rate on n=862. Leading with a
+ * identifies non-events at 76.4% against a 60.7% base rate on n=1,058. Leading with a
  * direction call would be selling a capability the data says does not exist.
  */
 
@@ -64,10 +64,7 @@ function Section({ title, icon, rows, tone }: { title: string; icon: React.React
         </tbody>
       </table>
       {tone === 'quiet' && (
-        <p className="brief-note">
-          Highest-conviction <b>{t('brief.nonEvents')}</b> — 66.6% correct against a 49.8% base rate.
-          The IV column is here because that combination is what premium sellers screen for.
-        </p>
+        <p className="brief-note">{t('brief.note')}</p>
       )}
     </motion.div>
   )
@@ -107,11 +104,10 @@ export function BriefPage() {
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="hero-headline">{t('brief.title')}</h1>
         <p className="hero-sub">
-          Earnings in the next {data.horizon_days} days, sorted by how likely the model thinks each one
-          is to be a non-event.
+          {t('brief.sub', { days: data.horizon_days })}
           {data.personalised
             ? ` Personalised to your ${data.watchlist_size}-ticker watchlist.`
-            : ' Sign in and star tickers to personalise this.'}
+            : t('brief.signIn')}
         </p>
       </motion.div>
 

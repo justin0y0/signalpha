@@ -573,6 +573,10 @@ export const zh: Partial<Record<keyof typeof en, string>> = {
   'adm.lock': '锁定',
   'contact.getInTouch': '联系我',
   'contact.linkedin': 'LinkedIn',
+  'contact.heroLine': '来一起',
+  'contact.heroGrad': '做点东西',
+  'contact.heroTail': '在机器学习和市场的交叉点上。',
+  'contact.lede': '正在寻找 ML 工程、数据科学和量化方向的机会。也随时乐意聊聊 post-earnings drift、集成模型，或者生产级的金融前端。',
   // ── 联系 ──────────────────────────────────────────────────────────────────
   'contact.title': '联系我',
   'contact.sub': '问题、反馈，或者你觉得合适的职位。',

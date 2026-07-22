@@ -568,6 +568,10 @@ export const en = {
   'adm.lock': 'Lock',
   'contact.getInTouch': 'Get in touch',
   'contact.linkedin': 'LinkedIn',
+  'contact.heroLine': 'Let’s',
+  'contact.heroGrad': 'build something',
+  'contact.heroTail': 'at the intersection of ML and markets.',
+  'contact.lede': 'Open to ML engineering, data science, and quantitative roles. Always happy to chat about post-earnings drift, ensemble models, or production-grade financial UI.',
   // ── Contact ───────────────────────────────────────────────────────────────
   'contact.title': 'Get in touch',
   'contact.sub': 'Questions, feedback, or a role you think fits.',

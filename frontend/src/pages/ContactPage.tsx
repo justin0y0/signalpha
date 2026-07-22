@@ -187,12 +187,10 @@ export function ContactPage() {
           <span>{t('contact.getInTouch')}</span>
         </div>
         <h1 className="contact-hero__title">
-          Let's <span className="contact-hero__title-grad">build something</span> at the intersection of
-          ML and markets.
+          {t('contact.heroLine')} <span className="contact-hero__title-grad">{t('contact.heroGrad')}</span> {t('contact.heroTail')}
         </h1>
         <p className="contact-hero__lede">
-          Open to ML engineering, data science, and quantitative roles. Always happy to chat about post-earnings
-          drift, ensemble models, or production-grade financial UI.
+          {t('contact.lede')}
         </p>
       </motion.section>
 

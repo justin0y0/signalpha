@@ -112,10 +112,7 @@ export function BandTimeline({ events }: Props) {
             <div className="bandtl__kicker">{t('band.kicker')}</div>
             <h3 className="bandtl__title">{t('band.title')}</h3>
             <p className="bandtl__sub">
-              The grey slab is how far this name has to travel before the model calls it a
-              direction — its own historical reaction sigma, not a fixed 2%. The bar is the move
-              it expects.
-            </p>
+              {t('band.sub')}</p>
           </div>
           <div className="bandtl__scrubhint">
             {tier === 'still' ? `${rows.length} events` : t('band.hint')}
