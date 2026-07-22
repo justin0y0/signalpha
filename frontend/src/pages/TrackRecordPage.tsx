@@ -316,7 +316,7 @@ export function TrackRecordPage() {
           <KpiCard label={t('tr.kpi.avgMove')} value={`±${summary.avg_actual_move_pct}%`} sub={t('tr.kpi.avgMoveSub')} accent={PURPLE} />
           {summary.best_sector && (
             <KpiCard label={t('tr.kpi.bestSector')} value={summary.best_sector.name.replace(' Services','').replace(' Cyclical','').replace(' Defensive','')} 
-              sub={`${fmt(summary.best_sector.hit_rate)} · ${summary.best_sector.n} events`} accent={GREEN} />
+              sub={`${fmt(summary.best_sector.hit_rate)} · ${summary.best_sector.n} ${t('tr.rolling.events')}`} accent={GREEN} />
           )}
         </div>
       )}
