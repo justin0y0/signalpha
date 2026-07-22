@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import './OraclePage.css'
 import { OhlcChart } from './OhlcChart'
+import { useT } from '../i18n'
 
 type Figure = {
   key: string; name: string; emoji: string; why?: string; type?: string;
@@ -46,6 +47,7 @@ const ago = (iso: string) => {
 }
 
 export function OraclePage() {
+  const { t } = useT()
   const [figures, setFigures] = useState<Figure[]>([])
   const [signals, setSignals] = useState<Signal[]>([])
   const [board, setBoard] = useState<LbRow[]>([])
@@ -130,7 +132,7 @@ export function OraclePage() {
       <header className="orc2-hero">
         <div className="orc2-orb" aria-hidden />
         <div className="orc2-hero-main">
-          <h1 className="orc2-title">Oracle</h1>
+          <h1 className="orc2-title">{t('oracle.title')}</h1>
           <p className="orc2-sub">Market-moving voices, read in real time — their words distilled into a signal, a sizing, and the call's realized P&amp;L.</p>
           <div className="orc2-stats">
             <div className="orc2-stat"><b>{todayCount}</b><span>signals · 24h</span></div>
@@ -146,7 +148,7 @@ export function OraclePage() {
       {board.length > 0 && (
         <section className="orc2-lb-wrap">
           <div className="orc2-lb-head">
-            <h2>Who moves markets</h2>
+            <h2>{t('oracle.whoMoves')}</h2>
             <span className="orc2-lb-sub">ranked by realized return on their calls</span>
             {figFilter && <button className="orc2-lb-clear" onClick={() => setFigFilter(null)}>clear filter ✕</button>}
           </div>
@@ -196,7 +198,7 @@ export function OraclePage() {
 
       <section className="orc2-feed">
         <div className="orc2-feed-head">
-          <h2>Signal feed</h2>
+          <h2>{t('oracle.feed')}</h2>
           <div className="orc2-filters">
             {(['all', 'bullish', 'bearish'] as const).map(k => (
               <button key={k} className={'orc2-fchip' + (filter === k ? ' is-active' : '')} onClick={() => setFilter(k)}>

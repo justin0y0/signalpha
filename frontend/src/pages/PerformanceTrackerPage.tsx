@@ -6,6 +6,7 @@ import { api } from '../api/client'
 import type { PerformanceResponse } from '../types'
 import { StatCard } from '../components/ui/StatCard'
 import { Badge } from '../components/ui/Badge'
+import { useT } from '../i18n'
 
 function accuracyColor(acc: number | null | undefined): string {
   if (acc == null) return 'var(--text-tertiary)'
@@ -37,6 +38,7 @@ function heatmapBg(acc: number | null | undefined): string {
  * never drift away from the numbers displayed beside it.
  */
 function BaselinePanel({ cm }: { cm: number[][] }) {
+  const { t } = useT()
   if (!cm || cm.length !== 3) return null
   const total = cm.flat().reduce((a, b) => a + b, 0)
   if (!total) return null
@@ -51,7 +53,7 @@ function BaselinePanel({ cm }: { cm: number[][] }) {
     <motion.div className="card baseline-panel" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.21 }}>
       <h3 className="card-title">
         <Scale size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-        Accuracy vs Baseline
+        {t('model.baseline.title')}
       </h3>
       <p className="card-sub">
         A 3-class accuracy number is only meaningful against the trivial rule it has to beat.
@@ -59,16 +61,16 @@ function BaselinePanel({ cm }: { cm: number[][] }) {
       </p>
       <div className="baseline-panel__grid">
         <div className="baseline-panel__cell">
-          <span>Model</span><b>{(acc * 100).toFixed(2)}%</b>
+          <span>{t('model.baseline.model')}</span><b>{(acc * 100).toFixed(2)}%</b>
         </div>
         <div className="baseline-panel__cell">
-          <span>Always-FLAT baseline</span><b>{(flatBase * 100).toFixed(2)}%</b>
+          <span>{t('model.baseline.flat')}</span><b>{(flatBase * 100).toFixed(2)}%</b>
         </div>
         <div className="baseline-panel__cell">
-          <span>Random (1 of 3)</span><b>33.33%</b>
+          <span>{t('model.baseline.random')}</span><b>33.33%</b>
         </div>
         <div className={'baseline-panel__cell baseline-panel__cell--verdict ' + (beats ? 'is-good' : 'is-bad')}>
-          <span>Edge over baseline</span>
+          <span>{t('model.baseline.edge')}</span>
           <b>{delta >= 0 ? '+' : ''}{delta.toFixed(2)} pts</b>
         </div>
       </div>
@@ -84,6 +86,7 @@ function BaselinePanel({ cm }: { cm: number[][] }) {
 }
 
 export function PerformanceTrackerPage() {
+  const { t } = useT()
   const [data, setData] = useState<PerformanceResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -128,7 +131,7 @@ export function PerformanceTrackerPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-        <h1 className="hero-headline">Model Performance Tracker</h1>
+        <h1 className="hero-headline">{t('perf.title')}</h1>
         <p className="hero-sub">
           Sector-level accuracy, confusion matrix, and SHAP feature attribution ·
           Model version <span className="mono" style={{ color: 'var(--accent-cyan)' }}>{data.model_version ?? '—'}</span>
@@ -137,7 +140,7 @@ export function PerformanceTrackerPage() {
 
       <div className="grid grid-4">
         <StatCard
-          label="Overall Accuracy"
+          label={t('perf.stat.overall')}
           icon={<Target size={12} />}
           value={generalRow?.accuracy != null ? `${(generalRow.accuracy * 100).toFixed(1)}%` : '—'}
           helper={generalRow ? `F1: ${((generalRow.f1_weighted ?? 0) * 100).toFixed(1)}%` : undefined}
@@ -145,7 +148,7 @@ export function PerformanceTrackerPage() {
           delay={0.05}
         />
         <StatCard
-          label="Best Sector"
+          label={t('perf.stat.best')}
           icon={<TrendingUp size={12} />}
           value={bestRow?.sector ?? '—'}
           helper={bestRow?.accuracy != null ? `${(bestRow.accuracy * 100).toFixed(1)}% accuracy` : undefined}
@@ -153,7 +156,7 @@ export function PerformanceTrackerPage() {
           delay={0.1}
         />
         <StatCard
-          label="Worst Sector"
+          label={t('perf.stat.worst')}
           icon={<TrendingDown size={12} />}
           value={worstRow?.sector ?? '—'}
           helper={worstRow?.accuracy != null ? `${(worstRow.accuracy * 100).toFixed(1)}% accuracy` : undefined}
@@ -161,7 +164,7 @@ export function PerformanceTrackerPage() {
           delay={0.15}
         />
         <StatCard
-          label="Total Samples"
+          label={t('perf.stat.samples')}
           icon={<Database size={12} />}
           value={cmTotals.total.toLocaleString()}
           helper={`${data.by_sector.length} sectors evaluated`}
@@ -176,7 +179,7 @@ export function PerformanceTrackerPage() {
         <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}>
           <h3 className="card-title">
             <Target size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-            High-Conviction Accuracy · Confidence Tiers
+            {t('perf.tiers.title')}
           </h3>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', margin: '0.25rem 0 1.25rem' }}>
             The headline accuracy treats all predictions equally — but trading only uses high-conviction calls.
@@ -217,7 +220,7 @@ export function PerformanceTrackerPage() {
 
       <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '1.25rem 1.5rem 1rem' }}>
-          <h3 className="card-title"><Grid3x3 size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />Per-Sector Performance · Accuracy Heatmap</h3>
+          <h3 className="card-title"><Grid3x3 size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />{t('perf.sector.title')}</h3>
         </div>
         <table className="data-table">
           <thead>
@@ -262,7 +265,7 @@ export function PerformanceTrackerPage() {
       <div className="grid grid-2">
         <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
           <div className="card-header">
-            <h3 className="card-title"><BarChart3 size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />Top Feature Importance · SHAP</h3>
+            <h3 className="card-title"><BarChart3 size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />{t('perf.shap.title')}</h3>
           </div>
           <div style={{ height: 380 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -293,7 +296,7 @@ export function PerformanceTrackerPage() {
 
         <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
           <div className="card-header">
-            <h3 className="card-title"><Target size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />Confusion Matrix</h3>
+            <h3 className="card-title"><Target size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />{t('perf.cm.title')}</h3>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '80px repeat(3, 1fr)', gap: 2, marginTop: '0.5rem' }}>
             <div></div>

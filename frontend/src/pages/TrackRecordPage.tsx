@@ -4,6 +4,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   ScatterChart, Scatter, ReferenceLine, CartesianGrid,
 } from 'recharts'
+import { useT } from '../i18n'
 
 const API = '/api/v1/track-record'
 
@@ -244,6 +245,7 @@ function RecentTable({ items, total, onFilter, verdict, setVerdict, minConf, set
 }
 
 export function TrackRecordPage() {
+  const { t } = useT()
   const [summary, setSummary] = useState<Summary | null>(null)
   const [confusion, setConfusion] = useState<Confusion | null>(null)
   const [calib, setCalib] = useState<CalibPt[]>([])
@@ -284,7 +286,7 @@ export function TrackRecordPage() {
   if (!summary || typeof summary.total !== 'number') return (
     <div className="tr-page">
       <div className="tr-hero">
-        <h1 className="tr-hero__title">Track Record</h1>
+        <h1 className="tr-hero__title">{t('tr.title')}</h1>
         <p className="tr-hero__sub">
           ML prediction tracking isn't wired up on the backend yet.
           Live signal performance is on the Pulse page.
@@ -339,7 +341,7 @@ export function TrackRecordPage() {
 
       {summary && (
         <div className="tr-card">
-          <div className="tr-card__title">Accuracy by Sector</div>
+          <div className="tr-card__title">{t('tr.bySector')}</div>
           <div className="tr-sector-bars">
             {summary.by_sector.map(s => (
               <div key={s.name} className="tr-sector-row">

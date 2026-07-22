@@ -9,6 +9,7 @@ import { StockLogo } from '../components/StockLogo'
 import { motion } from 'framer-motion'
 import { Activity, Bell, BellOff, Flame, Star, TrendingDown, TrendingUp, Zap } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { useT } from '../i18n'
 
 type Factor = { label: string; value: number }
 type Ticker = {
@@ -78,6 +79,7 @@ function spark(vals: number[], w: number, h: number): string {
 }
 
 export function PulsePage() {
+  const { t } = useT()
   const [data, setData] = useState<PulseData | null>(null)
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(new Date())
@@ -232,6 +234,7 @@ export function PulsePage() {
 }
 
 function PulseHero({ data, now, highConv }: { data: PulseData; now: Date; highConv: number }) {
+  const { t } = useT()
   return (
     <div className="mc-hero">
       <div className="mc-hero__scanlines" />
@@ -246,8 +249,8 @@ function PulseHero({ data, now, highConv }: { data: PulseData; now: Date; highCo
         </div>
         <div className="mc-hero__main">
           <div>
-            <div className="mc-hero__eyebrow">MULTI-FACTOR CONVICTION SCANNER</div>
-            <h1 className="mc-hero__title">Anomaly Detection · 4-Factor Score</h1>
+            <div className="mc-hero__eyebrow">{t('pulse.eyebrow')}</div>
+            <h1 className="mc-hero__title">{t('pulse.title')}</h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0.4rem 0 0', maxWidth: 720, lineHeight: 1.55 }}>
               Σ = Avellaneda–Lee mean reversion (0.55) + Gao 2018 intraday momentum (0.25)
               + Connors RSI(2) regime (0.15), damped by a volume z-score. Trades fire at

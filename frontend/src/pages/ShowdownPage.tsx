@@ -8,6 +8,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, ReferenceLine,
 } from 'recharts'
+import { useT } from '../i18n'
 
 type OpenPos = {
   entry_date: string; exit_date: string; ticker: string; sector: string;
@@ -95,6 +96,7 @@ function fmtCountdown(ms: number): string {
 }
 
 export function ShowdownPage() {
+  const { t } = useT()
   const [data, setData] = useState<Showdown | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedStrat, setSelectedStrat] = useState<string | null>(null)
@@ -145,7 +147,7 @@ export function ShowdownPage() {
   if (loading || !data) return (
     <div className="mc-loading">
       <div className="mc-loading__scan" />
-      <div className="mc-loading__text">INITIALIZING MISSION CONTROL</div>
+      <div className="mc-loading__text">{t('sd.booting')}</div>
       <div className="mc-loading__sub">Loading 5 trading agents…</div>
     </div>
   )
@@ -173,12 +175,12 @@ export function ShowdownPage() {
           </div>
           <div className="mc-hero__main">
             <div>
-              <div className="mc-hero__eyebrow">SIGNALPHA MISSION CONTROL</div>
+              <div className="mc-hero__eyebrow">{t('sd.title')}</div>
               <h1 className="mc-hero__title">5 Bots · 5 Strategies · 1 Battle</h1>
             </div>
             {data.next_signal && countdownMs !== null && (
               <div className="mc-next" style={{ borderColor: data.next_signal.strategy_color }}>
-                <div className="mc-next__label">NEXT SIGNAL FIRES IN</div>
+                <div className="mc-next__label">{t('sd.nextSignal')}</div>
                 <div className="mc-next__time mono" style={{ color: data.next_signal.strategy_color }}>
                   {fmtCountdown(countdownMs)}
                 </div>

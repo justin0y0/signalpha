@@ -11,6 +11,7 @@ import { StatCard } from '../components/ui/StatCard'
 import { PriceTicker } from '../components/ui/PriceTicker'
 import { daysUntil, formatDate } from '../utils/date'
 import { CrushChamber } from '../components/CrushChamber'
+import { useT } from '../i18n'
 
 function formatPct(v: number | null | undefined, signed = false) {
   if (v == null) return '—'
@@ -20,6 +21,7 @@ function formatPct(v: number | null | undefined, signed = false) {
 
 
 export function PredictionDeepDivePage() {
+  const { t } = useT()
   const { ticker = '' } = useParams<{ ticker: string }>()
   const [search] = useSearchParams()
   const earningsDate = search.get('earnings_date') ?? undefined
@@ -144,7 +146,7 @@ export function PredictionDeepDivePage() {
       {/* === Core Prediction Stats === */}
       <div className="grid grid-4">
         <StatCard
-          label="Predicted Direction"
+          label={t('dd.stat.direction')}
           icon={<Compass size={12} />}
           value={data.predicted_direction}
           helper={`${(data.confidence_score * 100).toFixed(1)}% confidence`}
@@ -158,7 +160,7 @@ export function PredictionDeepDivePage() {
           delay={0.05}
         />
         <StatCard
-          label="Expected Move"
+          label={t('dd.stat.move')}
           icon={<Activity size={12} />}
           value={<>±{((data.expected_move.point_estimate_pct ?? 0) * 100).toFixed(2)}%</>}
           helper={
@@ -170,7 +172,7 @@ export function PredictionDeepDivePage() {
           delay={0.1}
         />
         <StatCard
-          label="Convergence Band"
+          label={t('dd.stat.band')}
           icon={<Layers size={12} />}
           value={
             data.convergence_band.lower != null && data.convergence_band.upper != null ? (
@@ -186,7 +188,7 @@ export function PredictionDeepDivePage() {
           delay={0.15}
         />
         <StatCard
-          label="Data Completeness"
+          label={t('dd.stat.completeness')}
           icon={<Gauge size={12} />}
           value={`${(data.data_completeness * 100).toFixed(1)}%`}
           helper={`${data.warnings.length} warning${data.warnings.length === 1 ? '' : 's'}`}
@@ -195,7 +197,7 @@ export function PredictionDeepDivePage() {
         />
       </div>
 
-      {/* === Direction Probabilities + Model Metadata === */}
+      {/* === {t('dd.probs')} + Model Metadata === */}
       <div className="grid grid-2" style={{ gridTemplateColumns: '1.5fr 1fr' }}>
         <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
           <div className="card-header">

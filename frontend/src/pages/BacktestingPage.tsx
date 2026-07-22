@@ -5,6 +5,7 @@ import { ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, 
 import { api } from '../api/client'
 import type { BacktestResponse } from '../types'
 import { parseLocalDate } from '../utils/date'
+import { useT } from '../i18n'
 
 const SECTORS = ['','Technology','Financial Services','Healthcare','Consumer Cyclical','Consumer Defensive','Industrials','Energy','Communication Services']
 const C = { cyan:'#38bdf8', purple:'#a78bfa', green:'#4ade80', red:'#f87171', amber:'#fbbf24', muted:'#475569' }
@@ -95,6 +96,7 @@ function MetricGroup({title, hero, heroSub, subs, accent, heroColor}: {
 }
 
 export function BacktestingPage() {
+  const { t } = useT()
   const [ticker,setTicker]=useState('')
   const [sector,setSector]=useState('')
   const [startDate,setStartDate]=useState('2022-01-01')
@@ -129,23 +131,23 @@ export function BacktestingPage() {
 
   const ret=result?.total_return??0
   const kpis:Kpi[]=result?[
-    {label:'Total Return',value:pct(ret),sub:`${result.total_trades} trades`,color:ret>=0?C.green:C.red},
-    {label:'Sharpe Ratio',value:fmt2(result.sharpe_ratio),sub:'annualised',color:result.sharpe_ratio>1?C.green:result.sharpe_ratio>0?C.cyan:C.red},
-    {label:'Sortino',value:fmt2(result.sortino_ratio),sub:'downside-adjusted',color:result.sortino_ratio>1?C.green:C.cyan},
-    {label:'Max Drawdown',value:pct(result.max_drawdown),sub:'peak to trough',color:C.red},
-    {label:'Win Rate',value:`${(result.win_rate*100).toFixed(1)}%`,sub:`of ${result.total_trades} trades`,color:result.win_rate>0.5?C.green:C.amber},
-    {label:'Profit Factor',value:result.profit_factor>=99?'∞':fmt2(result.profit_factor),sub:'gross win / gross loss',color:result.profit_factor>1.5?C.green:result.profit_factor>1?C.cyan:C.red},
-    {label:'Avg Win / Loss',value:`+${result.avg_win_pct.toFixed(2)}%`,sub:`loss ${result.avg_loss_pct.toFixed(2)}%`,color:C.green},
-    {label:'CAGR',value:pct(result.cagr),sub:'annualised growth',color:result.cagr>=0?C.green:C.red},
-    {label:'Alpha vs SPY',value:pct(result.alpha),sub:`CAPM, rf=0 · SPY ${pct(result.benchmark_return)}`,color:result.alpha>=0?C.green:C.red},
-    {label:'Beta',value:fmt2(result.beta),sub:'vs SPY daily returns',color:C.cyan},
+    {label:t('bt.kpi.totalReturn'),value:pct(ret),sub:`${result.total_trades} trades`,color:ret>=0?C.green:C.red},
+    {label:t('bt.kpi.sharpe'),value:fmt2(result.sharpe_ratio),sub:'annualised',color:result.sharpe_ratio>1?C.green:result.sharpe_ratio>0?C.cyan:C.red},
+    {label:t('bt.kpi.sortino'),value:fmt2(result.sortino_ratio),sub:'downside-adjusted',color:result.sortino_ratio>1?C.green:C.cyan},
+    {label:t('bt.kpi.maxdd'),value:pct(result.max_drawdown),sub:'peak to trough',color:C.red},
+    {label:t('bt.kpi.winRate'),value:`${(result.win_rate*100).toFixed(1)}%`,sub:`of ${result.total_trades} trades`,color:result.win_rate>0.5?C.green:C.amber},
+    {label:t('bt.kpi.pf'),value:result.profit_factor>=99?'∞':fmt2(result.profit_factor),sub:'gross win / gross loss',color:result.profit_factor>1.5?C.green:result.profit_factor>1?C.cyan:C.red},
+    {label:t('bt.kpi.avgWinLoss'),value:`+${result.avg_win_pct.toFixed(2)}%`,sub:`loss ${result.avg_loss_pct.toFixed(2)}%`,color:C.green},
+    {label:t('bt.kpi.cagr'),value:pct(result.cagr),sub:'annualised growth',color:result.cagr>=0?C.green:C.red},
+    {label:t('bt.kpi.alpha'),value:pct(result.alpha),sub:`CAPM, rf=0 · SPY ${pct(result.benchmark_return)}`,color:result.alpha>=0?C.green:C.red},
+    {label:t('bt.kpi.beta'),value:fmt2(result.beta),sub:'vs SPY daily returns',color:C.cyan},
   ]:[]
 
   return (
     <div className="bt-page">
       <motion.div className="bt-hero" initial={{opacity:0,y:-8}} animate={{opacity:1,y:0}}>
         <div className="bt-hero__badge"><span className="bt-hero__dot"/>BACKTESTER</div>
-        <h1 className="bt-hero__title">Strategy Simulator</h1>
+        <h1 className="bt-hero__title">{t('bt.title')}</h1>
         <p className="bt-hero__sub">Replay the ML signal on 5,393 historical earnings events. Adjust confidence threshold and scope to explore risk/return tradeoffs.</p>
       </motion.div>
 
@@ -165,11 +167,11 @@ export function BacktestingPage() {
             </div>
           </div>
           <div className="bt-field">
-            <label>Start date</label>
+            <label>{t('bt.field.start')}</label>
             <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} className="bt-input"/>
           </div>
           <div className="bt-field">
-            <label>End date</label>
+            <label>{t('bt.field.end')}</label>
             <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} className="bt-input"/>
           </div>
           <div className="bt-field">
@@ -179,7 +181,7 @@ export function BacktestingPage() {
           </div>
           <div className="bt-field bt-field--actions">
             <button className="bt-run" onClick={run} disabled={running}>
-              {running?<><span className="bt-run__spinner"/>Running…</>:<><Play size={14}/>Run backtest</>}
+              {running?<><span className="bt-run__spinner"/>{t('bt.running')}</>:<><Play size={14}/>{t('bt.run')}</>}
             </button>
             {result&&<button className="bt-reset" onClick={()=>{setResult(null);setError(null)}}><RotateCcw size={13}/></button>}
           </div>
@@ -203,7 +205,7 @@ export function BacktestingPage() {
 
             <motion.div className="bt-card" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:0.15}}>
               <div className="bt-card__title">
-                <TrendingUp size={13}/>Equity Curve vs SPY
+                <TrendingUp size={13}/>{t('bt.equity')}
                 <span className="bt-bench-legend"><span className="bt-bench-legend__dash"/>SPY benchmark</span>
                 <span className="bt-card__pill" style={{color:ret>=0?C.green:C.red,background:ret>=0?'rgba(74,222,128,0.1)':'rgba(248,113,113,0.1)'}}>{pct(ret)}</span>
               </div>
@@ -255,7 +257,7 @@ export function BacktestingPage() {
                 <div className="bt-cm-note">Rows = predicted signal · Cols = actual outcome · Diagonal = correct</div>
               </motion.div>
               <motion.div className="bt-card" initial={{opacity:0,x:12}} animate={{opacity:1,x:0}} transition={{delay:0.2}}>
-                <div className="bt-card__title">Direction Breakdown</div>
+                <div className="bt-card__title">{t('bt.dirBreakdown')}</div>
                 <div style={{display:'flex',flexDirection:'column',gap:'0.75rem',marginTop:'0.5rem'}}>
                   {result.direction_stats.map(d=><DirCard key={d.direction} d={d}/>)}
                   <div className="bt-dir" style={{borderLeft:`3px solid ${C.muted}`}}>
