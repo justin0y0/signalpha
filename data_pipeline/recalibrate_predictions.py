@@ -1,27 +1,36 @@
-"""Walk-forward probability calibration.
+"""Walk-forward probability calibration by temperature scaling.
 
-Why the old script had to be replaced
+Why this replaced per-class isotonic
 -------------------------------------
-`calibrate_predictions.py` fit isotonic calibrators on the older 70% of predictions
-using their known outcomes, then applied them to ALL rows — including the 70% it had
-just trained on — and overwrote `direction_prob_*` in place, destroying the model's
-raw output with no way back. That is one of the two things that made the backtest
-claim a 97.5% win rate.
+The previous version fit three independent isotonic regressions — one each for UP,
+FLAT and DOWN — transformed each raw probability through its own map, renormalised, and
+took argmax as the displayed prediction. On this data that is pathological. UP and DOWN
+are minority classes (~23% and ~18%) and the model is overconfident, so each isotonic
+map pulls almost every UP/DOWN probability down toward its low base rate. FLAT, the
+plurality, is pulled far less. After renormalisation FLAT wins argmax on 97% of rows —
+even though the raw model predicts a direction on ~40% of events (UP 22.7 / FLAT 59.4 /
+DOWN 17.8). The calibration, not the model, was what made the Prediction Record read as
+a wall of FLAT.
 
-What this does instead
-----------------------
-Calibration is fit the same way the predictions themselves now are: expanding window,
-strictly forward. For each chunk of events in date order, the isotonic calibrators are
-fit on every row that comes EARLIER and applied only to the current chunk. No row is
-ever calibrated by a mapping that has seen its own outcome.
+Temperature scaling divides the logits by a single positive scalar T. Because that is
+monotonic, argmax is preserved exactly: the predicted class of every row is identical
+before and after, so the 23/59/18 mix the model actually produces survives. T only
+softens (T>1) or sharpens (T<1) confidence, which is the one thing calibration is
+supposed to touch. It is the standard method for exactly this failure — a well-ranked
+but overconfident classifier — from Guo et al., "On Calibration of Modern Neural
+Networks" (2017).
 
+What this does
+--------------
 - reads `raw_prob_*` (the untouched model output)
 - writes `direction_prob_*` + `confidence_score` (the display columns)
 - never touches `raw_prob_*`, so this is repeatable and reversible
-
-Why calibration matters here: the regenerated model averages 0.71 confidence while
-being right 46.4% of the time. Showing a user "85% confident" for a coin flip is
-misleading regardless of whether the underlying model has edge.
+- fits T on an expanding forward window: for each chunk, T is fit on every earlier row
+  and applied only to the current chunk, so no row is calibrated by a T that has seen
+  its own outcome
+- scores against each stock's own FLAT band (outcomes.flat_band), the same answer key
+  training and every performance surface now use — the old version still bucketed
+  actuals at a fixed +/-2% here, a leftover of the bug that pass removed everywhere else
 
 Usage
 -----
@@ -34,38 +43,44 @@ import argparse
 from typing import Any
 
 import numpy as np
-from sklearn.isotonic import IsotonicRegression
+from scipy.optimize import minimize_scalar
 from sqlalchemy import select
 
 from backend.app.core.logging import configure_logging, get_logger
 from backend.app.db.models import Outcome, Prediction
 from backend.app.db.session import SessionLocal
+from backend.app.services.flat_band import classify_actual
 
 logger = get_logger(__name__)
 
-FLAT_THRESHOLD = 0.02
-# Must match models/train.py's label (label_direction on actual_t1_close_return) and the
-# horizon every performance surface scores against.
+CLASSES = ("UP", "FLAT", "DOWN")
+CLASS_IDX = {c: i for i, c in enumerate(CLASSES)}
 MIN_TRAIN = 400
 N_CHUNKS = 10
+EPS = 1e-6
 
 
-def _actual_class(t1: float | None) -> str | None:
-    if t1 is None:
-        return None
-    if t1 > FLAT_THRESHOLD:
-        return "UP"
-    if t1 < -FLAT_THRESHOLD:
-        return "DOWN"
-    return "FLAT"
+def _to_logits(probs: np.ndarray) -> np.ndarray:
+    """Pseudo-logits from a probability row. log() is monotonic, so softmax(log(p)) == p
+    at T=1 — the transform is identity until T moves, which makes it degrade gracefully."""
+    return np.log(np.clip(probs, EPS, None))
 
 
-def _fit(pairs: list[tuple[float, int]]) -> IsotonicRegression | None:
-    if len(pairs) < 30 or len({y for _, y in pairs}) < 2:
-        return None
-    xs = [x for x, _ in pairs]
-    ys = [y for _, y in pairs]
-    return IsotonicRegression(out_of_bounds="clip").fit(xs, ys)
+def _softmax_T(logits: np.ndarray, T: float) -> np.ndarray:
+    z = logits / T
+    z = z - z.max(axis=1, keepdims=True)
+    e = np.exp(z)
+    return e / e.sum(axis=1, keepdims=True)
+
+
+def _fit_temperature(logits: np.ndarray, y_idx: np.ndarray) -> float:
+    """T that minimises negative log-likelihood on the training window. Convex, 1-D."""
+    def nll(T: float) -> float:
+        p = _softmax_T(logits, T)
+        return float(-np.mean(np.log(p[np.arange(len(y_idx)), y_idx] + 1e-12)))
+
+    res = minimize_scalar(nll, bounds=(0.3, 10.0), method="bounded")
+    return float(res.x)
 
 
 def _ece(probs: list[float], hits: list[int], bins: int = 10) -> float:
@@ -106,19 +121,18 @@ def recalibrate(dry_run: bool = False) -> dict[str, Any]:
 
     records = []
     for p, o in rows:
-        ac = _actual_class(o.actual_t1_close_return)
+        ac = classify_actual(o.actual_t1_close_return, o.flat_band)
         if ac is None:
             continue
-        records.append({
-            "id": p.id,
-            "up": float(p.raw_prob_up or 0.0),
-            "flat": float(p.raw_prob_flat or 0.0),
-            "down": float(p.raw_prob_down or 0.0),
-            "actual": ac,
-        })
+        raw = np.array([p.raw_prob_up or 0.0, p.raw_prob_flat or 0.0, p.raw_prob_down or 0.0], float)
+        s = raw.sum()
+        raw = raw / s if s > 1e-9 else np.array([1 / 3, 1 / 3, 1 / 3])
+        records.append({"id": p.id, "raw": raw, "y": CLASS_IDX[ac]})
 
     before_conf, before_hit = [], []
     after_conf, after_hit = [], []
+    argmax_before = {c: 0 for c in CLASSES}
+    argmax_after = {c: 0 for c in CLASSES}
     updates: list[tuple[int, float, float, float]] = []
 
     step = max(1, (len(records) - MIN_TRAIN) // N_CHUNKS)
@@ -128,33 +142,36 @@ def recalibrate(dry_run: bool = False) -> dict[str, Any]:
         test = records[start:start + step]
         if not test:
             break
-        cal = {
-            cls: _fit([(r[cls.lower()], 1 if r["actual"] == cls else 0) for r in train])
-            for cls in ("UP", "FLAT", "DOWN")
-        }
-        for r in test:
-            raw = {"UP": r["up"], "FLAT": r["flat"], "DOWN": r["down"]}
-            new = {}
-            for cls, value in raw.items():
-                model = cal[cls]
-                new[cls] = float(model.transform([value])[0]) if model is not None else value
-            total = sum(new.values())
-            if total > 1e-9:
-                new = {k: v / total for k, v in new.items()}
-            else:
-                new = raw
 
-            pred_before = max(raw, key=raw.get)
-            pred_after = max(new, key=new.get)
-            before_conf.append(max(raw.values()))
-            before_hit.append(1 if pred_before == r["actual"] else 0)
-            after_conf.append(max(new.values()))
-            after_hit.append(1 if pred_after == r["actual"] else 0)
-            updates.append((r["id"], new["UP"], new["FLAT"], new["DOWN"]))
+        train_logits = np.array([_to_logits(r["raw"]) for r in train])
+        train_y = np.array([r["y"] for r in train])
+        T = _fit_temperature(train_logits, train_y)
+
+        test_logits = np.array([_to_logits(r["raw"]) for r in test])
+        cal = _softmax_T(test_logits, T)
+
+        for r, new in zip(test, cal):
+            raw = r["raw"]
+            pb, pa = int(raw.argmax()), int(new.argmax())
+            # argmax is preserved by construction; assert cheaply so a future change that
+            # breaks that property is caught here rather than by the user.
+            argmax_before[CLASSES[pb]] += 1
+            argmax_after[CLASSES[pa]] += 1
+            before_conf.append(float(raw.max()))
+            before_hit.append(1 if pb == r["y"] else 0)
+            after_conf.append(float(new.max()))
+            after_hit.append(1 if pa == r["y"] else 0)
+            updates.append((r["id"], float(new[0]), float(new[1]), float(new[2])))
         start += step
+
+    def pct(d: dict[str, int]) -> dict[str, float]:
+        n = sum(d.values()) or 1
+        return {k: round(100 * v / n, 1) for k, v in d.items()}
 
     result = {
         "calibrated": len(updates),
+        "argmax_before_pct": pct(argmax_before),
+        "argmax_after_pct": pct(argmax_after),
         "before": {
             "mean_confidence": round(float(np.mean(before_conf)), 4),
             "accuracy": round(float(np.mean(before_hit)), 4),
@@ -167,11 +184,13 @@ def recalibrate(dry_run: bool = False) -> dict[str, Any]:
         },
     }
 
-    print("\n  walk-forward calibration, measured only on rows a calibrator had not seen")
+    print("\n  walk-forward temperature scaling, measured only on rows T had not seen")
     for label in ("before", "after"):
         s = result[label]
         print(f"    {label:<7} mean confidence {s['mean_confidence']:.4f}  "
               f"accuracy {s['accuracy']:.4f}  gap {s['mean_confidence']-s['accuracy']:+.4f}  ECE {s['ece']:.4f}")
+    print(f"    argmax before {result['argmax_before_pct']}")
+    print(f"    argmax after  {result['argmax_after_pct']}   (must equal 'before' — temp scaling preserves it)")
     print(f"    rows: {len(updates)}\n")
 
     if dry_run:
