@@ -30,6 +30,11 @@ type Props = {
   compact?: boolean
 }
 
+// Share of events that are genuinely non-events under the current labelling — each
+// stock's own median move. Measured 47.7% over 5,553 events. A quiet score only carries
+// information to the extent it exceeds this.
+const BASE_RATE = 0.477
+
 const STATES = [
   { key: 'DOWN', color: 'var(--down)', dir: -1 },
   { key: 'FLAT', color: 'var(--flat)', dir: 0 },
@@ -78,7 +83,13 @@ export function Superposition({ up, flat, down, outcome = null, compact = false 
 
   const p = { UP: up / total, FLAT: flat / total, DOWN: down / total }
   const quiet = p.FLAT
-  const tone = quiet >= 0.6 ? 'high' : quiet >= 0.5 ? 'mid' : 'low'
+  // Thresholds are relative to the base rate, not absolute. "FLAT 55%" means something
+  // completely different when a non-event happens 47.7% of the time than when it
+  // happens 60.7% of the time, and this component previously hardcoded 0.6/0.5 — tuned
+  // for the old labelling, where 0.5 was actually *below* base rate and the row read
+  // "leaning quiet" while saying less than guessing. Deriving from BASE_RATE keeps the
+  // wording honest if the label definition moves again.
+  const tone = quiet >= BASE_RATE + 0.15 ? 'high' : quiet >= BASE_RATE + 0.05 ? 'mid' : 'low'
 
   // Uncertainty drives the drift: a confident row is nearly still, a genuinely
   // uncertain one visibly cannot make up its mind. Entropy, normalised to [0,1].
@@ -101,7 +112,7 @@ export function Superposition({ up, flat, down, outcome = null, compact = false 
       <div className="sup__head">
         <span className={`sup__score sup__score--${tone}`}>{(quiet * 100).toFixed(0)}%</span>
         <span className="sup__label">
-          {collapsed ? `resolved ${outcome}` : quiet >= 0.6 ? t('forecast.likelyQuiet') : quiet >= 0.5 ? t('forecast.leaningQuiet') : t('forecast.moveExpected')}
+          {collapsed ? t('forecast.resolved', { outcome }) : quiet >= BASE_RATE + 0.15 ? t('forecast.likelyQuiet') : quiet >= BASE_RATE + 0.05 ? t('forecast.leaningQuiet') : t('forecast.moveExpected')}
         </span>
       </div>
 

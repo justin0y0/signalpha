@@ -143,11 +143,6 @@ class Prediction(Base):
     expected_move_high: Mapped[float | None] = mapped_column(Float)
     convergence_low: Mapped[float | None] = mapped_column(Float)
     convergence_high: Mapped[float | None] = mapped_column(Float)
-    # Point-in-time FLAT band for THIS event: the median absolute earnings reaction
-    # this ticker had produced *before* this date. Persisted rather than recomputed so
-    # training and every scoring surface read one number, and so an event is judged by
-    # what was knowable when it happened. Written by data_pipeline/compute_flat_bands.py.
-    flat_band: Mapped[float | None] = mapped_column(Float)
     model_version: Mapped[str | None] = mapped_column(String(64))
     feature_completeness: Mapped[float | None] = mapped_column(Float)
     warning_flags: Mapped[list | dict | None] = mapped_column(JSON)
@@ -162,6 +157,9 @@ class Prediction(Base):
     raw_prob_up: Mapped[float | None] = mapped_column(Float)
     raw_prob_flat: Mapped[float | None] = mapped_column(Float)
     raw_prob_down: Mapped[float | None] = mapped_column(Float)
+    # P(the stock moves more than its own median earnings reaction). The magnitude head —
+    # the one question the features have measurable signal on, unlike direction.
+    prob_move: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -186,6 +184,11 @@ class Outcome(Base):
     convergence_low: Mapped[float | None] = mapped_column(Float)
     convergence_high: Mapped[float | None] = mapped_column(Float)
     convergence_range: Mapped[float | None] = mapped_column(Float)
+    # Point-in-time FLAT band for THIS event: the median absolute earnings reaction this
+    # ticker had produced *before* this date. Persisted rather than recomputed so training
+    # and every scoring surface read one number, and so an event is judged by what was
+    # knowable when it happened. Written by data_pipeline/compute_flat_bands.py.
+    flat_band: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

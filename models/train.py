@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import accuracy_score, confusion_matrix, mean_absolute_error, precision_recall_fscore_support, root_mean_squared_error
+from sklearn.metrics import accuracy_score, confusion_matrix, mean_absolute_error, precision_recall_fscore_support, roc_auc_score, root_mean_squared_error
 from sqlalchemy import create_engine
 
 from models.backtest import sharpe_ratio
 from models.dataset import expand_feature_payload, label_direction, label_direction_adaptive, walk_forward_splits
 from models.ensemble import ModelEnsemble
 from models.registry import ModelRegistry
+
+logger = logging.getLogger(__name__)
 
 MIN_ROWS_PER_SECTOR = 40
 
@@ -59,6 +62,16 @@ def _prepare_training_frame(database_url: str) -> pd.DataFrame:
     # point-in-time and needs no shift here.
     expanded = expanded.sort_values(["ticker", "earnings_date"]).reset_index(drop=True)
     returns = expanded["actual_t1_close_return"].astype(float)
+    # Drop rows whose realised return is not finite before anything is derived from it.
+    # A prev_close of 0 in the source data yields an infinite return; that inf later
+    # becomes NaN via the inf->NaN replace in _evaluate_sector, lands in a test fold, and
+    # crashes mean_absolute_error with "Input contains NaN". Cleaning at the source keeps
+    # the bad row out of labels, targets, training and metrics alike.
+    finite = np.isfinite(returns)
+    if not finite.all():
+        logger.info("dropping %s rows with non-finite returns", int((~finite).sum()))
+        expanded = expanded[finite].reset_index(drop=True)
+        returns = expanded["actual_t1_close_return"].astype(float)
     bands = (
         expanded["flat_band"].astype(float)
         if "flat_band" in expanded.columns
@@ -68,6 +81,11 @@ def _prepare_training_frame(database_url: str) -> pd.DataFrame:
         label_direction_adaptive(value, band) for value, band in zip(returns, bands)
     ]
     expanded["magnitude_target"] = returns.abs()
+    # Binary "does it move more than this stock's own median reaction" target — the
+    # question the features actually carry signal on. Band comes from outcomes.flat_band;
+    # the fallback matches compute_flat_bands for the handful of NaN early events.
+    _band = expanded["flat_band"].astype(float).fillna(0.02)
+    expanded["move_target"] = (returns.abs() > _band).astype(int)
     expanded = expanded.sort_values("earnings_date").reset_index(drop=True)
     return expanded
 
@@ -106,13 +124,18 @@ def _evaluate_sector(frame: pd.DataFrame, sector: str) -> dict[str, Any]:
             "convergence_high",
             "direction_label",
             "magnitude_target",
-            "stock_reaction_std",
+            # Must never become a feature. flat_band IS the label boundary and
+            # move_target is derived straight from it — handing either to the model
+            # gives away the answer, and both are numeric so they would otherwise be
+            # swept into feature_cols automatically.
+            "flat_band",
+            "move_target",
         }
         and pd.api.types.is_numeric_dtype(frame[col])
     ]
     # Drop features that are >=70% missing (mostly empty FMP fields adding noise)
     feature_cols = [c for c in candidate_cols if frame[c].notna().mean() >= 0.30]
-    subset = frame[["ticker", "earnings_date", "sector", "actual_t1_close_return", "actual_t5_return", "actual_t20_return", "convergence_low", "convergence_high", "flat_band", "direction_label", "magnitude_target", *feature_cols]].copy()
+    subset = frame[["ticker", "earnings_date", "sector", "actual_t1_close_return", "actual_t5_return", "actual_t20_return", "convergence_low", "convergence_high", "flat_band", "direction_label", "magnitude_target", "move_target", *feature_cols]].copy()
     subset = subset.replace([np.inf, -np.inf], np.nan)
     subset = subset.sort_values("earnings_date").reset_index(drop=True)
 
@@ -120,6 +143,8 @@ def _evaluate_sector(frame: pd.DataFrame, sector: str) -> dict[str, Any]:
     y_pred_dir: list[str] = []
     y_true_mag: list[float] = []
     y_pred_mag: list[float] = []
+    y_true_move: list[int] = []
+    y_prob_move: list[float] = []
     strategy_returns: list[float] = []
 
     for split in walk_forward_splits(subset, min_train_size=min(MIN_ROWS_PER_SECTOR, max(20, len(subset) // 2)), test_window=max(5, len(subset) // 10), step=max(5, len(subset) // 10)):
@@ -150,6 +175,7 @@ def _evaluate_sector(frame: pd.DataFrame, sector: str) -> dict[str, Any]:
             train_balanced["convergence_low"],
             train_balanced["convergence_high"],
             train_balanced[["ticker", "earnings_date", "sector", "actual_t1_close_return", "actual_t5_return", "actual_t20_return"]],
+            y_move=train_balanced["move_target"],
         )
         for _, row in test.iterrows():
             x = pd.DataFrame([{col: row[col] for col in feature_cols}])
@@ -158,6 +184,9 @@ def _evaluate_sector(frame: pd.DataFrame, sector: str) -> dict[str, Any]:
             y_pred_dir.append(pred["predicted_direction"])
             y_true_mag.append(float(row["magnitude_target"]))
             y_pred_mag.append(float(pred["expected_move_pct"]))
+            if pred.get("prob_move") is not None:
+                y_true_move.append(int(row["move_target"]))
+                y_prob_move.append(float(pred["prob_move"]))
             signal = 1 if pred["direction_probabilities"]["up"] >= 0.55 else -1 if pred["direction_probabilities"]["down"] >= 0.55 else 0
             strategy_returns.append(signal * float(row["actual_t1_close_return"]))
 
@@ -173,14 +202,27 @@ def _evaluate_sector(frame: pd.DataFrame, sector: str) -> dict[str, Any]:
             "confusion_matrix": [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
         }
 
+    # Regression metrics must see only finite pairs — a single non-finite value takes
+    # the whole retrain down, and it is not worth losing a 2-hour run to one bad row.
+    _mag = [(t, p) for t, p in zip(y_true_mag, y_pred_mag) if np.isfinite(t) and np.isfinite(p)]
+    mag_true = [t for t, _ in _mag] or [0.0]
+    mag_pred = [p for _, p in _mag] or [0.0]
+
+    # The move head is the point of the pivot — log its walk-forward AUC so a retrain
+    # shows whether the magnitude signal held (direction is expected to be ~chance).
+    _mv = [(a, b) for a, b in zip(y_true_move, y_prob_move) if np.isfinite(b)]
+    if len({a for a, _ in _mv}) > 1:
+        move_auc = float(roc_auc_score([a for a, _ in _mv], [b for _, b in _mv]))
+        logger.info("sector=%s MOVE(quiet-vs-move) walk-forward AUC=%.4f n=%s", sector, move_auc, len(_mv))
+
     precision, recall, f1, _ = precision_recall_fscore_support(y_true_dir, y_pred_dir, average="weighted", zero_division=0)
     return {
         "accuracy": float(accuracy_score(y_true_dir, y_pred_dir)),
         "precision_weighted": float(precision),
         "recall_weighted": float(recall),
         "f1_weighted": float(f1),
-        "mae": float(mean_absolute_error(y_true_mag, y_pred_mag)),
-        "rmse": float(root_mean_squared_error(y_true_mag, y_pred_mag)),
+        "mae": float(mean_absolute_error(mag_true, mag_pred)),
+        "rmse": float(root_mean_squared_error(mag_true, mag_pred)),
         # sharpe_ratio() defaults to annualization=252, which assumes a DAILY return
         # series. What it gets here is one return per earnings event -- roughly 50 a
         # year -- so the default inflated every per-sector Sharpe on the Performance
@@ -208,7 +250,12 @@ def _fit_final_model(frame: pd.DataFrame, sector: str, model_version: str) -> tu
             "convergence_high",
             "direction_label",
             "magnitude_target",
-            "stock_reaction_std",
+            # Must never become a feature. flat_band IS the label boundary and
+            # move_target is derived straight from it — handing either to the model
+            # gives away the answer, and both are numeric so they would otherwise be
+            # swept into feature_cols automatically.
+            "flat_band",
+            "move_target",
         }
         and pd.api.types.is_numeric_dtype(frame[col])
     ]
@@ -222,6 +269,7 @@ def _fit_final_model(frame: pd.DataFrame, sector: str, model_version: str) -> tu
         frame["convergence_low"],
         frame["convergence_high"],
         frame[["ticker", "earnings_date", "sector", "actual_t1_close_return", "actual_t5_return", "actual_t20_return"]],
+        y_move=frame["move_target"],
     )
     feature_importance = final_model.feature_importance(frame[feature_cols], top_n=20)
     return final_model, feature_importance

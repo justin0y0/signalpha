@@ -116,6 +116,7 @@ DDL_STATEMENTS: list[str] = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_briefs_date ON daily_briefs (brief_date DESC)",
     "ALTER TABLE outcomes ADD COLUMN IF NOT EXISTS flat_band DOUBLE PRECISION",
+    "ALTER TABLE predictions ADD COLUMN IF NOT EXISTS prob_move DOUBLE PRECISION",
 ]
 
 

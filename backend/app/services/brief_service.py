@@ -2,15 +2,16 @@
 
 Positioning note (this drives what the brief actually says)
 ----------------------------------------------------------
-The model has no directional edge: walk-forward 3-class accuracy is 49.3% against a
-49.8% always-FLAT baseline, and it commits to a direction on 2.5% of events, getting
-53.5% of those right on n=71. What it *can* do, measurably, is spot non-events: at
-P(FLAT) >= 0.60 it is right 66.6% of the time against a 49.8% base rate (n=862, ~9.9
-standard errors).
+The brief leads with the quiet/loud split and the options context around it, not with
+"we think NVDA goes up", because the measured skill is in the first question and not
+the second. See CLAUDE.md for the current accuracy figures — they are deliberately not
+duplicated here, since a docstring is the last place anyone remembers to update and
+this one spent two label revisions quoting numbers that no longer existed.
 
-So the brief leads with the quiet/loud split and the options context around it, not
-with "we think NVDA goes up". Anything else would be selling a capability the data
-says does not exist.
+Thresholds are expressed relative to BASE_RATE rather than as absolute probabilities.
+A P(FLAT) of 0.60 means something different when non-events are 47.7% of the universe
+than when they were 60.7%, and hardcoding the absolute number silently changed what
+this surface promised every time the labelling moved.
 """
 from __future__ import annotations
 
@@ -24,8 +25,14 @@ from backend.app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-QUIET_THRESHOLD = 0.60
-LOUD_THRESHOLD = 0.40
+# Share of events that are genuine non-events under the current per-stock median
+# labelling. Measured over 5,553 events; see data_pipeline/compute_flat_bands.py.
+BASE_RATE = 0.477
+
+# A row earns the quiet list by being meaningfully more certain than the base rate,
+# not merely above 50%.
+QUIET_THRESHOLD = BASE_RATE + 0.13   # 0.607
+LOUD_THRESHOLD = BASE_RATE - 0.08    # 0.397
 
 
 def _rows_for_window(db: Session, start: date, end: date, tickers: list[str] | None) -> list[dict[str, Any]]:

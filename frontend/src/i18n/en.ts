@@ -158,7 +158,7 @@ export const en = {
   'about.labels.kicker': 'Per-stock labelling',
   'about.labels.title': 'A 2% move means different things to different stocks',
   'about.labels.body':
-    'A 2% earnings move is enormous for an industrial and noise for a high-beta name, so the model no longer labels everything against a fixed ±2%. Each stock is scored against half its own historical earnings-reaction sigma, clamped to [2.5%, 10%] — MMM at ±2.5%, TSLA at ±4.4%. Making the target coherent lifted high-confidence non-event accuracy from 66.6% to 76.3%.',
+    'A 2% earnings move is enormous for an industrial and noise for a high-beta name, so a single threshold asks the model to learn an incoherent target. Each stock is labelled against its own median earnings reaction — the move it beats half the time. Measured: JNJ ±0.5%, KO ±1.7%, NVDA ±4.0%, META ±6.8%. This replaced a 0.5-sigma rule clamped to a 2.5% floor, which was adaptive in name only: 113 of 150 tickers sat on the floor, so FLAT swallowed 60.7% of events. The band is now ~25/50/25 by construction.',
   'about.arch.kicker': 'How it works',
   'about.arch.title': 'Pipeline',
   'about.model.note':

@@ -179,6 +179,30 @@ class ModelEnsemble:
                 ),
             ]
         )
+        # Binary magnitude head: P(the stock moves MORE than its own median earnings
+        # reaction). This is the one thing the features carry signal on — direction is
+        # a coin flip on large-caps, but "quiet vs move" has walk-forward AUC ~0.55 and
+        # beats simply reading the options-implied move. Kept separate from the 3-class
+        # direction_model so the two questions stay honestly distinct.
+        self.move_model = Pipeline(
+            steps=[
+                ("imputer", SimpleImputer(strategy="median")),
+                (
+                    "model",
+                    XGBClassifier(
+                        objective="binary:logistic",
+                        eval_metric="logloss",
+                        max_depth=4,
+                        n_estimators=200,
+                        learning_rate=0.05,
+                        subsample=0.8,
+                        colsample_bytree=0.8,
+                        random_state=42,
+                    ),
+                ),
+            ]
+        )
+        self._move_fitted = False
         self.convergence_model = ConvergenceZonePredictor()
         self.similarity_engine = PatternSimilarityEngine()
 
@@ -199,12 +223,18 @@ class ModelEnsemble:
         y_convergence_low: pd.Series,
         y_convergence_high: pd.Series,
         metadata: pd.DataFrame,
+        y_move: pd.Series | None = None,
     ) -> "ModelEnsemble":
         self.feature_columns = X.columns.tolist()
         X_aligned = self._align_features(X)
         y_encoded = self.label_encoder.transform(y_direction)
         self.direction_model.fit(X_aligned, y_encoded)
         self.magnitude_model.fit(X_aligned, y_magnitude)
+        # Fit the binary move head when the caller supplies the target. Guarded so any
+        # caller that has not been updated still trains a working (direction-only) model.
+        if y_move is not None and len(set(y_move)) > 1:
+            self.move_model.fit(X_aligned, y_move)
+            self._move_fitted = True
         self.convergence_model.fit(X_aligned.fillna(X_aligned.median(numeric_only=True)), y_convergence_low, y_convergence_high)
         self.similarity_engine.fit(X_aligned, metadata)
 
@@ -229,6 +259,11 @@ class ModelEnsemble:
         high_move = magnitude + self.residual_std_
         conv_low, conv_high = self.convergence_model.predict(X_aligned.fillna(X_aligned.median(numeric_only=True)))
         predicted_direction = max(mapping, key=mapping.get)
+        # P(move > this stock's own median reaction). None on models trained before the
+        # move head existed, so downstream must treat it as optional.
+        prob_move: float | None = None
+        if getattr(self, "_move_fitted", False):
+            prob_move = float(self.move_model.predict_proba(X_aligned)[0][1])
         warnings = []
         if self._data_completeness(X_aligned) < 0.8:
             warnings.append(
@@ -246,6 +281,8 @@ class ModelEnsemble:
             },
             "predicted_direction": predicted_direction,
             "confidence_score": float(max(probs)),
+            "prob_move": prob_move,
+            "prob_quiet": None if prob_move is None else 1.0 - prob_move,
             "expected_move_pct": magnitude,
             "expected_move_low": low_move,
             "expected_move_high": high_move,

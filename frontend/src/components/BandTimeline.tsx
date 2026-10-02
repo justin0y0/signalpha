@@ -11,7 +11,7 @@ import { useT } from '../i18n'
  *
  * The point this exists to make: a 2% earnings move is enormous for a utility and
  * noise for TSLA, so the model labels each stock against its own historical reaction
- * sigma (MMM ±2.5%, TSLA ±4.4%). That is the single most important thing about how
+ * median earnings reaction (JNJ ±0.5%, NVDA ±4.0%, META ±6.8%). That is the single most important thing about how
  * this model reads the world and it is invisible in a table of numbers. Here the band
  * is drawn — the grey slab behind each event is literally how far that stock has to
  * move before anyone calls it a move, and the bar is what the model expects.

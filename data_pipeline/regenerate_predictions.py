@@ -64,6 +64,10 @@ NON_FEATURE_COLS = {
     "actual_t1_close_return", "actual_t5_return", "actual_t20_return",
     "convergence_low", "convergence_high",
     "direction_label", "magnitude_target",
+    # flat_band is the label boundary and move_target is derived from it. Neither may
+    # become a feature. flat_band was missing here — a leak that let the regenerated
+    # models see the answer boundary; train.py already excluded it, this closes the gap.
+    "flat_band", "move_target",
 }
 
 
@@ -122,6 +126,7 @@ def _walk_forward_for_sector(frame: pd.DataFrame, sector: str) -> dict[tuple[str
                 balanced["convergence_high"],
                 balanced[["ticker", "earnings_date", "sector",
                           "actual_t1_close_return", "actual_t5_return", "actual_t20_return"]],
+                y_move=balanced["move_target"],
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("sector=%s fold=%s fit failed: %s", sector, fold, exc)
@@ -193,6 +198,7 @@ def regenerate(dry_run: bool = False) -> dict[str, Any]:
                 row.raw_prob_flat = probs["flat"]
                 row.raw_prob_down = probs["down"]
                 row.confidence_score = p["confidence_score"]
+                row.prob_move = p.get("prob_move")
                 row.expected_move_pct = p["expected_move_pct"]
                 row.expected_move_low = p["expected_move_low"]
                 row.expected_move_high = p["expected_move_high"]
