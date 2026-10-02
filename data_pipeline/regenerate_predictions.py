@@ -50,7 +50,7 @@ from sqlalchemy import select
 
 from backend.app.core.config import get_settings
 from backend.app.core.logging import get_logger
-from backend.app.db.models import Prediction
+from backend.app.db.models import EarningsEvent, Prediction
 from backend.app.db.session import SessionLocal
 from models.dataset import walk_forward_splits
 from models.ensemble import ModelEnsemble
@@ -188,7 +188,14 @@ def regenerate(dry_run: bool = False) -> dict[str, Any]:
                     select(Prediction).filter_by(ticker=ticker, earnings_date=edate)
                 ).scalar_one_or_none()
                 if row is None:
-                    continue
+                    # Events backfilled after the last prediction run have no row yet.
+                    # Skipping them silently left every event after the 2026-04-28
+                    # restore point out of the out-of-sample record.
+                    ev_sector = session.execute(
+                        select(EarningsEvent.sector).filter_by(ticker=ticker, earnings_date=edate)
+                    ).scalar_one_or_none()
+                    row = Prediction(ticker=ticker, earnings_date=edate, sector=ev_sector)
+                    session.add(row)
                 p = item["pred"]
                 probs = p["direction_probabilities"]
                 row.direction_prob_up = probs["up"]
