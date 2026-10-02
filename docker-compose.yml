@@ -83,6 +83,7 @@ services:
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - /var/www/certbot:/var/www/certbot:ro
+      - /srv/edge-vhosts:/etc/nginx/extra:ro
 
 volumes:
   postgres_data:

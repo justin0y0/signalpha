@@ -78,6 +78,10 @@ ssh oracle-sp 'cd ~/signalpha && docker compose up -d --build backend scheduler 
 
 **镜像有 10.8GB**（ARM 上的 torch 轮子带了用不上的 CUDA 库），重建 backend 时导出镜像很慢（几分钟）。一次性脚本可以 `-v` 挂载单个文件进 `docker compose run --rm` 来跑，避免为一个脚本重建。
 
+### 同一台机器上还跑着 MyVoice
+`frontend/nginx.conf` 顶部 `include /etc/nginx/extra/*.conf;`，compose 把主机 `/srv/edge-vhosts` 挂进去。MyVoice 的 vhost（`myvoice.signalpha.app` → `myvoice-backend:8080`）就放在那里，配置本体在 MyVoice 仓库 `deploy/oracle/`。
+**两个站共用一个 nginx：那个目录里任何一个坏文件都会让 signalpha.app 起不来**（2026-10-02 真发生过，宕机不到一分钟）。改之前先用一次性容器 `nginx -t` 校验，见 MyVoice 仓库的 runbook。
+
 ### TLS
 Cloudflare 代理（橙色云），SSL 模式 **Full**。源站证书是 Let's Encrypt（webroot `/var/www/certbot`，nginx 80/443 都放行 `/.well-known/acme-challenge/`），**由主机上的 `certbot.timer` 自动续期**，deploy hook 是 `docker exec signalpha-frontend-1 nginx -s reload`。`certbot renew --dry-run` 已验证通过。
 
