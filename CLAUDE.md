@@ -29,14 +29,18 @@ Owner：**Justin**，USC Applied & Computational Mathematics，GitHub `justin0y0
 ## 1. 工作流（2026-07-20 起改这个，和以前不一样）
 
 **以前**：Justin 在 GCP Console 浏览器 SSH 里手工粘贴，超 80 行会被截断，所以文件要分块 heredoc 写。
-**现在**：Claude Code 直接改本地文件、直接跑 `gcloud` 部署。**Justin 不跑任何 terminal / SSH 命令**，他只看网站和我的汇报。
+**现在**：Claude Code 直接改本地文件、直接 SSH 部署。**Justin 不跑任何 terminal / SSH 命令**，他只看网站和我的汇报。
 
-- 本地 repo：`/Users/justinyu/signalpha`（= 权威源），remote `github.com/justin0y0/signalpha`（private），分支 `main`。
-- 服务器 repo：GCP `signalpha-prod` 的 `~/signalpha`，通过 `git pull` 同步。
-- `gcloud` 已在 Mac 上认证好（账号 `justinyu0315@gmail.com`，项目 `project-a807fce0-70fd-41ff-86b`），Claude Code 可直接调用，**不需要 Justin 介入**。
+- 本地 repo：`/Users/justinyu/signalpha`（= 权威源），remote `git@github.com:justin0y0/signalpha.git`（SSH，private），分支 `main`。
+  - 2026-10-02 起 remote 从 HTTPS 换成 SSH：HTTPS 的 keychain token 过期后 push 一直失败。现在用 `~/.ssh/id_ed25519_myvoice_github`（账号级 key），`~/.ssh/config` 里 `Host github.com` 已指定。
+- 服务器：**Oracle Cloud Always Free**，`VM.Standard.A1.Flex`，2 OCPU / 12GB / 50GB，**ARM (aarch64)**，Ubuntu 22.04，凤凰城 PHX-AD-1，公网 IP `129.146.68.232`。
+  - SSH：`ssh oracle-sp`（`~/.ssh/config` 别名 → `ubuntu@129.146.68.232`，key `~/.ssh_signalpha_oracle/oracle_signalpha`）。ubuntu 在 docker 组，**不需要 sudo**。
+  - 服务器代码：`~/signalpha`，**用 `rsync` 从本地同步**（服务器上没有 GitHub 凭据，不 `git pull`）。
+  - 主机加固由 Muse 完成：SSH 仅密钥、禁 root/密码登录、fail2ban、2G swap；OCI 安全列表和主机 iptables 只开 22/80/443。
+- ~~GCP `signalpha-prod`~~：2026-08 试用到期后项目被停计费，VM 和磁盘连同全部数据丢失，见第 6c 节。
 - 分块 heredoc 那套限制**已作废**，直接用 Write/Edit 工具改文件。
 
-**每个大步骤做完停下来等 Justin 确认，不要自己一路跑完。**
+**一路做完再汇报，不要中途停下来问。**（Justin 2026-07 多次明确："做完汇报就行，不同意会让你回滚"。）例外只有安全规则要求的：对外可见的账号操作（改 DNS、付费、发消息）先要一句明确同意。
 
 ---
 
@@ -65,13 +69,17 @@ Owner：**Justin**，USC Applied & Computational Mathematics，GitHub `justin0y0
 ## 3. 部署（唯一正确姿势）
 
 ```bash
-gcloud compute ssh justinyu0315@signalpha-prod --zone us-west2-a --command \
-  'cd ~/signalpha && git pull && sudo docker compose up -d --build backend scheduler frontend'
+git push origin main      # 先推，保证 GitHub 是权威副本
+rsync -az --delete --exclude node_modules --exclude frontend/dist --exclude __pycache__ ./ oracle-sp:~/signalpha/
+ssh oracle-sp 'cd ~/signalpha && docker compose up -d --build backend scheduler frontend'
 ```
 
 改了什么就 build 什么，但 **`backend/` 和 `data_pipeline/` 的改动必须同时 `--build backend scheduler`**（两个容器共用同一个镜像源码树，只 build backend 会让 scheduler 继续跑旧代码）。
 
-**部署前必须先 `git push`**，服务器靠 `git pull` 拿代码，本地改了不 push 等于没改。
+**镜像有 10.8GB**（ARM 上的 torch 轮子带了用不上的 CUDA 库），重建 backend 时导出镜像很慢（几分钟）。一次性脚本可以 `-v` 挂载单个文件进 `docker compose run --rm` 来跑，避免为一个脚本重建。
+
+### TLS
+Cloudflare 代理（橙色云），SSL 模式 **Full**。源站证书是 Let's Encrypt（webroot `/var/www/certbot`，nginx 80/443 都放行 `/.well-known/acme-challenge/`），**由主机上的 `certbot.timer` 自动续期**，deploy hook 是 `docker exec signalpha-frontend-1 nginx -s reload`。`certbot renew --dry-run` 已验证通过。
 
 ### 🔴 部署后必须跑这个，否则不许说"好了"
 
@@ -91,26 +99,15 @@ nginx 侧已改为变量 + Docker DNS 按请求解析，但**验证习惯比那�
 
 ### 常用运维命令（Claude 直接跑）
 ```bash
-# psql
-gcloud compute ssh justinyu0315@signalpha-prod --zone us-west2-a --command \
-  'sudo docker exec -i signalpha-postgres-1 psql -U earnings -d earnings -c "SELECT count(*) FROM predictions;"'
-
-# 看 backend 日志
-gcloud compute ssh justinyu0315@signalpha-prod --zone us-west2-a --command \
-  'sudo docker logs --tail 100 signalpha-backend-1'
-
-# 看 scheduler 日志（job 成功/失败看这里）
-gcloud compute ssh justinyu0315@signalpha-prod --zone us-west2-a --command \
-  'sudo docker logs --tail 200 signalpha-scheduler-1'
-
-# Redis
-gcloud compute ssh justinyu0315@signalpha-prod --zone us-west2-a --command \
-  'sudo docker exec -i signalpha-redis-1 redis-cli KEYS "pulse:*"'
-
-# 验证部署后代码真的进了容器（md5 对比，比看日志靠谱）
-gcloud compute ssh justinyu0315@signalpha-prod --zone us-west2-a --command \
-  'sudo docker exec signalpha-backend-1 sh -c "cd /app && md5sum data_pipeline/jobs.py"'
+ssh oracle-sp 'docker exec -i signalpha-postgres-1 psql -U earnings -d earnings -c "SELECT count(*) FROM predictions;"'
+ssh oracle-sp 'docker logs --tail 100 signalpha-backend-1'
+ssh oracle-sp 'docker logs --tail 200 signalpha-scheduler-1'      # job 成功/失败看这里
+ssh oracle-sp 'docker exec -i signalpha-redis-1 redis-cli KEYS "pulse:*"'
+ssh oracle-sp 'docker exec signalpha-backend-1 sh -c "cd /app && md5sum data_pipeline/jobs.py"'   # 代码真的进容器了吗
 ```
+
+### 🔴 备份（2026-10-02 起必须有）
+上一台机器死的时候，最新的数据库备份是 5 个月前的。**没有备份 = 下一次迁移还会丢数据。** 见第 6c 节。
 
 Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localStorage `sa_admin`）。
 
@@ -120,7 +117,7 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 
 1. **backend / scheduler 代码 baked 进镜像**。`docker compose restart` 对代码改动**完全无效**，必须 `up -d --build`。改 `data_pipeline/` 别忘了 scheduler。
 2. **`.env` 是 gitignored**，只在服务器和 Justin 本地各一份。**绝不硬编码 secret，一律 `os.getenv`**，也绝不把值写进文档或 chat。
-3. **模型 artifacts 不在 git**。`artifacts/*.joblib`（9 个 sector ensemble + calibrator，~179M）通过 compose 的 `./artifacts:/app/artifacts` volume 挂载。`.gitignore` 里有 `artifacts/`。本地要跑预测得先 `gcloud compute scp` 拉下来。（旧 git 历史里还留着，是个警告不是阻塞。）
+3. **模型 artifacts 不在 git**。`artifacts/*.joblib`（9 个 sector ensemble + calibrator，~179M）通过 compose 的 `./artifacts:/app/artifacts` volume 挂载。`.gitignore` 里有 `artifacts/`。本地要跑预测得先从服务器 `scp oracle-sp:~/signalpha/artifacts/...` 拉下来。（旧 git 历史里还留着，是个警告不是阻塞。）
 4. **Groq 模型弃用会静默返回空**。老的 `meta-llama/llama-4-scout-17b-16e-instruct` 被弃用后返回空字符串，直接导致过"所有数字都是 0"的历史 bug。当前可用：`llama-3.3-70b-versatile`（`ORACLE_MODEL`）。**凡是用模型名的地方都要留一个 self-heal 候选列表**，别让一个死模型名把整条链清零。
 5. **datacenter IP 封锁一堆抓取源**。从 GCP IP 出去：
    - ❌ 挂了：Google News RSS（consent wall）、nitter（Cloudflare/Anubis）、truthbrush（Cloudflare）、X/Twitter 抓取
@@ -243,6 +240,22 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 
 > ⚠️ **本节所有准确率数字在重训完成前都是旧的**。重训 → regenerate → recalibrate 全流程
 > 跑完后必须重新测一遍并更新第 6a-2 节的表格。
+
+### 6c. 2026-10-02：GCP 停服 → 迁到 Oracle，数据部分丢失
+
+**发生了什么**：GCP $300 试用 2026-08 到期，账单关闭，项目停用。VM `signalpha-prod` 和磁盘（含 Postgres 全量数据、模型 artifacts、TLS 证书）随之不可访问，按 GCP 政策 30 天后删除。网站从 8 月起一直下线。7-26 那次带 move 头的重训当时跑到 stage 2，结果随机器一起丢了。
+
+**恢复用的东西**：
+- `~/Desktop/sp_dump.sql`（**2026-04-28** 的 pg_dump，迁到 GCP 那天导的）：5,530 事件 / 5,530 特征 / 5,407 结果 / 1,836 宏观。
+- 本地 `.env`（2026-07-20）：所有 API key 完好。
+
+**永久丢失**：4-28 之后的用户账号（只有 Justin 和女朋友两个）、Oracle 信号历史、Pulse 交易日志、simulator 状态、model_performance 历史。
+
+**4-28 之后的财报**：用新写的 `data_pipeline/backfill_gap.py` 补（只补已追踪的 ticker，不扩大 universe；事件 → 特征 → 结果，幂等）。之后 `compute_flat_bands` → `retrain_pipeline.sh` 全量重训。
+
+**dump 里的 predictions 是泄漏时代的**（is_out_of_sample 默认 FALSE），`OUT_OF_SAMPLE_ONLY` 会把它们全部挡掉，重训的 regenerate 步骤会覆盖。所以重训完成前 Track Record / Backtest 显示为空是**正确行为**，不是 bug。
+
+**这次的教训**：迁移前没有备份，数据库的命根子是一份 5 个月前的手工 dump。**待办：在 Oracle 上配每日 `pg_dump` → 推到机器外（如 Cloudflare R2 免费额度）。**
 
 ### 6b. 仍未解决
 
