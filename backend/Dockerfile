@@ -12,7 +12,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+# CPU-only torch first. The default PyPI wheel on aarch64 pulls in several GB of CUDA
+# libraries this GPU-less host can never use (the image was 10.8 GB); FinBERT runs on
+# CPU either way. requirements.txt then sees torch already satisfied.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch>=2.2,<3" \
+ && pip install --no-cache-dir -r /tmp/requirements.txt
 
 COPY backend /app/backend
 COPY data_pipeline /app/data_pipeline

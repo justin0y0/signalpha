@@ -54,6 +54,7 @@ from backend.app.db.models import EarningsEvent, Prediction
 from backend.app.db.session import SessionLocal
 from models.dataset import walk_forward_splits
 from models.ensemble import ModelEnsemble
+from models.features import feature_columns
 from models.train import MIN_ROWS_PER_SECTOR, _prepare_training_frame
 
 logger = get_logger(__name__)
@@ -72,12 +73,8 @@ NON_FEATURE_COLS = {
 
 
 def _feature_cols(frame: pd.DataFrame) -> list[str]:
-    """Same selection rule as models/train.py: numeric, and <70% missing."""
-    candidates = [
-        c for c in frame.columns
-        if c not in NON_FEATURE_COLS and pd.api.types.is_numeric_dtype(frame[c])
-    ]
-    return [c for c in candidates if frame[c].notna().mean() >= 0.30]
+    """Same rule as models/train.py: the point-in-time whitelist in models/features.py."""
+    return feature_columns(frame)
 
 
 def _balance(train: pd.DataFrame) -> pd.DataFrame:

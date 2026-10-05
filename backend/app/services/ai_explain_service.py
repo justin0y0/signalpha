@@ -14,7 +14,7 @@ import httpx
 
 _cache: dict[str, tuple[float, dict]] = {}
 CACHE_TTL = 1800  # 30 min — same ticker won't be re-analyzed
-MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+# Model is resolved live by services/groq_models.py (GROQ_MODEL is only a preference).
 
 
 def _cleanup() -> None:
@@ -61,21 +61,11 @@ Output ONLY valid minified JSON, no other text:
 {{"why":"1 sentence root cause - cite specific news if relevant","action":"LONG or SHORT or WAIT or FADE","rationale":"1 sentence why this action makes sense","risk":"1 sentence main downside scenario"}}"""
 
     try:
-        r = httpx.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            json={
-                "model": MODEL,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 350,
-                "temperature": 0.2,
-                "response_format": {"type": "json_object"},
-            },
-            timeout=12,
-        )
-        if r.status_code != 200:
-            return {"error": f"Groq {r.status_code}", "raw": r.text[:200]}
-        content = r.json()["choices"][0]["message"]["content"]
+        from backend.app.services.groq_models import chat
+        content = chat([{"role": "user", "content": prompt}], preferred_env="GROQ_MODEL",
+                       json_mode=True, temperature=0.2, max_tokens=350, timeout=20)
+        if not content:
+            return {"error": "LLM unavailable"}
         result = json.loads(content)
         _cache[cache_key] = (time.time(), result)
         return result

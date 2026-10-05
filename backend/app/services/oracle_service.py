@@ -49,13 +49,19 @@ def set_enabled(keys):
     if _rc is None: return
     try: _rc.set("oracle:enabled", json.dumps(sorted(set(keys)&set(FIGURES))))
     except Exception: pass
-def _seen(fk, uid):
+def _seen_key(fk, uid):
+    return "oracle:seen:"+hashlib.md5((fk+"|"+str(uid)).encode()).hexdigest()
+def _is_seen(fk, uid):
     if _rc is None or not uid: return False
-    k="oracle:seen:"+hashlib.md5((fk+"|"+str(uid)).encode()).hexdigest()
-    try:
-        if _rc.exists(k): return True
-        _rc.setex(k,604800,"1"); return False
+    try: return bool(_rc.exists(_seen_key(fk,uid)))
     except Exception: return False
+def _mark_seen(fk, uid):
+    # Marked only AFTER an item was actually processed. Marking on first sight meant
+    # that while the LLM was returning 404 (2026-10), every item was consumed unread
+    # and skipped for the next 7 days, so fixing the model recovered nothing.
+    if _rc is None or not uid: return
+    try: _rc.setex(_seen_key(fk,uid),604800,"1")
+    except Exception: pass
 def _due(stype, ttl):
     if _rc is None: return True
     k=f"oracle:srcrun:{stype}"
@@ -254,8 +260,7 @@ def _gather(fk,fig):
 
 def _llm_analyze(fn,headline,body):
     key=os.getenv("GROQ_API_KEY","").strip()
-    if not key: return []
-    model=os.getenv("ORACLE_MODEL",os.getenv("CHAT_MODEL","llama-3.3-70b-versatile"))
+    if not key: return None
     prompt=(
         f"You are a disciplined equity analyst. We track ONE specific market-moving person: {fn}.\n"
         f"Below is a news item that supposedly involves them.\n\n"
@@ -281,14 +286,15 @@ def _llm_analyze(fn,headline,body):
         'Return STRICT JSON only: {"signals":[{"ticker":"TCKR","sentiment":"bullish|bearish","confidence":0.0,'
         '"rationale":"<one full causal sentence>"}]}  -- or {"signals":[]} if nothing qualifies.'
     )
+    # Model resolved live: a hardcoded name went 404 when Groq retired it and this
+    # function returned [] for every item for days. See services/groq_models.py.
+    from backend.app.services.groq_models import chat
     try:
-        r=httpx.post("https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization":f"Bearer {key}"},
-            json={"model":model,"messages":[{"role":"user","content":prompt}],
-                  "temperature":0.1,"max_tokens":400,"response_format":{"type":"json_object"}},timeout=25)
-        if r.status_code!=200: log.warning(f"llm {r.status_code}"); return []
-        return (json.loads(r.json()["choices"][0]["message"]["content"]).get("signals",[]) or [])[:2]
-    except Exception as e: log.warning(f"llm: {e}"); return []
+        content=chat([{"role":"user","content":prompt}],preferred_env="ORACLE_MODEL",
+                     json_mode=True,temperature=0.1,max_tokens=400,timeout=30)
+        if not content: return None
+        return (json.loads(content).get("signals",[]) or [])[:2]
+    except Exception as e: log.warning(f"llm: {e}"); return None
 
 def _quote(tk):
     try:
@@ -388,7 +394,7 @@ def scan_once():
         if not fig: continue
         for item in _gather(fk,fig):
             uid=item.get("uid") or item.get("url") or item.get("headline","")
-            if _seen(fk,uid): continue
+            if _is_seen(fk,uid): continue
             k=item.get("kind")
             if k=="trade":
                 if _emit(fk,fig,{"ticker":item["ticker"],"sentiment":item["sentiment"],
@@ -397,8 +403,12 @@ def scan_once():
             elif k=="filing":
                 _push(f"🔮 *ORACLE · {fig['name']}* {fig['emoji']}\n\n📄 {item['headline']}\n[filing]({item['url']})")
             else:
-                for sig in _llm_analyze(fig["name"],item["headline"],item.get("body","")):
+                sigs=_llm_analyze(fig["name"],item["headline"],item.get("body",""))
+                if sigs is None:
+                    continue  # LLM unavailable: leave unseen so the next scan retries it
+                for sig in sigs:
                     if _emit(fk,fig,sig,item["headline"],item.get("url","")): new+=1
+            _mark_seen(fk,uid)
             time.sleep(0.2)
     return new
 

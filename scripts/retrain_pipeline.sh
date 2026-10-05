@@ -8,21 +8,26 @@
 # files without competing with anything a visitor is waiting on.
 set -euo pipefail
 cd ~/signalpha
-sudo docker compose run --rm --no-deps -T backend python3 - <<'PYEOF'
+docker compose run --rm --no-deps -T backend python3 - <<'PYEOF'
 import warnings
 warnings.filterwarnings("ignore")
 import subprocess, sys
 
-print("[1/3] retrain_models — walk-forward per sector, writes model_performance", flush=True)
+print("[1/4] retrain_models — walk-forward per sector, writes model_performance", flush=True)
 from data_pipeline.jobs import retrain_models
 retrain_models()
-print("[1/3] done", flush=True)
+print("[1/4] done", flush=True)
 
-print("[2/3] regenerate_predictions", flush=True)
+print("[2/4] regenerate_predictions", flush=True)
 from data_pipeline.regenerate_predictions import regenerate
 print(regenerate(), flush=True)
 
-print("[3/3] recalibrate_predictions", flush=True)
+print("[3/4] move_model — pooled breakout model, writes prob_move + move_metrics.json", flush=True)
+from data_pipeline.move_model import run as run_move_model
+m = run_move_model()
+print({"auc": m.get("auc"), "top_decile": m.get("top_decile"), "written": m.get("written")}, flush=True)
+
+print("[4/4] recalibrate_predictions", flush=True)
 from data_pipeline.recalibrate_predictions import recalibrate
 print(recalibrate(), flush=True)
 

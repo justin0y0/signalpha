@@ -19,6 +19,25 @@ import { useEffect, useState } from 'react'
 
 export type RenderTier = 'full' | 'lite' | 'still'
 
+// WebGL availability is probed ONCE per page load and the probe context is released
+// immediately. This hook runs in every Superposition row on the calendar, and each call
+// used to create a fresh WebGL context — on every resize too. Browsers cap live contexts
+// at ~16 and silently kill the oldest ("Too many active WebGL contexts"), which is how
+// a calendar render could knock out the real scenes on the same page.
+let webglAvailable: boolean | null = null
+function hasWebGL(): boolean {
+  if (webglAvailable !== null) return webglAvailable
+  try {
+    const canvas = document.createElement('canvas')
+    const gl = (canvas.getContext('webgl2') || canvas.getContext('webgl')) as WebGLRenderingContext | null
+    webglAvailable = !!gl
+    gl?.getExtension('WEBGL_lose_context')?.loseContext()
+  } catch {
+    webglAvailable = false
+  }
+  return webglAvailable
+}
+
 function probe(): RenderTier {
   if (typeof window === 'undefined') return 'still'
 
@@ -28,14 +47,7 @@ function probe(): RenderTier {
   const conn = (navigator as unknown as { connection?: { saveData?: boolean } }).connection
   if (conn?.saveData) return 'still'
 
-  let gl: WebGLRenderingContext | null = null
-  try {
-    const canvas = document.createElement('canvas')
-    gl = (canvas.getContext('webgl2') || canvas.getContext('webgl')) as WebGLRenderingContext | null
-  } catch {
-    return 'still'
-  }
-  if (!gl) return 'still'
+  if (!hasWebGL()) return 'still'
 
   const cores = navigator.hardwareConcurrency ?? 4
   const memory = (navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 4
@@ -46,18 +58,38 @@ function probe(): RenderTier {
   return 'full'
 }
 
+// One shared tier and one set of listeners for the whole app, however many
+// components ask for it.
+let currentTier: RenderTier | null = null
+const subscribers = new Set<(t: RenderTier) => void>()
+let listening = false
+function startListening() {
+  if (listening || typeof window === 'undefined') return
+  listening = true
+  let timer = 0
+  const recompute = () => {
+    window.clearTimeout(timer)
+    timer = window.setTimeout(() => {
+      const next = probe()
+      if (next === currentTier) return
+      currentTier = next
+      subscribers.forEach((fn) => fn(next))
+    }, 150)
+  }
+  window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', recompute)
+  window.addEventListener('resize', recompute)
+}
+
 export function useRenderTier(): RenderTier {
-  const [tier, setTier] = useState<RenderTier>('still')
+  const [tier, setTier] = useState<RenderTier>(currentTier ?? 'still')
 
   useEffect(() => {
-    setTier(probe())
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const onChange = () => setTier(probe())
-    mq.addEventListener('change', onChange)
-    window.addEventListener('resize', onChange)
+    if (currentTier === null) currentTier = probe()
+    setTier(currentTier)
+    subscribers.add(setTier)
+    startListening()
     return () => {
-      mq.removeEventListener('change', onChange)
-      window.removeEventListener('resize', onChange)
+      subscribers.delete(setTier)
     }
   }, [])
 

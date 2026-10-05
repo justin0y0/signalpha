@@ -74,7 +74,9 @@ function useCountUp(target: number, duration = 800): number {
 }
 
 function sparkPath(vals: number[], w: number, h: number): string {
-  if (vals.length < 2) return ''
+  // A bot that has never traded has one equity point. An empty path here made the area
+  // fill below start with "L", which is invalid SVG and logged an error per render.
+  if (vals.length < 2) return `M 0 ${(h / 2).toFixed(1)} L ${w} ${(h / 2).toFixed(1)}`
   const mn = Math.min(...vals), mx = Math.max(...vals)
   const range = mx - mn || 1
   return vals.map((v, i) => {

@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from sqlalchemy import and_, desc, select
 from sqlalchemy import inspect as sa_inspect
@@ -100,13 +101,33 @@ def collect_earnings_calendar() -> None:
     start = date.today()
     end = start + timedelta(days=settings.default_calendar_lookahead_days)
     items = collector.collect_earnings_calendar(start, end)
+    fresh: dict[str, set] = {}
+    for item in items:
+        fresh.setdefault(item["ticker"], set()).add(item["earnings_date"])
     with _session() as session:
         for item in items:
             identity = {"ticker": item["ticker"], "earnings_date": item["earnings_date"]}
             values = {k: v for k, v in item.items() if k not in identity}
             _upsert(session, EarningsEvent, identity, values)
+        # FMP reschedules reports. Upserting the new date used to leave the old one in
+        # place, so the calendar listed the same report twice and the stale copy got its
+        # own prediction. Drop a future event only when the feed still lists that ticker
+        # but on a nearby different date — a ticker missing from one fetch is left alone.
+        stale = session.execute(
+            select(EarningsEvent.ticker, EarningsEvent.earnings_date)
+            .where(EarningsEvent.earnings_date >= start, EarningsEvent.earnings_date <= end,
+                   EarningsEvent.ticker.in_(list(fresh)))
+        ).all()
+        removed = 0
+        for ticker, d in stale:
+            if d in fresh[ticker] or not any(abs((d - nd).days) <= 10 for nd in fresh[ticker]):
+                continue
+            for model in (Prediction, PriceFeature, FinancialMetric, EarningsEvent):
+                session.query(model).filter(model.ticker == ticker, model.earnings_date == d).delete()
+            removed += 1
+            logger.info("calendar: %s moved off %s — stale event removed", ticker, d)
         session.commit()
-    logger.info("Finished earnings calendar collection with %s rows", len(items))
+    logger.info("Finished earnings calendar collection with %s rows (%s rescheduled removed)", len(items), removed)
 
 
 def collect_macro_data() -> None:
@@ -201,6 +222,17 @@ def collect_options_data() -> None:
 
 def run_predictions() -> None:
     logger.info("Starting prediction generation job")
+    from data_pipeline.recalibrate_predictions import calibrate_live, load_temperature
+    temperature = load_temperature()
+    if temperature is None:
+        logger.warning("no calibration.json — live probabilities will be written uncalibrated")
+    from backend.app.services.flat_band import load_flat_bands
+    from data_pipeline.move_model import load_live, predict_live
+    from models.dataset import expand_feature_payload
+    from models.features import add_derived
+    move_bundle = load_live()
+    if move_bundle is None:
+        logger.warning("no move_model.joblib — prob_move falls back to the ensemble head")
     with _session() as session:
         events = session.execute(
             select(EarningsEvent, PriceFeature)
@@ -208,12 +240,23 @@ def run_predictions() -> None:
             .where(EarningsEvent.earnings_date >= date.today())
             .order_by(EarningsEvent.earnings_date.asc())
         ).all()
+        bands = load_flat_bands(session, list({e.ticker for e, _ in events})) if events else {}
         written = 0
         for event, price_feature in events:
             try:
                 model = registry.load_for_sector(event.sector or "general")
-                feature_df = pd.DataFrame([price_feature.feature_payload or {}])
+                # Flatten exactly as training does. Building the frame straight from the
+                # nested payload left every `sector_relative.*` column NaN at serving time
+                # while the model had been trained with them populated.
+                feature_df = expand_feature_payload(
+                    pd.DataFrame([{"feature_payload": price_feature.feature_payload or {}}]))
+                add_derived(feature_df, band=pd.Series([bands.get(event.ticker, np.nan)]))
                 prediction = model.predict(feature_df, current_price=(price_feature.feature_payload or {}).get("price_t0"))
+                raw = prediction["direction_probabilities"]
+                # Same scale as the history beside it: raw output kept, display columns
+                # temperature-scaled (argmax unchanged). See recalibrate_predictions.py.
+                shown = (calibrate_live(raw["up"], raw["flat"], raw["down"], temperature)
+                         if temperature else (raw["up"], raw["flat"], raw["down"]))
                 key_drivers = model.explain_top_features(feature_df, top_n=5)
                 similar_cases = model.find_similar_cases(feature_df, top_k=3)
                 _upsert(
@@ -222,10 +265,18 @@ def run_predictions() -> None:
                     {"ticker": event.ticker, "earnings_date": event.earnings_date},
                     {
                         "sector": event.sector,
-                        "direction_prob_up": prediction["direction_probabilities"]["up"],
-                        "direction_prob_flat": prediction["direction_probabilities"]["flat"],
-                        "direction_prob_down": prediction["direction_probabilities"]["down"],
-                        "confidence_score": prediction["confidence_score"],
+                        "direction_prob_up": shown[0],
+                        "direction_prob_flat": shown[1],
+                        "direction_prob_down": shown[2],
+                        "raw_prob_up": raw["up"],
+                        "raw_prob_flat": raw["flat"],
+                        "raw_prob_down": raw["down"],
+                        "confidence_score": max(shown),
+                        "prob_move": (predict_live(move_bundle, feature_df) if move_bundle
+                                      else prediction.get("prob_move")),
+                        # Made before the report by a model trained only on earlier
+                        # events — genuinely ex-ante, so it belongs in the record.
+                        "is_out_of_sample": True,
                         "expected_move_pct": prediction["expected_move_pct"],
                         "expected_move_low": prediction["expected_move_low"],
                         "expected_move_high": prediction["expected_move_high"],

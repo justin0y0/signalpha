@@ -37,6 +37,11 @@ LOGGING_CONFIG = {
 
 def configure_logging() -> None:
     dictConfig(LOGGING_CONFIG)
+    # httpx logs every request URL at INFO, and FMP/FRED take the API key as a query
+    # parameter — so the keys were being written to `docker logs` in plain text on every
+    # collection run. Warnings and errors still come through.
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:

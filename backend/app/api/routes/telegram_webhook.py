@@ -337,7 +337,10 @@ async def cmd_chat(chat_id, text):
             m=os.getenv("CHAT_MODEL_FALLBACK","deepseek-chat")
         elif gk:
             api="https://api.groq.com/openai/v1/chat/completions"; k=gk
-            m=os.getenv("CHAT_MODEL_FALLBACK","meta-llama/llama-4-scout-17b-16e-instruct")
+            # CHAT_MODEL_FALLBACK is only a preference; Groq retires models (llama-4-scout
+            # is gone), so resolve one that exists. See services/groq_models.py.
+            from backend.app.services.groq_models import resolve
+            m=await asyncio.to_thread(resolve,"CHAT_MODEL_FALLBACK") or "openai/gpt-oss-120b"
         else:
             await send(chat_id, "_no LLM provider configured_"); return
         try:

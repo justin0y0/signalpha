@@ -13,6 +13,7 @@ from sqlalchemy import create_engine
 from models.backtest import sharpe_ratio
 from models.dataset import expand_feature_payload, label_direction, label_direction_adaptive, walk_forward_splits
 from models.ensemble import ModelEnsemble
+from models.features import add_derived, feature_columns
 from models.registry import ModelRegistry
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,7 @@ def _prepare_training_frame(database_url: str) -> pd.DataFrame:
     # the fallback matches compute_flat_bands for the handful of NaN early events.
     _band = expanded["flat_band"].astype(float).fillna(0.02)
     expanded["move_target"] = (returns.abs() > _band).astype(int)
+    add_derived(expanded)
     expanded = expanded.sort_values("earnings_date").reset_index(drop=True)
     return expanded
 
@@ -109,32 +111,8 @@ def _events_per_year(frame: pd.DataFrame, n_returns: int) -> float:
 
 
 def _evaluate_sector(frame: pd.DataFrame, sector: str) -> dict[str, Any]:
-    candidate_cols = [
-        col
-        for col in frame.columns
-        if col
-        not in {
-            "ticker",
-            "earnings_date",
-            "sector",
-            "actual_t1_close_return",
-            "actual_t5_return",
-            "actual_t20_return",
-            "convergence_low",
-            "convergence_high",
-            "direction_label",
-            "magnitude_target",
-            # Must never become a feature. flat_band IS the label boundary and
-            # move_target is derived straight from it — handing either to the model
-            # gives away the answer, and both are numeric so they would otherwise be
-            # swept into feature_cols automatically.
-            "flat_band",
-            "move_target",
-        }
-        and pd.api.types.is_numeric_dtype(frame[col])
-    ]
-    # Drop features that are >=70% missing (mostly empty FMP fields adding noise)
-    feature_cols = [c for c in candidate_cols if frame[c].notna().mean() >= 0.30]
+    # Point-in-time whitelist only — see models/features.py for why a blacklist failed.
+    feature_cols = feature_columns(frame)
     subset = frame[["ticker", "earnings_date", "sector", "actual_t1_close_return", "actual_t5_return", "actual_t20_return", "convergence_low", "convergence_high", "flat_band", "direction_label", "magnitude_target", "move_target", *feature_cols]].copy()
     subset = subset.replace([np.inf, -np.inf], np.nan)
     subset = subset.sort_values("earnings_date").reset_index(drop=True)
@@ -235,32 +213,8 @@ def _evaluate_sector(frame: pd.DataFrame, sector: str) -> dict[str, Any]:
 
 
 def _fit_final_model(frame: pd.DataFrame, sector: str, model_version: str) -> tuple[ModelEnsemble, list[dict]]:
-    candidate_cols = [
-        col
-        for col in frame.columns
-        if col
-        not in {
-            "ticker",
-            "earnings_date",
-            "sector",
-            "actual_t1_close_return",
-            "actual_t5_return",
-            "actual_t20_return",
-            "convergence_low",
-            "convergence_high",
-            "direction_label",
-            "magnitude_target",
-            # Must never become a feature. flat_band IS the label boundary and
-            # move_target is derived straight from it — handing either to the model
-            # gives away the answer, and both are numeric so they would otherwise be
-            # swept into feature_cols automatically.
-            "flat_band",
-            "move_target",
-        }
-        and pd.api.types.is_numeric_dtype(frame[col])
-    ]
-    # Drop features that are >=70% missing (mostly empty FMP fields adding noise)
-    feature_cols = [c for c in candidate_cols if frame[c].notna().mean() >= 0.30]
+    # Point-in-time whitelist only — see models/features.py for why a blacklist failed.
+    feature_cols = feature_columns(frame)
     final_model = ModelEnsemble(sector=sector, model_version=model_version)
     final_model.fit(
         frame[feature_cols],

@@ -70,9 +70,11 @@ Owner：**Justin**，USC Applied & Computational Mathematics，GitHub `justin0y0
 
 ```bash
 git push origin main      # 先推，保证 GitHub 是权威副本
-rsync -az --delete --exclude node_modules --exclude frontend/dist --exclude __pycache__ ./ oracle-sp:~/signalpha/
+rsync -az --delete --exclude node_modules --exclude frontend/dist --exclude __pycache__ --exclude artifacts --exclude data --exclude .env ./ oracle-sp:~/signalpha/
 ssh oracle-sp 'cd ~/signalpha && docker compose up -d --build backend scheduler frontend'
 ```
+
+⚠️ **`--exclude artifacts --exclude data --exclude .env` 一个都不能少**：这三个只存在于服务器（训练好的模型、缓存、密钥），`--delete` 会把本地没有的东西在服务器上删掉。2026-10-05 一次漏了 artifacts，只因为文件归 root、rsync 没权限才没删成 9 个模型。
 
 改了什么就 build 什么，但 **`backend/` 和 `data_pipeline/` 的改动必须同时 `--build backend scheduler`**（两个容器共用同一个镜像源码树，只 build backend 会让 scheduler 继续跑旧代码）。
 

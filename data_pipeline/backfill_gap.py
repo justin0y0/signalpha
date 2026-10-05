@@ -47,7 +47,7 @@ def backfill_events(tickers: dict, since: date) -> int:
     added = 0
     for i, (ticker, (company, sector)) in enumerate(sorted(tickers.items()), 1):
         try:
-            df = yf.Ticker(ticker).earnings_dates
+            df = yf.Ticker(ticker).get_earnings_dates(limit=24)
         except Exception as exc:  # noqa: BLE001
             print(f"  ! {ticker}: {exc}")
             time.sleep(1)
@@ -55,9 +55,14 @@ def backfill_events(tickers: dict, since: date) -> int:
         if df is None or len(df) == 0:
             continue
         with SessionLocal() as s:
-            for raw in df.index:
+            for raw, row in df.iterrows():
                 d = pd.to_datetime(raw).date()
                 if d <= since or d > today or (ticker, d) in existing:
+                    continue
+                # yfinance lists stale *estimated* dates alongside reported ones. Taking
+                # them created phantom events whose "outcome" was an ordinary day's move
+                # (22 removed by dedupe_events.py). Only a reported EPS proves a report.
+                if pd.isna(row.get("Reported EPS")):
                     continue
                 _upsert(s, EarningsEvent, {"ticker": ticker, "earnings_date": d},
                         {"company_name": company, "sector": sector, "source": "yfinance"})

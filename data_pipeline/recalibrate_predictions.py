@@ -99,6 +99,39 @@ def _ece(probs: list[float], hits: list[int], bins: int = 10) -> float:
     return total
 
 
+def _calibration_path():
+    from pathlib import Path
+    from backend.app.core.config import get_settings
+    return Path(get_settings().model_dir) / "calibration.json"
+
+
+def save_temperature(T: float, n: int) -> None:
+    import json
+    from datetime import datetime, timezone
+    path = _calibration_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"temperature": T, "rows": n,
+                                "fitted_at": datetime.now(timezone.utc).isoformat()}))
+
+
+def load_temperature() -> float | None:
+    """The persisted temperature, or None if recalibration has never run here."""
+    import json
+    try:
+        return float(json.loads(_calibration_path().read_text())["temperature"])
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def calibrate_live(up: float, flat: float, down: float, T: float) -> tuple[float, float, float]:
+    """Apply the persisted temperature to one raw (up, flat, down) triple."""
+    raw = np.array([up, flat, down], float)
+    s = raw.sum()
+    raw = raw / s if s > 1e-9 else np.array([1 / 3, 1 / 3, 1 / 3])
+    out = _softmax_T(_to_logits(raw)[None, :], T)[0]
+    return float(out[0]), float(out[1]), float(out[2])
+
+
 def recalibrate(dry_run: bool = False) -> dict[str, Any]:
     with SessionLocal() as session:
         rows = session.execute(
@@ -193,8 +226,20 @@ def recalibrate(dry_run: bool = False) -> dict[str, Any]:
     print(f"    argmax after  {result['argmax_after_pct']}   (must equal 'before' — temp scaling preserves it)")
     print(f"    rows: {len(updates)}\n")
 
+    # One temperature fitted on every scored row, persisted for run_predictions. Without
+    # it, live predictions for upcoming events were written raw — the overconfident
+    # ~0.66-mean probabilities this script exists to fix — while history next to them
+    # was calibrated, so the calendar and the record were not on the same scale.
+    all_logits = np.array([_to_logits(r["raw"]) for r in records])
+    all_y = np.array([r["y"] for r in records])
+    final_T = _fit_temperature(all_logits, all_y)
+    result["final_temperature"] = round(final_T, 4)
+    print(f"    final temperature for live predictions: {final_T:.4f}")
+
     if dry_run:
         return result
+
+    save_temperature(final_T, len(records))
 
     written = 0
     with SessionLocal() as session:
