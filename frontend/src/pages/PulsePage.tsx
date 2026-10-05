@@ -10,6 +10,7 @@ import { motion } from 'framer-motion'
 import { Activity, Bell, BellOff, Flame, Star, TrendingDown, TrendingUp, Zap } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { useT } from '../i18n'
+import { fetchPulseTrackRecord } from '../api/pulseTrackRecord'
 
 type Factor = { label: string; value: number }
 type Ticker = {
@@ -277,10 +278,27 @@ function PulseHero({ data, now, highConv }: { data: PulseData; now: Date; highCo
  */
 function ResearchDisclaimer() {
   const { t } = useT()
+  const [tr, setTr] = useState<{ closed: number; win_rate: number; profit_factor: number | null; since: string | null } | null>(null)
+  useEffect(() => {
+    fetchPulseTrackRecord().then(setTr)
+  }, [])
+  const line = !tr
+    ? '…'
+    : tr.closed === 0
+      ? t('pulse.record.empty')
+      : tr.closed < 10
+        // A win rate over one or two trades is a coin flip reported to a decimal place.
+        ? t('pulse.record.few', { n: tr.closed, since: tr.since ? tr.since.slice(0, 10) : '—' })
+        : t('pulse.record.live', {
+          n: tr.closed,
+          since: tr.since ? tr.since.slice(0, 10) : '—',
+          wr: `${(tr.win_rate * (tr.win_rate <= 1 ? 100 : 1)).toFixed(1)}%`,
+          pf: tr.profit_factor != null ? tr.profit_factor.toFixed(3) : '—',
+        })
   return (
     <div className="pulse-disclaimer">
       <div>
-        200 closed trades since 2026-06-03 · 71.5% win rate · profit factor 0.979 before costs ·{' '}
+        {line} ·{' '}
         <a href="/about#methodology">{t('pulse.methodologyLink')}</a>
       </div>
     </div>

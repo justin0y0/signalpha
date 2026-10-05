@@ -1,4 +1,4 @@
-import type { BacktestResponse, CalendarResponse, PerformanceResponse, PredictionResponse } from '../types'
+import type { BacktestResponse, CalendarResponse, Headline, PerformanceResponse, PredictionResponse } from '../types'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
 
@@ -28,6 +28,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  getHeadline: () => request<Headline>('/model/headline'),
   getCalendar: (search: URLSearchParams) => request<CalendarResponse>(`/calendar?${search.toString()}`),
   getPrediction: (ticker: string, earningsDate?: string) => {
     const params = new URLSearchParams()

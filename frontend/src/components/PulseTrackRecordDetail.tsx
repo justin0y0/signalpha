@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, ChevronUp, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react'
 import { useT } from '../i18n'
+import { fetchPulseTrackRecord } from '../api/pulseTrackRecord'
 
 interface Trade {
   id: number; ticker: string; side: string; score: number; strategy: string
@@ -26,8 +27,7 @@ export function PulseTrackRecordDetail() {
   const [filter, setFilter] = useState<'all'|'open'|'closed'>('all')
   const [tab, setTab] = useState<'trades'|'cohorts'>('trades')
   useEffect(() => {
-    const f = () => fetch('/api/v1/pulse/track-record')
-      .then(r => r.ok ? r.json() : null)
+    const f = () => fetchPulseTrackRecord()
       .then(j => { if (j && typeof j.total_signals === 'number') setD(j) }).catch(() => {})
     f(); const i = setInterval(f, 60000); return () => clearInterval(i)
   }, [])

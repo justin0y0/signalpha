@@ -7,6 +7,8 @@ import type { PerformanceResponse } from '../types'
 import { StatCard } from '../components/ui/StatCard'
 import { Badge } from '../components/ui/Badge'
 import { useT } from '../i18n'
+import { BreakoutPanel } from '../components/BreakoutPanel'
+import { useHeadline, pct } from '../hooks/useHeadline'
 
 function accuracyColor(acc: number | null | undefined): string {
   if (acc == null) return 'var(--text-tertiary)'
@@ -38,6 +40,8 @@ function heatmapBg(acc: number | null | undefined): string {
  * never drift away from the numbers displayed beside it.
  */
 function BaselinePanel({ cm }: { cm: number[][] }) {
+  const headline = useHeadline()
+  const b = headline?.breakout
   const { t } = useT()
   if (!cm || cm.length !== 3) return null
   const total = cm.flat().reduce((a, b) => a + b, 0)
@@ -76,9 +80,7 @@ function BaselinePanel({ cm }: { cm: number[][] }) {
       </div>
       {!beats && (
         <p className="baseline-panel__note">
-          Below the majority-class baseline on 3-class accuracy. The model&rsquo;s measurable
-          skill is elsewhere: at P(FLAT) ≥ 0.60 it identifies a non-event <b>66.6%</b> of the
-          time against a 49.8% base rate (n=862).
+          {t('model.baseline.belowNote', { rate: pct(b?.top_decile.move_rate), base: pct(b?.base_rate) })}
         </p>
       )}
     </motion.div>
@@ -87,6 +89,7 @@ function BaselinePanel({ cm }: { cm: number[][] }) {
 
 export function PerformanceTrackerPage() {
   const { t } = useT()
+  const headline = useHeadline()
   const [data, setData] = useState<PerformanceResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -133,7 +136,7 @@ export function PerformanceTrackerPage() {
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
         <h1 className="hero-headline">{t('perf.title')}</h1>
         <p className="hero-sub">
-          Sector-level accuracy, confusion matrix, and SHAP feature attribution ·
+          {t('perf.sub')} ·
           Model version <span className="mono" style={{ color: 'var(--accent-cyan)' }}>{data.model_version ?? '—'}</span>
         </p>
       </motion.div>
@@ -172,6 +175,8 @@ export function PerformanceTrackerPage() {
           delay={0.2}
         />
       </div>
+
+      {headline?.breakout && <BreakoutPanel m={headline.breakout} />}
 
       <BaselinePanel cm={data.confusion_matrix} />
 
@@ -357,7 +362,7 @@ export function PerformanceTrackerPage() {
 
       <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
         <Activity size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-        Trained on walk-forward splits · 102-feature ensemble (XGBoost + LightGBM + LogReg) · FinBERT + 10-Q MD&A
+        {t('perf.footer', { features: headline?.universe.features ?? '—' })}
       </div>
     </div>
   )

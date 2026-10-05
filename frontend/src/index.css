@@ -4270,6 +4270,10 @@ input, select { font: inherit; color: inherit; }
   background: var(--accent-amber);
   box-shadow: 0 0 12px rgba(251, 191, 36, 0.4);
 }
+.bandtl__bar.is-elevated {
+  background: var(--accent-purple);
+  box-shadow: 0 0 12px rgba(167, 139, 250, 0.4);
+}
 .bandtl__tick {
   font-family: var(--font-mono); font-size: 0.55rem;
   letter-spacing: 0.02em; color: var(--text-tertiary);
@@ -4290,6 +4294,7 @@ input, select { font: inherit; color: inherit; }
 }
 .bandtl__pop b { color: var(--text-primary); font-family: var(--font-mono); font-size: 0.75rem; }
 .bandtl__pop .is-breach { color: var(--accent-amber); }
+.bandtl__pop .is-elevated { color: var(--accent-purple); }
 
 .bandtl__legend {
   display: flex; gap: 1.2rem; flex-wrap: wrap;
@@ -4300,6 +4305,7 @@ input, select { font: inherit; color: inherit; }
 .bandtl__swatch--band { background: rgba(148, 163, 214, 0.28); }
 .bandtl__swatch--bar { background: var(--accent-cyan); }
 .bandtl__swatch--breach { background: var(--accent-amber); }
+.bandtl__swatch--elevated { background: var(--accent-purple); }
 
 @media (max-width: 780px) {
   .bandtl__track { height: 170px; }
@@ -4455,3 +4461,84 @@ input, select { font: inherit; color: inherit; }
 .locale__opt:hover { color: var(--text-secondary); }
 .locale__opt.is-active { background: var(--bg-3); color: var(--text-primary); }
 .locale__opt[lang="zh-CN"] { font-family: var(--font-sans); letter-spacing: 0.02em; }
+
+/* ── MoveRisk: breakout risk per report ─────────────────────────────────────
+   Same anatomy as .sup (mono score, small label, 14px rail) so the two read as a
+   pair in a row. Tier colour carries the decile: amber = top decile, purple = top
+   quintile, flat grey otherwise. The 1px tick is the base rate. */
+.mrisk { display: flex; flex-direction: column; gap: 0.32rem; min-width: 148px; --mr: var(--flat); }
+.mrisk--compact { min-width: 116px; gap: 0.24rem; }
+.mrisk--breakout { --mr: var(--accent-amber); }
+.mrisk--elevated { --mr: var(--accent-purple); }
+.mrisk__head { display: flex; align-items: baseline; gap: 0.4rem; }
+.mrisk__score {
+  font-family: var(--font-mono);
+  font-size: 0.95rem; font-weight: 700; line-height: 1;
+  letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+  color: var(--mr);
+}
+.mrisk--normal .mrisk__score { color: var(--text-secondary); }
+.mrisk__label { font-size: 0.66rem; color: var(--text-tertiary); white-space: nowrap; letter-spacing: 0.02em; }
+.mrisk--breakout .mrisk__label { color: var(--accent-amber); opacity: 0.85; }
+.mrisk__track {
+  position: relative; height: 6px; border-radius: 999px;
+  background: rgba(10, 14, 26, 0.75); overflow: visible;
+}
+.mrisk--compact .mrisk__track { height: 5px; }
+.mrisk__fill {
+  position: absolute; inset: 0 auto 0 0; border-radius: 999px;
+  background: var(--mr);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--mr) 55%, transparent);
+  transition: width 0.45s ease;
+}
+.mrisk--normal .mrisk__fill { opacity: 0.55; box-shadow: none; }
+.mrisk__base {
+  position: absolute; top: -3px; bottom: -3px; width: 1px;
+  background: rgba(226, 232, 240, 0.55);
+}
+.mrisk__band { font-size: 0.68rem; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+
+/* Tier chip used in lists and legends */
+.tier-chip {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 0.18rem 0.5rem; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--mr, var(--flat)) 45%, transparent);
+  color: var(--mr, var(--flat));
+  background: color-mix(in srgb, var(--mr, var(--flat)) 10%, transparent);
+}
+.tier-chip--breakout { --mr: var(--accent-amber); }
+.tier-chip--elevated { --mr: var(--accent-purple); }
+
+/* Direction sits beside breakout risk as context, so it is quieter than the lead column. */
+.cal-direction { opacity: 0.72; }
+.cal-direction:hover { opacity: 1; }
+.blast__stat--hot b { color: var(--accent-amber); }
+
+/* Wide tables scroll inside their card on phones instead of pushing the page sideways. */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-scroll > .data-table { min-width: 640px; }
+.brief-company { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.breakout-panel { border-color: rgba(251, 191, 36, 0.22); }
+.breakout-panel__lede { color: var(--text-secondary); font-size: 0.88rem; line-height: 1.55; margin: 0.25rem 0 1rem; max-width: 68ch; }
+
+/* Feature taxonomy: what the model trains on vs what is collected but kept out. */
+.about-feature-group__title { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+.about-feature-group__tag {
+  font-size: 0.62rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--up); border: 1px solid rgba(52, 211, 153, 0.35); border-radius: 999px; padding: 0.12rem 0.45rem;
+}
+.about-feature-group__tag.is-off { color: var(--text-tertiary); border-color: rgba(148, 163, 184, 0.25); }
+.about-feature-group--excluded { opacity: 0.62; }
+.about-feature-group--excluded .about-feature-chip { text-decoration: line-through; text-decoration-color: rgba(148, 163, 184, 0.45); }
+
+/* Route error fallback (components/RouteBoundary.tsx) */
+.route-error { display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start; max-width: 640px; margin: 2rem auto; }
+.route-error__msg { color: var(--text-secondary); font-size: 0.9rem; margin: 0; }
+.route-error__btn { display: inline-flex; align-items: center; gap: 0.4rem; }
+.route-error__detail { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-tertiary); word-break: break-word; }
+
+/* Calendar: options-implied move with the stock's usual move underneath */
+.cal-move { white-space: nowrap; }
+.cal-move__usual { display: block; font-size: 0.68rem; color: var(--text-tertiary); margin-top: 2px; }

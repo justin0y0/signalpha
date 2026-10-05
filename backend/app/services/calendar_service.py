@@ -5,9 +5,10 @@ from datetime import date
 from sqlalchemy import Select, and_, select
 from sqlalchemy.orm import Session
 
-from backend.app.db.models import EarningsEvent, Prediction
+from backend.app.db.models import EarningsEvent, Prediction, PriceFeature
 from backend.app.schemas.calendar import CalendarEvent, CalendarResponse
 from backend.app.services.flat_band import load_flat_bands
+from backend.app.services.headline_service import _breakout_metrics, move_tier
 
 
 class CalendarService:
@@ -44,6 +45,17 @@ class CalendarService:
         tickers = {event.ticker for event, _ in rows}
         flat_bands = load_flat_bands(db, list(tickers)) if tickers else {}
 
+        implied: dict[tuple[str, date], float] = {}
+        if rows:
+            dates = {event.earnings_date for event, _ in rows}
+            for tk, d, em in db.execute(
+                select(PriceFeature.ticker, PriceFeature.earnings_date, PriceFeature.expected_move_pct)
+                .where(PriceFeature.ticker.in_(tickers), PriceFeature.earnings_date.in_(dates),
+                       PriceFeature.expected_move_pct.is_not(None))
+            ).all():
+                implied[(tk, d)] = float(em)
+
+        metrics = _breakout_metrics()
         items: list[CalendarEvent] = []
         for event, prediction in rows:
             direction = None
@@ -68,7 +80,10 @@ class CalendarService:
                     direction_prob_flat=prediction.direction_prob_flat if prediction else None,
                     direction_prob_down=prediction.direction_prob_down if prediction else None,
                     flat_band=flat_bands.get(event.ticker),
+                    prob_move=prediction.prob_move if prediction else None,
+                    move_tier=move_tier(prediction.prob_move if prediction else None, metrics),
                     expected_move_pct=prediction.expected_move_pct if prediction else None,
+                    implied_move_pct=implied.get((event.ticker, event.earnings_date)),
                     has_prediction=prediction is not None,
                 )
             )

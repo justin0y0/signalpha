@@ -17,7 +17,10 @@ def get_track_record():
                    COALESCE(SUM(pnl_dollars),0) total_pnl,
                    COALESCE(AVG(return_pct) FILTER (WHERE status='closed'),0) avg_ret,
                    COUNT(*) FILTER (WHERE win=true) wins,
-                   COUNT(*) FILTER (WHERE win=false) losses
+                   COUNT(*) FILTER (WHERE win=false) losses,
+                   COALESCE(SUM(pnl_dollars) FILTER (WHERE status='closed' AND pnl_dollars > 0), 0) gross_win,
+                   COALESCE(-SUM(pnl_dollars) FILTER (WHERE status='closed' AND pnl_dollars < 0), 0) gross_loss,
+                   MIN(entry_time) first_entry
             FROM pulse_signal_log
         """)).fetchone()
         all_trades = db.execute(text("""
@@ -75,6 +78,11 @@ def get_track_record():
             "open": int(agg.opn or 0), "total_pnl_dollars": float(agg.total_pnl or 0),
             "avg_return_pct": float(agg.avg_ret or 0), "win_rate": wr,
             "wins": int(agg.wins or 0), "losses": int(agg.losses or 0),
+            # Profit factor before costs, computed rather than quoted: the page used to
+            # print "200 trades · 71.5% · 0.979" as a constant, which survived the log
+            # itself being lost in the 2026 server migration.
+            "profit_factor": (float(agg.gross_win) / float(agg.gross_loss)) if float(agg.gross_loss or 0) > 0 else None,
+            "since": agg.first_entry.isoformat() if agg.first_entry else None,
             "recent": trades[:20], "all_trades": trades,
             "by_strategy": [dict(r._mapping) for r in by_strat],
             "by_side": [dict(r._mapping) for r in by_side],

@@ -8,6 +8,8 @@ import { DirectionBadge } from '../components/ui/DirectionBadge'
 import { Badge } from '../components/ui/Badge'
 import { StatCard } from '../components/ui/StatCard'
 import { Superposition } from '../components/ui/Superposition'
+import { MoveRisk } from '../components/ui/MoveRisk'
+import { useHeadline, pct } from '../hooks/useHeadline'
 import { BlastField } from '../components/BlastField'
 import { RiskAudio } from '../components/RiskAudio'
 import { useT } from '../i18n'
@@ -18,6 +20,8 @@ const SECTORS = ['All', 'Technology', 'Financial Services', 'Healthcare', 'Consu
 export function EarningsCalendarPage() {
   const { t } = useT()
   const navigate = useNavigate()
+  const headline = useHeadline()
+  const breakout = headline?.breakout
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -62,8 +66,9 @@ export function EarningsCalendarPage() {
       const du = daysUntil(e.earnings_date)
       return du >= 0 && du <= 7
     }).length
-    const quiet = events.filter((e) => (e.direction_prob_flat ?? 0) >= 0.6).length
-    return { withPrediction, upcoming7, quiet }
+    const upcoming = events.filter((e) => daysUntil(e.earnings_date) >= 0)
+    const watch = upcoming.filter((e) => e.move_tier === 'breakout').length
+    return { withPrediction, upcoming7, watch }
   }, [events])
 
   return (
@@ -76,7 +81,8 @@ export function EarningsCalendarPage() {
         <BlastField events={events} />
       </motion.div>
 
-      <RiskAudio quietScores={events.map((e) => e.direction_prob_flat).filter((v): v is number => v != null)} />
+      {/* Calm = low breakout risk: the chord detunes as the week's breakout risk rises. */}
+      <RiskAudio quietScores={events.filter((e) => daysUntil(e.earnings_date) >= 0 && e.prob_move != null).map((e) => 1 - (e.prob_move as number))} />
 
       <div className="grid grid-4">
         <StatCard
@@ -106,9 +112,9 @@ export function EarningsCalendarPage() {
         <StatCard
           label={t('cal.stat.quiet')}
           icon={<TrendingUp size={12} />}
-          value={stats.quiet}
-          helper={t('cal.stat.quiet.helper')}
-          accent="cyan"
+          value={stats.watch}
+          helper={t('cal.stat.quiet.helper', { rate: pct(breakout?.top_decile.move_rate) })}
+          accent="amber"
           delay={0.2}
         />
       </div>
@@ -170,6 +176,7 @@ export function EarningsCalendarPage() {
                 <th>{t('cal.col.company')}</th>
                 <th>{t('cal.col.sector')}</th>
                 <th>{t('cal.col.date')}</th>
+                <th>{t('cal.col.moveRisk')}</th>
                 <th>{t('cal.col.forecast')}</th>
                 <th style={{ textAlign: 'right' }}>{t('cal.col.move')}</th>
                 <th style={{ width: 40 }}></th>
@@ -203,10 +210,17 @@ export function EarningsCalendarPage() {
                       </div>
                     </td>
                     <td>
+                      <MoveRisk compact prob={e.prob_move} tier={e.move_tier} band={e.flat_band} baseRate={breakout?.base_rate} />
+                    </td>
+                    <td className="cal-direction">
                       <Superposition compact up={e.direction_prob_up} flat={e.direction_prob_flat} down={e.direction_prob_down} />
                     </td>
-                    <td className="mono" style={{ textAlign: 'right' }}>
-                      {e.expected_move_pct != null ? `±${(e.expected_move_pct * 100).toFixed(2)}%` : <span className="tertiary">—</span>}
+                    {/* The regression's own size estimate used to sit here. Out of sample it
+                        ranks moves worse than the stock's own history does, so the column now
+                        shows what options are pricing, with the usual move underneath. */}
+                    <td className="mono cal-move" style={{ textAlign: 'right' }}>
+                      {e.implied_move_pct != null ? `±${(e.implied_move_pct * 100).toFixed(1)}%` : <span className="tertiary">—</span>}
+                      {e.flat_band != null && <span className="cal-move__usual">{t('cal.usual', { v: (e.flat_band * 100).toFixed(1) })}</span>}
                     </td>
                     <td className="tertiary">
                       <TrendingUp size={14} />
@@ -221,7 +235,7 @@ export function EarningsCalendarPage() {
 
       <div className="tertiary" style={{ fontSize: '0.8rem', textAlign: 'center', padding: '1rem 0' }}>
         <Calendar size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-        Showing {filtered.length} of {events.length} events · Model v20260423233729 · FinBERT + 10-Q MD&A enabled
+        {t('cal.footer', { shown: filtered.length, total: events.length, auc: breakout ? breakout.auc.toFixed(3) : '—' })}
       </div>
     </div>
   )

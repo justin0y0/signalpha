@@ -6,6 +6,7 @@ import { useT } from '../i18n'
 type Figure = {
   key: string; name: string; emoji: string; why?: string; type?: string;
   enabled: boolean; avatarUrl?: string
+  health: 'live' | 'news_only' | 'quiet'
 }
 type Signal = {
   figure: string; figure_name: string; source_url?: string; headline?: string; ticker: string;
@@ -69,6 +70,9 @@ export function OraclePage() {
         why: f.why || f.role || f.desc || '',
         type: f.type || f.category || '',
         enabled: f.enabled ?? f.is_enabled ?? true,
+        // What actually delivered in the last 48h, not just "switched on". X has been
+        // unreachable from the server for months; badging every figure LIVE hid that.
+        health: (f.health?.status as 'live' | 'news_only' | 'quiet' | undefined) ?? 'quiet',
         avatarUrl: f.avatar_url || f.avatarUrl || AVATARS[f.key || f.id || f.figure || ''] || '',
       })))
     } catch { /* keep prior */ }
@@ -190,7 +194,11 @@ export function OraclePage() {
                 <span className="orc2-fig-name">{f.name}</span>
                 <span className="orc2-fig-role">{f.why}</span>
               </span>
-              <span className="orc2-fig-state"><span className="orc2-pulse" />{f.enabled ? 'Live' : 'Off'}</span>
+              <span className={'orc2-fig-state is-' + (f.enabled ? f.health : 'off')}
+                title={f.enabled ? t(`oracle.health.${f.health}.tip` as never) : undefined}>
+                <span className="orc2-pulse" />
+                {f.enabled ? t(`oracle.health.${f.health}` as never) : t('oracle.health.off')}
+              </span>
             </button>
           )
         })}

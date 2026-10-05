@@ -16,13 +16,15 @@
 Owner：**Justin**，USC Applied & Computational Mathematics，GitHub `justin0y0`。
 沟通用中文 + 英文术语，要直接诚实、不要 filler、不要编造结果。
 
-**核心 ML**：9 个 sector 分层模型，**102 features**（含 FinBERT 情绪、期权 IV、宏观），Purged K-Fold CV 防泄漏，做的是财报驱动的价格反应（PEAD）。Walk-forward OOS ≈ **59.8%**（3 分类 UP/FLAT/DOWN，81 folds 跨 9 个 sector 模型，5,468 个可判分事件）——注意这**低于** 60.6% 的「全押 FLAT」基线，模型没有方向性优势；它真正可测的能力是识别「非事件」。
+**核心 ML（2026-10-05 起）**：两个模型。① 9 个 sector 分层的 3 分类方向模型（UP/FLAT/DOWN）；② 一个 pooled 的 breakout 模型（XGB 二分类：这次财报会不会动得比该股平时大）。**只用 61 个 point-in-time 特征**（白名单 `models/features.py`）——期权、分析师、基本面、持仓、情绪、`last_8q_reactions` 因为拿不到历史时点值而排除，详见 6d。
 
 > ⚠ **描述与实现不符**：文档和 About 页都说是「XGBoost + LightGBM + LogisticRegression 的 VotingClassifier」。`models/ensemble.py:92` 确实构造了三模型 soft-voting VotingClassifier，`fit()` 也训练了全部三个——但 `predict()`（`ensemble.py:224`）调的是 `direction_model.named_estimators_["xgb"]`，**只用 XGBoost，绕开了投票**。LightGBM 和 LogisticRegression 训练了但推理时从不参与。
 > 好消息是 `models/train.py:118` 的评估走的是**同一条 xgb-only 路径**，所以 **这个准确率测的就是线上真正跑的东西，数字本身诚实**，只有「三模型集成」这个说法不实。
 > 两条路（需 Justin 定）：① 把描述改成 XGBoost（零风险）；② 把推理切到真正的 soft-vote —— 但那样当前的准确率就不再描述线上，必须重测。
 
-**诚实定位（对外必须这么说）**：**59.84% 是 3 分类准确率，不是胜率**，而且它**低于**"全押 FLAT"的 60.63% 基线——模型没有方向预测能力，给方向时只有 25.45% 正确（n=165），比三分类瞎猜的 33.3% 还低。**绝不能包装成"能跑赢市场"**。真正站得住的一句话是：「在 P(FLAT)≥0.60 时，它能以 76.30% 的准确率识别出哪些财报不会有大动作，基准率 60.63%，n=1,055，z=10.4。」可辩护的价值是：透明（赢和亏都展示）、每日复用、个性化、分发渠道。卖的是研究和教育，不是投资建议——每个用户可见的界面都要有 "not investment advice"。
+**诚实定位（对外必须这么说，2026-10-05 PIT 口径）**：方向**没有 edge**——3 分类 **38.94% vs 全押 FLAT 47.3%**（n=5,603），每类 precision ≈ 基准率。真正站得住的一句话是：「breakout 风险前 10% 的财报里，**67.85%** 动得比该股平时大，基准 **53.93%**（n=339，z=5.14，AUC 0.569）。」7 月的「P(FLAT)≥0.60 识别非事件 76.30%」**已撤回**（泄漏特征上测的；PIT 下最低 10% 只有 53.4% vs 46.1%）。**绝不能包装成"能跑赢市场"**。可辩护的价值是：透明（赢和亏都展示）、每日复用、个性化、分发渠道。卖的是研究和教育，不是投资建议。
+
+> **数字不许写死在前端或文案里**：一律读 `GET /api/v1/model/headline`（`headline_service.py`，10 分钟缓存；breakout 部分来自 `artifacts/move_metrics.json`）。前端用 `useHeadline()`。这个站点两次因为文案引用已不存在的模型的数字而自相矛盾。
 
 ---
 
@@ -191,6 +193,7 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 
 > ⚠️ **校准的副作用（产品层面要知道）**：概率压回基准率后，模型在 **97.5%** 事件上 argmax 落 FLAT，只在 2.5% 事件给方向（给方向时 53.5%，n=71，无统计意义）。Calendar 的 PREDICTION 列因此基本全是 FLAT。
 > 核心结论仍成立（2026-07-22 按每股票区间重算）：P(FLAT)≥0.60 时准确率 **76.30%**（基线 60.63%，n=1,055，z=10.4）。
+> ⛔ **2026-10-05 撤回**：这个数字是在含 PIT 泄漏的特征上测的，见 6d。
 > **待定**：Calendar 该列建议改为展示三类概率分布而非 argmax 标签——argmax 对一个无方向 edge 的校准模型没有信息量。未改，等 Justin 定。
 
 ### 6a-2. 2026-07-22：判分口径统一 + i18n 全量接线
@@ -263,6 +266,35 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 
 **这次的教训**：迁移前没有备份，数据库的命根子是一份 5 个月前的手工 dump。**待办：在 Oracle 上配每日 `pg_dump` → 推到机器外（如 Cloudflare R2 免费额度）。**
 
+### 6d. 2026-10-05：PIT 泄漏、转向 breakout、全站巡检修复
+
+**PIT 泄漏（决定性发现）**：`collect_event_snapshot` 把带日期的数据源和只能返回「今天值」的数据源混在一起——期权链、分析师预期、基本面、空头/持仓、新闻/10-Q 情绪，以及 `last_8q_reactions`/`beats`（采集时最近 8 次，回填事件里**包含事件本身**）。对 backfill 的历史事件这些全是事后值。修法：`models/features.py` 白名单（61 个 PIT 特征 + `own_band`/`mom20_vs_band` 两个派生），训练、regenerate、线上 `run_predictions` 全走 `feature_columns()`。PIT 全量重训 10-05 18:30 UTC 启动（log `~/retrain_pit_20261005.log`），完成后 `~/after_retrain.sh`（setsid 常驻）自动跑 `run_predictions` + 重启 backend，结果写 `~/after_retrain_20261005.log`；**有 Traceback 就不推上线**。
+
+**Breakout 模型**（`data_pipeline/move_model.py`）：pooled XGB，target = `|ret| > flat_band`，walk-forward 从 40% 起 10 折。指标写 `artifacts/move_metrics.json`，模型 `artifacts/move_model.joblib`。档位：`threshold_top_decile` → breakout，`top_quintile` → elevated（`headline_service.move_tier`）。
+
+**本轮巡检的 bug 台账**（全部 observed，验证方式在最后一列）：
+
+| # | 问题 | 修法 | 验证 |
+|---|---|---|---|
+| 1 | 部署后浏览器继续跑旧 bundle（index.html 无 Cache-Control，被启发式缓存）；旧前端读新 API → Brief 整页白屏 | `frontend/nginx.conf`：`/` no-cache，`/assets/` immutable 一年 | `curl -I` 两个头都对 |
+| 2 | 没有 ErrorBoundary，任何渲染错误整站变黑屏 | `components/RouteBoundary.tsx`（按 pathname key；检测到新版本自动 reload 一次）+ `hooks/useBuildCheck.ts`（导航时最多 5 分钟比对一次 entry hash，有新版下一次导航整页加载） | tsc 通过；线上 bundle 已含 |
+| 3 | Pulse 首次加载 8–10 秒 | `scan_market_cached()` stale-while-revalidate + 启动预热；scheduler 仍直调 `scan_market()` | `/pulse` 0.17s |
+| 4 | `/pulse/track-record` 每次加载请求 3 次 | `api/pulseTrackRecord.ts` 30 秒共享 promise | — |
+| 5 | Pulse 1 笔交易显示「100.0% win rate」 | <10 笔改显示「too few to judge」 | 页面实测 |
+| 6 | Showdown SNIPER 98 天 0 笔（breakout 前 10% ∧ 方向置信前 20%） | 改为 breakout 前 10% ∧ gap 超过 band → 顺 gap，归入 POST_EARNINGS | API：1 笔；全历史回放 n=61 +1.27% t=0.82（不显著，文案不吹） |
+| 7 | BandTimeline 琥珀色 =「回归估计 > band」≈ 一半事件，与 Calendar 只有 3 个 breakout 矛盾；popup 硬编码英文 | 颜色按 `move_tier`；柱改为期权隐含波动；i18n；只在 Backtest tab 显示 | 截图 |
+| 8 | 回归 `expected_move_pct` 输给朴素基线（Spearman 0.273 vs band 0.371；MAE 24.69pp vs 2.06pp） | Calendar 列改「Options imply + usual」；calendar API 加 `implied_move_pct`（price_features 的 straddle/spot，51/77 覆盖） | API 实测 |
+| 9 | 深度页 IV 环按 P(FLAT)<0.5 判「likely to break out」——校准后几乎所有股票都满足 | `CrushChamber` 改吃 `moveTier` | GS 显示「flagged — top decile」 |
+| 10 | 深度页 KPI 以方向领衔；`hist avg ±0.00%`（None 当 0） | KPI：Breakout risk / Usual move / Direction(context) / Completeness；`/predict` 加 `prob_move/move_tier/flat_band/implied_move_pct/breakout_base_rate` | `/api/v1/predict/GS` 实测 |
+| 11 | Oracle 迁移后 0 信号：`src_ark` 第一行 `return []`（7 月 snapshot 带进来的）；Pelosi 来源 house-stock-watcher 403 | ARK 恢复（最新交易日、≥0.10%、前 3）；Pelosi 改读 House Clerk 官方 PTR（`{year}FD.zip` + PDF，`pypdf`） | `oracle_signals` 出现 CBRS / BWXT 两条；PTR 正则在 3 份真实 PDF 上验证 |
+| 12 | 健康徽章只认「交付条目」，Pelosi/Buffett 两次申报之间被标 NEWS ONLY | 主数据源成功应答即 `_mark_ok` → LIVE | Cathie Wood 显示 LIVE |
+
+**没修 / 待办**：
+- DAL、TLRY 等少数日历 ticker 没有 outcomes → 无 band。要扩 universe 时用 `backfill_gap.py`。
+- 方向模型 SHAP 里有 `price_t0`、`spy_200ma` 等价格**水平**特征——不是泄漏，但树模型可能拿它当 ticker ID。PIT 白名单可以考虑只保留收益率/比值类。
+- FMP 免费档：国会交易只给最新 25 条且按名查询 402；10-05 下午配额已被打满（429）。别再拿它做轮询源。
+- Simulator 持仓卡仍显示回归 `expected_move_pct`。
+
 ### 6b. 仍未解决
 
 0. **✅ 已解决 — 标签泄漏（walk-forward 重生成完成并上线）**
@@ -280,6 +312,8 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
    ### 🔑 由此得到的核心结论（对产品定位是决定性的）
 
    **模型没有方向预测能力，但有显著的"平静事件"识别能力。**
+
+   > ⛔ **2026-10-05 更正**：后半句不成立。下表用的特征含 point-in-time 泄漏（6d）；只用 PIT 特征后「平静事件」识别很弱（最低 10%：53.4% vs 46.1%），站得住的是反方向——识别**会大动**的财报（前 10%：67.85% vs 53.93%）。下表保留作历史记录。
 
    > ⚠️ **下表已于 2026-07-22 用「每股票自适应区间」重算**。旧版用固定 ±2% 判分，
    > 而模型是按每只股票 0.5σ 训练的——等于拿错的答案卷判分。详见第 26 条。
@@ -339,7 +373,7 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 9. **P2 — Pulse 每 5 分钟拉 `FI`/`MMC` 都失败**（yfinance "possibly delisted"），刷屏日志且浪费调用。ticker 列表需要清理。
 10. **P2 — scheduler cron 时区存疑**：`config.py` 设 `America/New_York`，但 apscheduler 日志打印的 next-run 是 UTC。若真按 UTC 跑，`collect_options_data` 的 16:30 就是美东 12:30（盘中）而非收盘后。待确认。
 
-HANDOFF.md §5 的 10 个 bug 里：#2/#3/#4/#7/#8 已修，#5（Oracle live worker 不出信号）**已过期**——现在 `oracle_signals` 有 332 条 `status='new'`，live worker 是工作的。
+HANDOFF.md §5 的 10 个 bug 里：#2/#3/#4/#7/#8 已修。#5（Oracle 不出信号）在迁移后**复发**：表是空的（4-28 dump 之后的信号丢了），且 ARK 被 stub、Pelosi 来源 403——见 6d 第 11 条。
 
 ---
 
@@ -398,4 +432,6 @@ ORM `create_all` 建：以上 7 张 + `simulation_config` `simulation_state` `si
 | `collect_post_earnings_results` | 每小时 |
 | `run_pulse_scan` | 每 5 分钟（仅工作日 04:00–20:00 ET） |
 
-Oracle 的 `oracle_worker()` 不在 scheduler 里——它在 `backend` 容器的后台线程里跑（`main.py:107`），每 `ORACLE_SCAN_SEC` 秒一次。
+Oracle 的 `oracle_worker()` 不在 scheduler 里——它在 `backend` 容器的后台线程里跑（`main.py`），每 `ORACLE_SCAN_SEC`（90）秒一次。各数据源另有 `_due()` 节流（redis `oracle:srcrun:*`，ARK/国会/EDGAR 1 小时）——**手工调试时直接调 `src_*()` 会吃掉这个节流**，worker 一小时内不会再跑它；调完 `redis-cli del oracle:srcrun:<name>`。
+
+backend 启动时还会后台预热一次 Pulse 扫描（`warm_scan_cache()`）。

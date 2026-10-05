@@ -26,3 +26,4 @@ ddgs
 g4f
 ib_async
 moomoo-api
+pypdf>=4.2,<6

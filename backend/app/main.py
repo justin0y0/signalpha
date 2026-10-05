@@ -25,6 +25,7 @@ from backend.app.api.routes.pulse import router as pulse_router
 from backend.app.api.routes.quote import router as quote_router
 from backend.app.api.routes.auth import router as auth_router
 from backend.app.api.routes.brief import router as brief_router
+from backend.app.api.routes.headline import router as headline_router
 from backend.app.core.config import get_settings
 from backend.app.core.logging import configure_logging
 from backend.app.db.base import Base
@@ -47,6 +48,11 @@ async def lifespan(_: FastAPI):
     try:
         from backend.app.db.schema_guard import ensure_schema
         ensure_schema()
+    except Exception:
+        pass
+    try:
+        from backend.app.services.market_pulse_service import warm_scan_cache
+        warm_scan_cache()
     except Exception:
         pass
     yield
@@ -78,6 +84,7 @@ app.add_middleware(
 )
 
 app.include_router(health_router, prefix=settings.api_v1_prefix)
+app.include_router(headline_router, prefix=settings.api_v1_prefix)
 app.include_router(calendar_router, prefix=settings.api_v1_prefix)
 app.include_router(features_router, prefix=settings.api_v1_prefix)
 app.include_router(predict_router, prefix=settings.api_v1_prefix)

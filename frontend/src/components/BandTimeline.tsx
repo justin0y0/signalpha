@@ -11,10 +11,16 @@ import { useT } from '../i18n'
  *
  * The point this exists to make: a 2% earnings move is enormous for a utility and
  * noise for TSLA, so the model labels each stock against its own historical reaction
- * median earnings reaction (JNJ ±0.5%, NVDA ±4.0%, META ±6.8%). That is the single most important thing about how
+ * median earnings reaction. That is the single most important thing about how
  * this model reads the world and it is invisible in a table of numbers. Here the band
  * is drawn — the grey slab behind each event is literally how far that stock has to
  * move before anyone calls it a move, and the bar is what the model expects.
+ *
+ * Colour comes from the breakout classifier's tier, not from "bar taller than band".
+ * The regression estimate clears the band for roughly half of all reports — which is
+ * just the base rate — so painting those amber told visitors half the calendar would
+ * break out while the Calendar page, using the model that actually has skill, flagged
+ * three. One site, one claim.
  *
  * Scroll scrubs the window rather than paging it, so 90 days pass under a fixed
  * viewport: pin-and-scrub, the pattern most award sites use to pace a story.
@@ -34,15 +40,19 @@ export function BandTimeline({ events }: Props) {
 
   const rows = useMemo(() => {
     return events
-      .filter((e) => e.expected_move_pct != null && e.direction_prob_flat != null)
+      // A stock with no reaction history has no band to draw against.
+      .filter((e) => e.flat_band != null)
       .map((e) => ({
         ticker: e.ticker,
         sector: e.sector,
         date: e.earnings_date,
         day: parseLocalDate(e.earnings_date).getTime(),
-        move: Math.abs(e.expected_move_pct as number),
-        quiet: e.direction_prob_flat as number,
-        band: e.flat_band ?? null,
+        // What options are pricing. This was the regression's estimate, which ranks
+        // actual moves worse than the band it was being drawn against.
+        move: e.implied_move_pct != null ? Math.abs(e.implied_move_pct) : null,
+        band: e.flat_band as number,
+        tier: e.move_tier ?? null,
+        prob: e.prob_move ?? null,
       }))
       .sort((a, b) => a.day - b.day)
   }, [events])
@@ -97,7 +107,7 @@ export function BandTimeline({ events }: Props) {
   const start = Math.floor(offset)
   const frac = offset - start
   const visible = rows.slice(start, start + WINDOW_DAYS + 1)
-  const maxBand = Math.max(...rows.map((r) => r.band ?? bandFor(r.quiet, r.move)), 0.06)
+  const maxBand = Math.max(...rows.map((r) => Math.max(r.band, r.move ?? 0)), 0.06)
 
   return (
     <div ref={hostRef} className="bandtl">
@@ -121,10 +131,10 @@ export function BandTimeline({ events }: Props) {
 
         <div className="bandtl__track" style={{ transform: tier === 'still' ? undefined : `translateX(${-frac * (100 / WINDOW_DAYS)}%)` }}>
           {(tier === 'still' ? rows.slice(0, WINDOW_DAYS) : visible).map((r) => {
-            const band = r.band ?? bandFor(r.quiet, r.move)
+            const band = r.band
             const bandPct = (band / maxBand) * 100
-            const movePct = (r.move / maxBand) * 100
-            const breaches = r.move > band
+            const movePct = ((r.move ?? 0) / maxBand) * 100
+            const hot = r.tier === 'breakout' ? ' is-breach' : r.tier === 'elevated' ? ' is-elevated' : ''
             const active = hovered === r.ticker + r.date
             return (
               <div
@@ -136,7 +146,7 @@ export function BandTimeline({ events }: Props) {
                 <div className="bandtl__well">
                   <span className="bandtl__band" style={{ height: `${bandPct}%` }} />
                   <span
-                    className={`bandtl__bar${breaches ? ' is-breach' : ''}`}
+                    className={`bandtl__bar${hot}`}
                     style={{ height: `${Math.min(100, movePct)}%` }}
                   />
                 </div>
@@ -144,10 +154,11 @@ export function BandTimeline({ events }: Props) {
                 {active && (
                   <div className="bandtl__pop">
                     <b>{r.ticker}</b>
-                    <span>flat band ±{(band * 100).toFixed(2)}%</span>
-                    <span>expected ±{(r.move * 100).toFixed(2)}%</span>
-                    <span className={breaches ? 'is-breach' : ''}>
-                      {breaches ? 'expected to break its band' : 'expected to stay inside'}
+                    <span>{t('band.pop.band', { v: (band * 100).toFixed(2) })}</span>
+                    <span>{r.move != null ? t('band.pop.expected', { v: (r.move * 100).toFixed(2) }) : t('band.pop.noOptions')}</span>
+                    <span className={hot.trim()}>
+                      {r.prob != null ? `${t('cal.col.moveRisk')} ${(r.prob * 100).toFixed(0)}% · ` : ''}
+                      {r.tier ? t(`move.${r.tier}`) : t('move.unscored')}
                     </span>
                   </div>
                 )}
@@ -159,19 +170,10 @@ export function BandTimeline({ events }: Props) {
         <div className="bandtl__legend">
           <span><i className="bandtl__swatch bandtl__swatch--band" />{t('band.legend.band')}</span>
           <span><i className="bandtl__swatch bandtl__swatch--bar" />{t('band.legend.bar')}</span>
+          <span><i className="bandtl__swatch bandtl__swatch--elevated" />{t('move.elevated')}</span>
           <span><i className="bandtl__swatch bandtl__swatch--breach" />{t('band.legend.breach')}</span>
         </div>
       </div>
     </div>
   )
-}
-
-/**
- * Fallback only. The API now returns the real per-stock band (0.5x its realised
- * earnings-reaction sigma); this approximation covers names with too few outcomes on
- * record to compute one.
- */
-function bandFor(quiet: number, move: number): number {
-  const implied = move * (0.6 + (1 - quiet) * 1.1)
-  return Math.min(0.1, Math.max(0.025, implied))
 }

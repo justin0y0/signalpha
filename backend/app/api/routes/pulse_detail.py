@@ -10,7 +10,7 @@ from fastapi import APIRouter
 from sqlalchemy import text
 
 from backend.app.db.session import SessionLocal
-from backend.app.services.market_pulse_service import scan_market
+from backend.app.services.market_pulse_service import scan_market_cached
 
 router = APIRouter(prefix="/api/v1/pulse", tags=["pulse_detail"])
 
@@ -112,7 +112,7 @@ def _get_earnings_history(ticker: str, limit: int = 6) -> List[Dict[str, Any]]:
 @router.get("/ticker/{ticker}")
 def get_ticker_detail(ticker: str):
     t = ticker.upper().strip()
-    scan = scan_market()
+    scan = scan_market_cached()
     tickers_list = scan.get("tickers", []) or []
     signals_list = scan.get("signals", []) or []
     ticker_data = next((x for x in tickers_list if x.get("ticker") == t), None)

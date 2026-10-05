@@ -769,3 +769,74 @@ def scan_market() -> dict[str, Any]:
         "as_of": datetime.utcnow().isoformat(),
     }
     return _to_native(_result)
+
+
+# ════ HTTP-facing cache ════
+#
+# scan_market() is the scheduler's job: download ~110 tickers of 5-minute bars, score
+# them, and for each high-conviction signal fetch news, ask the LLM for a write-up and
+# send Telegram. Running all of that inside a page request meant whoever hit /pulse
+# after the 5-minute bar cache lapsed waited 8-10 s on a full-screen "SCANNING MARKET".
+#
+# The routes now serve the last completed scan at once and refresh it behind the
+# response (stale-while-revalidate). Only a cold process with nothing to show computes
+# in the request path. The scheduler keeps calling scan_market() directly, so alerting
+# still runs on fresh data and nothing here can delay or duplicate a Telegram send.
+SCAN_FRESH = 60        # seconds a scan is served without refreshing
+SCAN_STALE_MAX = 900   # beyond this, stale data is not worth showing
+
+_scan_memo: dict = {"ts": 0.0, "result": None}
+
+
+def _scan_and_store() -> dict:
+    res = scan_market()
+    if not res.get("error"):
+        _scan_memo["result"], _scan_memo["ts"] = res, time.time()
+    return res
+
+
+def _scan_lock():
+    import threading
+    lock = _scan_memo.get("lock")
+    if lock is None:
+        lock = _scan_memo.setdefault("lock", threading.Lock())
+    return lock
+
+
+def scan_market_cached() -> dict[str, Any]:
+    import threading
+    lock = _scan_lock()
+    res, age = _scan_memo["result"], time.time() - _scan_memo["ts"]
+    if res is not None and age < SCAN_FRESH:
+        return res
+    if res is not None and age < SCAN_STALE_MAX:
+        if lock.acquire(blocking=False):
+            def _bg():
+                try:
+                    _scan_and_store()
+                except Exception:
+                    pass  # keep serving the previous scan
+                finally:
+                    lock.release()
+            threading.Thread(target=_bg, daemon=True).start()
+        return res
+    with lock:
+        # Another request may have filled it while this one waited on the lock.
+        if _scan_memo["result"] is not None and time.time() - _scan_memo["ts"] < SCAN_FRESH:
+            return _scan_memo["result"]
+        return _scan_and_store()
+
+
+def warm_scan_cache() -> None:
+    """Fill the cache in the background at process start so the first visitor after a
+    deploy does not pay for the cold scan."""
+    import threading
+
+    def _run():
+        try:
+            with _scan_lock():
+                _scan_and_store()
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, daemon=True).start()

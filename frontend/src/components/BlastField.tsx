@@ -6,9 +6,11 @@ import { useT } from '../i18n'
 /**
  * The calendar as a field of pending detonations.
  *
- * Every upcoming earnings event is a cluster of particles. The model's P(FLAT) sets
- * how tightly that cluster holds together: an event it reads as a non-event is a
- * dense, still knot; one it expects to be violent is a loose, agitated cloud. Depth
+ * Every upcoming earnings event is a cluster of particles. The breakout model's
+ * P(move more than usual) sets how loosely that cluster holds together: a routine
+ * report is a dense, still knot; one in the model's top decile is a loose, agitated
+ * cloud in the warning hue. (This used to be driven by P(FLAT), but "will it be quiet"
+ * has no out-of-sample edge on clean features; "will it break out" does.) Depth
  * is time — the nearest earnings sit closest to the camera and drift past as the page
  * scrolls, so the hero is literally the next three months coming at you.
  *
@@ -36,7 +38,7 @@ export function BlastField({ events }: Props) {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const scored = events.filter((e) => e.direction_prob_flat != null).slice(0, 40)
+    const scored = events.filter((e) => e.prob_move != null).slice(0, 40)
     if (!scored.length) return
 
     const perCluster = budgetFor(tier, 26)
@@ -67,8 +69,8 @@ export function BlastField({ events }: Props) {
     // Build clusters. z is time-to-earnings, so scrolling moves through the calendar.
     const particles: Particle[] = []
     scored.forEach((e, i) => {
-      const quiet = e.direction_prob_flat as number
-      // Tight when quiet, diffuse when the model expects a move.
+      // calm = 1 - P(move): tight when routine, diffuse when a breakout is likely.
+      const quiet = 1 - (e.prob_move as number)
       const spread = 6 + (1 - quiet) * 46
       const cx = (i % 8) / 7
       const cy = Math.floor(i / 8) / Math.max(1, Math.ceil(scored.length / 8) - 1 || 1)
@@ -80,7 +82,7 @@ export function BlastField({ events }: Props) {
           bx: cx, by: cy, bz: cz,
           x: Math.cos(a) * r, y: Math.sin(a) * r,
           vx: 0, vy: 0,
-          hue: quiet,
+          hue: e.move_tier === 'breakout' ? 0 : e.move_tier === 'elevated' ? 0.5 : 1,
           seed: Math.random() * 6.283,
         })
       }
@@ -152,9 +154,11 @@ export function BlastField({ events }: Props) {
         px += p.vx * 0.5
         py += p.vy * 0.5
 
-        const size = Math.max(0.4, persp * (0.7 + p.hue * 0.7))
-        // Quiet clusters read cyan and calm; loud ones push toward the warning hue.
-        const alpha = Math.min(0.85, persp * 0.5) * (0.45 + p.hue * 0.55)
+        // hue: 0 = breakout (amber), 0.5 = elevated (purple), 1 = routine (cyan).
+        // Breakout clusters are the brightest thing on screen — they are the call.
+        const heat = 1 - p.hue
+        const size = Math.max(0.4, persp * (0.75 + heat * 0.65))
+        const alpha = Math.min(0.9, persp * 0.5) * (0.5 + heat * 0.5)
         ctx!.beginPath()
         ctx!.arc(px, py, size, 0, 6.283)
         ctx!.fillStyle = p.hue >= 0.6
@@ -192,9 +196,9 @@ export function BlastField({ events }: Props) {
     }
   }, [events, tier])
 
-  const scored = events.filter((e) => e.direction_prob_flat != null)
-  const quiet = scored.filter((e) => (e.direction_prob_flat as number) >= 0.6).length
-  const loud = scored.filter((e) => (e.direction_prob_flat as number) <= 0.4).length
+  const scored = events.filter((e) => e.prob_move != null)
+  const breakout = scored.filter((e) => e.move_tier === 'breakout').length
+  const elevated = scored.filter((e) => e.move_tier === 'elevated').length
 
   return (
     <div className="blast">
@@ -204,8 +208,8 @@ export function BlastField({ events }: Props) {
         <p className="blast__sub">{t('cal.hero.sub', { n: scored.length })}</p>
         <div className="blast__stats">
           <span><b>{scored.length}</b> {t('cal.tracked')}</span>
-          <span><b>{quiet}</b> {t('cal.readsQuiet')}</span>
-          <span><b>{loud}</b> {t('cal.readsLoud')}</span>
+          <span className="blast__stat--hot"><b>{breakout}</b> {t('cal.readsBreakout')}</span>
+          <span><b>{elevated}</b> {t('cal.readsElevated')}</span>
         </div>
       </div>
     </div>

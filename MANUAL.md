@@ -4,7 +4,7 @@
 >
 > 曾经标 `TODO 待确认` 的四处（per-sector Sharpe 年化因子、Track Record 高置信档阈值、Pulse 因子数、Convergence Band 训练目标）**已于 2026-07-21 全部从代码查实并写入**，其中两处查出了实现与文案不符的 bug。
 >
-> **最后更新：2026-07-21**。页面结构在这一天从 11 个 tab 收敛为 7 个，本文描述的是新结构。
+> **最后更新：2026-10-05**。这一天全站从「方向预测」转向「会不会大动」（breakout risk）——方向在 point-in-time 特征上没有 edge，breakout 有。页面结构仍是 2026-07-21 收敛后的 7 个 tab。
 
 ---
 
@@ -16,17 +16,21 @@ SignAlpha 展示的所有历史表现，都来自**严格 walk-forward 重建**�
 
 **当前诚实结论（不粉饰）：**
 
-> 📌 **2026-07-22 更新**：下表全部用「每只股票自己的 FLAT 区间」重算。此前 Track Record 和
-> Performance 用固定 ±2% 判分，而模型是按每股票 0.5σ 训练的——拿错的答案卷判分，
-> 所以同一个模型在一页显示 49.3%、另一页显示 59.9%。口径已统一，见 CLAUDE.md 第 26 条。
+> 📌 **2026-10-05：发现 point-in-time 泄漏，以前的数字全部作废。** 训练特征里混着只能拿到「今天值」的数据源——
+> 期权链、分析师预期、基本面、空头/持仓、新闻/10-Q 情绪、`last_8q_reactions`。对回填的历史事件，这些值是在
+> 事件**之后**采集的（`last_8q_reactions` 甚至包含事件本身）。训练现在只用 **61 个 PIT 特征**（白名单在
+> `models/features.py`）。7 月那张「非事件识别 76.30%」的表是在泄漏特征上测的，**已撤回**。
 
-| 结论 | 数字 | 说明 |
+| 结论 | 数字（walk-forward 样本外，PIT 特征） | 说明 |
 |---|---|---|
-| 模型**低于最蠢的基线** | 3 分类准确率 **59.84%** vs 全押 FLAT **60.63%** | 低 0.79 个百分点 |
-| 模型**几乎不做方向判断** | 97% 的事件预测为 FLAT；只在 3.0% 的事件上给方向 | 校准后的诚实结果 |
-| 模型给方向时**比瞎猜还差** | 准确率 **25.45%**（n=165），三分类随机是 33.3% | z≈−2.1，弱但真实的负面证据 |
-| 模型**唯一可证实的能力**：识别"非事件" | P(FLAT)≥0.60 时准确率 **76.30%**（基线 60.63%，n=1,055） | **+15.68pp，z=10.4** |
-| Pulse 盘中信号**无 edge** | Profit Factor 0.979（税前），含成本为负 | 与随机无法区分（t=−0.12）|
+| 3 分类准确率**低于**全押 FLAT | **38.94%** vs **47.3%**（n=5,603） | 方向没有 edge |
+| 方向预测接近随机 | 每一类的 precision ≈ 该类基准率 | 只能当背景看 |
+| **唯一站得住的能力：识别「会大动」** | breakout 风险前 10% 的财报里 **67.85%** 动得比该股平时大，基准 **53.93%**（n=339，z=5.14）；AUC 0.569 | 只看历史 ≥16 次财报的股票同样成立（69% vs 55%） |
+| 「识别不会动」**撤回** | 风险最低 10% 里 53.39% 是平静的，基准 46.07% | 太弱，全站不再声称能找到非事件 |
+| Pulse 盘中信号无 edge | 迁移前 275 笔 PF 0.979（税前）；迁移后重新累计 | 不足 10 笔时页面不显示胜率 |
+
+> **这些数字不写死在页面里。** 页面统一读 `GET /api/v1/model/headline`（10 分钟缓存），重训后自动更新。
+> 2026-10-05 启动的 PIT 全量重训完成后，本表要按 headline 的实测值刷新一次。
 
 **这个网站不提供投资建议。** 所有内容是研究与教育用途。
 
@@ -111,9 +115,11 @@ confidence_score = max(P(UP), P(FLAT), P(DOWN))
 
 **这不是"猜对的概率"**，是三个类别概率里最大的那个。
 
-这三个概率经过 **walk-forward isotonic 校准**：每一批预测由"只见过更早数据"的校准器映射。校准前平均置信度 0.695 对应 46.1% 准确率（过度自信，ECE 0.234）；校准后 0.517 对应 49.2%（ECE **0.042**，改善 5.6 倍）。所以现在页面上显示的置信度**大致可以按字面理解**。
+这三个概率经过 **temperature scaling** 校准（T≈7.6，在全部样本外记录上按 NLL 拟合，存在
+`artifacts/calibration.json`，线上预测和历史重算用同一个 T）。
 
-> **校准的一个重要副作用**：把概率压回真实基准率之后，模型在 **97.5%** 的事件上 argmax 落在 FLAT。也就是说 Calendar 上的"方向"列现在绝大多数是 FLAT。这不是 bug，是模型在没有方向 edge 时的诚实表现——**建议看三个类别的概率分布，而不是只看那个标签**。
+> 7 月用的是逐类 isotonic，它把 argmax 压成 97.5% FLAT——整张 Prediction Record 全是 FLAT。temperature
+> scaling **保留 argmax**，代价是概率被压平（多数落在 0.30–0.45）。单看置信度意义不大：方向本身接近随机。
 
 ---
 
@@ -129,46 +135,49 @@ confidence_score = max(P(UP), P(FLAT), P(DOWN))
 | **TRACKED EVENTS** | 窗口内事件总数 | 副标题写"rolling 120-day window" = 90 天前瞻 + 30 天回看 |
 | **NEXT 7 DAYS** | 未来 7 天内的财报数 | 含今天 |
 | **WITH ML PREDICTION** | 有预测的事件数 + 覆盖率 | 覆盖率 <100% 通常是特征缺失导致该事件跳过了 |
-| **BULLISH SIGNALS** | 预测方向为 UP 的事件数 | **不是"看涨的把握"**，只是 argmax 落在 UP 的计数 |
+| **BREAKOUT WATCH** | 未来事件里落在 breakout 档（风险前 10%）的个数 | 副标题的命中率读自 `/model/headline` |
 
 ### 表格每一列
 
 | 列 | 含义 |
 |---|---|
-| **TICKER** | 股票代码，等宽字体。点整行进入深度分析 |
-| **COMPANY** | 公司名，来自 FMP profile 接口 |
-| **SECTOR** | 板块。**这个字段决定用 9 个 sector 模型里的哪一个**，为空则回落到 general 模型 |
-| **EARNINGS DATE** | 财报日 + 倒计时（`Today` / `in 3d` / `5d ago`）。<br>⚠️ 2026-07-21 前这里**全站早一天**（UTC 解析 bug），现已修 |
-| **PREDICTION** | `方向 · 置信度`。<span style="color:#34d399">绿=UP</span> / <span style="color:#fb7185">红=DOWN</span> / 灰=FLAT |
-| **EXPECTED MOVE** | `±X.XX%`，见下 |
+| **TICKER / COMPANY / SECTOR** | 代码、公司名（FMP profile）、板块。板块决定用哪个 sector 方向模型 |
+| **EARNINGS DATE** | 财报日 + 倒计时 |
+| **BREAKOUT RISK** | `P(这次财报动得比该股平时大)`，来自 pooled breakout 模型。档位按样本外分位数：**Breakout watch** = 前 10%，**Elevated** = 前 20%，其余 Normal。条上的竖线是基准率（约 54%）——按构造约一半的财报会超过自己的中位数，所以要看离那条线多远 |
+| **DIRECTION · CONTEXT ONLY** | 三类概率条，刻意调暗。方向接近随机，只是背景 |
+| **OPTIONS IMPLY** | ATM 跨式价格 / 现价 = 期权市场对这次财报定价的波动。下面小字 `usual ±x%` 是该股平时的财报波动（band） |
 
-### `EXPECTED MOVE` 到底是什么
+### 为什么不再显示「模型估计波动」
 
-后端返回的是**小数**（如 `0.0337`），前端乘 100 显示为 `±3.37%`。
+这一列原来是回归模型的 `expected_move_pct`。2026-10-05 样本外实测（n=5,603）：
 
-它是一个**独立回归模型**（VotingRegressor）预测的 **T+1 收益绝对值**，即"预计会动多大"，**与方向无关**。所以 `±3.37%` 读作："预计 T+1 收盘相对财报前收盘会变动约 3.37%，方向看 PREDICTION 那一列。"
+| 预测量 | 与实际 \|T+1\| 的 Spearman | MAE |
+|---|---|---|
+| 回归模型估计 | 0.273 | **24.69pp**（有离谱的离群值） |
+| 该股自己的历史中位数（band） | **0.371** | **2.06pp** |
 
-**误解提醒**：这不是期权隐含波动率，也不是置信区间。区间是 `expected_move_low/high = 点估计 ∓ 训练残差标准差`，只在深度分析页展示。
+模型输给了「这只股票平时动多少」这个最朴素的基线，所以界面改成展示 band 和期权隐含波动。
+`expected_move_pct` 字段仍在 API 里，Paper Account 的持仓卡也还在用。
 
 ---
 
 ## 1b. Brief（`/brief`）—— 每日简报
 
-**这个页面干嘛的**：未来 7 天的财报，按"模型认为它会不会是个非事件"排序。
+**这个页面干嘛的**：未来 7 天的财报，按 breakout 风险分三组：**Breakout watch**（前 10%）/ **Elevated**（前 20%）/ 其他。
 **数据来自**：`GET /api/v1/brief?horizon_days=7[&email=...]`
 
-**为什么按"安静 vs 有动作"组织而不是"看涨 vs 看跌"**：模型没有方向能力（见开篇），但识别非事件有统计显著的能力。按方向组织等于卖一个数据不支持的东西。
+**为什么这样组织**：「会不会大动」是模型唯一跑赢随机的判断。「看涨/看跌」接近随机，「会很平静」也太弱，
+所以没有任何一组声称找到了非事件——最后一组的注释会直接说明这一点。
 
-| 区块 | 含义 |
+| 卡片 | 含义 |
 |---|---|
 | **Earnings Ahead** | 窗口内财报总数 |
-| **Likely Quiet** | P(FLAT) ≥ 60% 的事件数 |
-| **Move Expected** | P(FLAT) ≤ 40% 的事件数 |
+| **Breakout Watch** | 风险前 10% 的个数 |
+| **Elevated** | 前 20%（不含前 10%）的个数 |
 | **Watchlist** | 你收藏的 ticker 数（需登录）|
 
-**表格列**：Ticker / 公司 / 日期+盘前盘后 / **Quiet Score + 概率分布条** / 预期波动 / **ATM IV**。
-
-**ATM IV 那一列是有意放的**：如果你卖期权 premium，"模型认为大概率没事 + IV 却很高"就是最直接的筛选条件。这是这个信号唯一具体的交易用途。
+**表格列**：Ticker / 公司 / 日期+盘前盘后 / **Breakout risk** / **Usual move**（band）/ **Options imply** / 方向（背景）。
+Breakout watch 组下面的命中率句子读的是 API 返回的实测 metrics，不是文案。
 
 **门禁**：Brief 本身**完全公开**。需要登录的只有 ① watchlist 个性化 ② Telegram 推送。
 
@@ -196,7 +205,13 @@ confidence_score = max(P(UP), P(FLAT), P(DOWN))
 | Random (1 of 3) | 33.33% |
 | **Edge over baseline** | 模型 − 基线。<span style="color:#fb7185">红色 = 没跑赢</span> |
 
-这块直接用页面下方那个混淆矩阵算，**不可能和旁边的数字对不上**。目前显示 **−1.84 pts**，即模型没跑赢基线。下面附了一段说明：模型真正有能力的地方是识别非事件。
+这块直接用页面下方那个混淆矩阵算，**不可能和旁边的数字对不上**。目前是负数，即模型没跑赢基线。下面的说明句读 `/model/headline`：方向接近随机，可测的能力是上面的 breakout 面板。
+
+**★ Breakout Detection（2026-10-05 新增，放在最上面）**
+
+所有样本外财报按预测的 breakout 风险分成 10 组，每根柱 = 该组里「动得比该股平时大」的比例；虚线是基准率。
+模型如果什么都不懂，10 根柱会贴着虚线。实际是右端明显高、左端只略低于虚线——这正是全站的说法：
+**能标出要大动的，不能保证不动的。** 4 个格子：前 10% 命中率 / 基准率 / AUC / 样本外样本数。
 
 **Confidence Tiers（置信分层）**
 
@@ -204,27 +219,16 @@ confidence_score = max(P(UP), P(FLAT), P(DOWN))
 - **准确率** = 3 分类准确率（UP/FLAT/DOWN 全算）
 - **Directional** = **只统计"模型预测方向 且 实际也是方向"的子集**，把 FLAT 完全排除
 
-⚠️ **关键在于 Directional 那一列的样本量**。线上当前实测：
-
-| 阈值 | 3 分类准确率 | 样本 |
-|---|---|---|
-| 全部 | 59.84% | 5,468 |
-| ≥0.50 | 68.35% | 3,027 |
-| ≥0.60 | 72.42% | 1,142 |
-| ≥0.75 | 71.83% | 394 |
-| ≥0.90 | 74.15% | 236 |
-
-准确率随置信度明显上升（59.8% → 74.2%），**但那几乎全部来自 FLAT 判断**——模型只在 3.0%
-的事件上给方向（n=165），且那 165 个里只对了 25.45%，比三分类随机的 33.3% 还低。
-换句话说：**置信度这一列衡量的是「这场财报会不会没事」的把握，不是「涨还是跌」的把握。**
-
-**正确读法：模型越有把握，越是在说"这次不会有事"，而不是"会涨/会跌"。**
+⚠️ **关键在于 Directional 那一列的样本量**——它往往只有几十笔。7 月这里列过一张「置信度越高准确率越高」的表，
+那是泄漏特征时代的数字，已删除；以页面实时值为准。PIT 重训后方向准确率与随机相当，高置信档的样本也很小，
+**不要把这一块读成「高置信 = 能赚钱」**。
 
 **Per-Sector Heatmap**：每个 sector 的 Accuracy / Precision / Recall / F1 / MAE / Sharpe。
 - MAE = 预期波动幅度的平均绝对误差（对 `|T+1 收益|`）
 - Sharpe = `均值/标准差 × sqrt(该 sector 的事件/年)`。**2026-07-21 前这里用的是 `sqrt(252)`**（假设日收益），而喂进去的是每事件收益（约 50 笔/年），把 Sharpe 系统性放大约 2.2 倍，且与 Backtest 口径不一致。现已统一。
 
 **SHAP Top Features**：XGBoost 的 SHAP 值，取绝对值均值排序。表示"这个特征对模型输出的平均影响强度"，**不代表因果**。
+> 重训完成前这里还会出现 `put_call_skew` 等期权特征——那是旧模型的 artifacts；PIT 重训后只会出现白名单里的特征。
 
 **Confusion Matrix**：行 = 实际方向，列 = 预测方向。对角线 = 猜对。
 
@@ -250,6 +254,11 @@ confidence_score = max(P(UP), P(FLAT), P(DOWN))
 ## 3. Strategy（`/strategy`）—— 把信号变成交易
 
 三个子页面。**2026-07-21 由原 Backtest / Showdown / Simulator 三个 tab 合并。**
+
+**Backtest 顶部的 band 时间轴**（2026-10-05 起只出现在 Backtest，不再压在 Showdown / Paper 上面）：灰块 = 该股平时的
+财报波动（band），柱 = 期权隐含波动，**颜色 = breakout 档位**（琥珀 = 前 10%，紫 = 前 20%，蓝 = 其他）。
+以前颜色按「回归估计 > band」判断，约一半的柱是琥珀色——那只是基准率，却标成了「预计会突破」，和 Calendar
+上只有三四个 breakout 的说法互相矛盾。
 
 ### 3a. Backtest（`?view=backtest`）
 
@@ -280,16 +289,21 @@ confidence_score = max(P(UP), P(FLAT), P(DOWN))
 
 | 策略 | 规则 | 出处 |
 |---|---|---|
-| 🤖 **QUANT** | 置信度 > 0.55 时按 argmax 方向交易 | 纯 ML |
+| 🤖 **QUANT** | 置信度在模型自身历史的前 20%（阈值 = showdown 开始前样本外预测的 p80）时按 argmax 方向交易 | 纯 ML |
 | 🚀 **DRIFTER** | gap > +3% 做多，< −3% 做空 | Bernard & Thomas (JFE 1989) |
-| 🎯 **SNIPER** | 置信度 ≥ 0.75 **且** 预期波动 ≥ 4% | Buffett 式选择性 |
+| 🎯 **SNIPER** | **事前**被 breakout 模型列入前 10%（prob_move ≥ 历史 p90），**且** gap 实际超过该股 band → 顺 gap 方向，T+1 开盘进场 | Breakout 模型 × 财报后漂移 |
 | 🐢 **TREND_LORD** | 任何 gap 都交易，不看大小 | Turtle Traders (1983) |
-| 🌱 **COMPOUNDER** | 只做多，永不做空 | Buffett 规则一 |
+| 🌱 **COMPOUNDER** | 同 QUANT 的置信度门槛，只做多，永不做空 | Buffett 规则一 |
+
+> **SNIPER 2026-10-05 改版**：旧规则是「breakout 前 10% **且** 方向置信度前 20%」，两个过滤叠在一个接近随机的方向判断上，
+> 上线 98 天 0 笔交易。新规则只用模型真有能力的那一半（会不会大动），方向交给实际 gap。全历史回放 n=61，
+> 平均 +1.27%，胜率 59%，**t=0.82，不显著**——描述里不宣称它赚钱。
+> QUANT / COMPOUNDER 交易很少是正常的：校准后的概率很平，置信度前 20% 里 argmax 又多半是 FLAT。
 
 **★ 收益口径（2026-07-20 修复的重要问题）**
 
-- **QUANT / SNIPER / COMPOUNDER** 财报前建仓，持有穿过跳空 → 收益 = `T+5 收益`（含 gap，合理）
-- **DRIFTER / TREND_LORD** 要看到 gap 才能发信号，T+1 开盘才进场 → 收益 = **`(1+T5)/(1+gap) − 1`**
+- **QUANT / COMPOUNDER** 财报前建仓，持有穿过跳空 → 收益 = `T+5 收益`（含 gap，合理）
+- **DRIFTER / TREND_LORD / SNIPER** 要看到 gap 才能发信号，T+1 开盘才进场 → 收益 = **`(1+T5)/(1+gap) − 1`**
 
   第二个式子精确等于 `close_t5 / open_t1 − 1`（因为两者分母同为 `prev_close`，可以约掉，实测误差 0）。修复前这两个策略拿的是含 gap 的 T+5 收益，**等于白送了它们错过的那一天催化剂**——对 PEAD 策略来说这就是把全部 edge 重复计算了一遍。
 
@@ -350,6 +364,11 @@ $1M 纸上交易账户，每 30 分钟自动步进一次（工作日 04:00–20:
 
 **Sector Treemap**：按板块分块，面积=市值，颜色=Σ-Score（绿看多/红看空）。点任意股票看详情。
 
+**加载速度**（2026-10-05）：`/pulse` 现在直接返回最近一次扫描结果、在后台刷新（stale-while-revalidate，60 秒内视为新鲜，
+15 分钟以上才同步重算）；backend 启动时预热一次。以前 5 分钟 bar 缓存一过期，下一个访客就要在
+「SCANNING MARKET」上等 8–10 秒——请求路径里跑着 ~110 只票的下载、新闻抓取、LLM 解释和 Telegram 推送。
+告警不受影响：scheduler 仍直接调 `scan_market()`。
+
 ---
 
 ## 5. Oracle（`/oracle`）—— 名人信号扫描
@@ -378,7 +397,23 @@ $1M 纸上交易账户，每 30 分钟自动步进一次（工作日 04:00–20:
 
 **头像说明**：全部是像素风**符号化**头像（Trump=讲台、黄仁勋=GPU、Musk=火箭、Buffett=钱袋、Burry=熊…），不是真人肖像，这是有意的政策选择。
 
-**⚠️ 数据源限制**：从服务器（GCP 数据中心 IP）出去，Google News RSS / nitter / truthbrush / X 抓取**全部被封**。目前可用：Marketaux、DuckDuckGo、CNN 的 Truth Social 归档、SEC EDGAR、yfinance。所以 Musk 和 Serenity 的 X 内容目前拿不到。
+**数据源现状（2026-10-05 在 Oracle Cloud 上实测）**
+
+| 来源 | 状态 | 用于 |
+|---|---|---|
+| Google News RSS | ✅ | 所有人物（只是「关于此人的新闻」） |
+| CNN Truth Social 归档 | ✅ | Trump 本人发帖 |
+| arkfunds.io 每日交易 | ✅ **10-05 重新启用** | Cathie Wood。只取最新交易日、占 ARKK ≥0.10% 的前 3 笔（`ORACLE_ARK_MIN_PCT`）。此前代码第一行就是 `return []`，来源不明 |
+| House Clerk 官方 PTR | ✅ **10-05 新接** | Pelosi。读年度索引 `{year}FD.zip` → 14 天内的 PTR → 解析 PDF 里的 `(TICKER) [ST/OP]  P/S 日期`。旧来源 house-stock-watcher S3 已 403 |
+| SEC EDGAR | ✅ | Buffett / Ackman / Burry 的 13F、13D/G（只推送，不生成交易信号；13F 按季度，平时安静是正常的） |
+| X / Nitter | ❌ | xcancel 451，其他实例 DNS 失败或拒连；没有 X API token。Musk、Serenity 拿不到本人发言 |
+| FMP 国会交易 | ❌ | 免费档只给最新 25 条、按姓名查询要付费，且和日历任务抢每日配额 |
+
+**健康徽章**：LIVE = 有主数据源在 48 小时内**成功应答**（哪怕没有新内容）；NEWS ONLY = 只有新闻在进来；QUIET = 都没有。
+以前 LIVE 要求「交付了条目」，于是 Pelosi、Buffett 在两次申报之间被标成 NEWS ONLY——安静不等于坏了。
+
+**为什么纯新闻人物长期 0 信号**：LLM 提示词刻意严格——第三方写「关于某人」的文章、分析师猜测、旧交易回顾一律不出信号，
+只认此人自己说的话、发的帖、披露的交易。迁移后到 10-05 为止的 0 信号就是这个原因，不是 LLM 坏了（实测 gpt-oss-120b 正常返回）。
 
 ---
 
@@ -388,11 +423,12 @@ $1M 纸上交易账户，每 30 分钟自动步进一次（工作日 04:00–20:
 
 | 区块 | 含义 |
 |---|---|
-| **顶部横幅** | 代码 + 公司名 + 方向徽章 + 板块 + 财报日倒计时 + 实时报价 |
-| **Predicted Direction** | argmax 类别 + 置信度 |
-| **Expected Move** | `±X%` 点估计，副标题给历史平均 |
-| **Convergence Band** | **未来 20 个交易日的价格区间预测**。`ConvergenceZonePredictor` 用两个 `ApproxQuantileForest` 分别拟合 `outcomes.convergence_low`（前 20 根 bar 的最低价）和 `convergence_high`（最高价）|
-| **Data Completeness** | 该事件非空特征的占比。**<80% 会触发黄色警告**，说明输入数据不全，预测可靠性下降 |
+| **顶部横幅** | 代码 + 公司名 + **breakout 档位徽章**（如 `BREAKOUT WATCH · 73%`）+ 板块 + 财报日倒计时 + 实时报价 |
+| **IV 环** | 越临近财报越「绷紧」；breakout / elevated 档会破裂，其他档回落。以前按 P(FLAT)<0.5 破裂——校准后几乎所有股票都满足，于是全站每只股票都写着「likely to break out」 |
+| **Breakout Risk** | prob_move + 档位 + 基准率 |
+| **Usual Move** | 该股 band；副标题是期权隐含波动 |
+| **Direction (context)** | argmax + 置信度，注明样本外接近随机 |
+| **Data Completeness** | 该事件非空特征的占比。**<80% 会触发黄色警告** |
 | **Direction Probabilities** | 三个类别概率条，加总为 1 |
 | **Historical Reactions** | 该股过去 8 次财报的 T+1 反应 |
 | **Similar Cases** | 特征空间里最相近的 3 个历史事件及其实际结果 |
@@ -404,11 +440,14 @@ $1M 纸上交易账户，每 30 分钟自动步进一次（工作日 04:00–20:
 
 项目介绍：102 特征分类、基准对比条形图、数据管线图、路线图、技术栈。
 
-**基准对比图里的数字**：Random 33.3% / Always-FLAT **60.7%**（本数据集实测的多数类占比）/ Renaissance 50.75%（Zuckerman 2019）/ SignAlpha **59.8%** / PEAD 56%（Cohen-Malloy-Nguyen, JoF 2020）/ GPT-4 CoT 60.4%（Kim-Muhn-Nikolaev, arXiv 2407.17866）。
+**页面上的数字全部来自 `/model/headline`**：顶部统计（ticker 数、事件数、特征数、breakout AUC）、基准对比条里 SignAlpha 和
+Always-FLAT 两根、正文里的命中率。其余基准是文献值：Random 33.3% / Renaissance 50.75%（Zuckerman 2019）/ PEAD 56%
+（Cohen-Malloy-Nguyen, JoF 2020）/ GPT-4 CoT 60.4%（Kim-Muhn-Nikolaev, arXiv 2407.17866）。
 
-> Always-FLAT 那一条此前写死为 50.0%、注解"±2%"，而同一页正文说 60.7%——同一个量两个数字。已于 2026-07-22 统一。
+**特征分组**标了「在用 / 已排除」：价格、宏观、板块、band 在用；期权、基本面、持仓、情绪因为拿不到 point-in-time 的历史值而排除（划线显示）。
 
-**改为诚实口径的经过**：标题原本是"49.3% 比 random 和 FLAT-only 基线暗示的更接近学术前沿"，2026-07-21 改为"没有跑赢 all-FLAT 基线"；2026-07-22 判分口径统一后，当前表述是 **59.8% vs 60.6% 基线**，正文写明模型真正有能力的地方（非事件识别 **76.3% vs 60.6%，n=1,055**）以及泄漏被发现和修复的经过。
+**改为诚实口径的经过**：7-21「没有跑赢 all-FLAT」→ 7-22 判分口径统一（59.8% vs 60.6%，非事件 76.3%）→ **10-05 发现 PIT 泄漏，
+只用 61 个 PIT 特征重测**：方向无 edge，非事件结论撤回，唯一站得住的是 breakout 检测。
 
 ---
 
@@ -432,10 +471,12 @@ $1M 纸上交易账户，每 30 分钟自动步进一次（工作日 04:00–20:
 | 2 | Showdown 并发持仓不受资金约束 | 高并发时实际杠杆 >1 |
 | 3 | Backtest 的 SPY 基准是日线前向填充对齐 | 与事件型策略对比是近似的 |
 | 4 | FMP 免费档限制 | `forward_eps_guidance` / `transcript_sentiment` 恒为空，等于模型少了几个特征 |
-| 5 | Oracle 拿不到 X/Twitter | Musk、Serenity 长期无信号 |
+| 5 | Oracle 拿不到 X/Twitter | Musk、Serenity 拿不到本人发言，只有新闻（多数会被 LLM 正确拒绝） |
 | 6 | ~~Alpha Brief / Watchlist 未实现~~ **已实现（2026-07-21）** | — |
 | 7 | Pulse 页标题写"6-Factor"但代码只有 5 个因子 | 文案与实现不符，待改 |
 | 8 | 无支付通路 | entitlement 层已就位，缺的是支付服务商对接（需 Justin 的账号与定价决策）|
+| 9 | 少数日历 ticker（如 DAL、TLRY）没有历史 outcomes | 没有 band，所以不显示「平时波动」，也不进 band 时间轴 |
+| 10 | 深度页 SHAP 里出现 `price_t0`、`spy_200ma` 这类价格**水平**特征 | 不是泄漏，但树模型可能拿价格水平当 ticker 标识用，泛化存疑 |
 
 ---
 

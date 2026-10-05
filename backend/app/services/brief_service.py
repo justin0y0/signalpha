@@ -1,17 +1,16 @@
 """Alpha Brief — the daily recurring surface.
 
-Positioning note (this drives what the brief actually says)
-----------------------------------------------------------
-The brief leads with the quiet/loud split and the options context around it, not with
-"we think NVDA goes up", because the measured skill is in the first question and not
-the second. See CLAUDE.md for the current accuracy figures — they are deliberately not
-duplicated here, since a docstring is the last place anyone remembers to update and
-this one spent two label revisions quoting numbers that no longer existed.
+What it leads with, and why
+---------------------------
+The brief is built around one question: which reports this week are likely to move
+their stock more than that stock usually moves on earnings. That is the only skill the
+data supports out of sample — the breakout model's top decile clears its own band far
+more often than the base rate, while "which will be quiet" and "which way" are near
+chance. The brief therefore ranks by breakout risk and shows direction only as context.
 
-Thresholds are expressed relative to BASE_RATE rather than as absolute probabilities.
-A P(FLAT) of 0.60 means something different when non-events are 47.7% of the universe
-than when they were 60.7%, and hardcoding the absolute number silently changed what
-this surface promised every time the labelling moved.
+No figure is typed here. List membership comes from the model's own out-of-sample
+decile cut-offs and the skill statement from artifacts/move_metrics.json, so when the
+model is retrained the brief changes with it instead of quoting a model that is gone.
 """
 from __future__ import annotations
 
@@ -22,25 +21,25 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from backend.app.core.logging import get_logger
+from backend.app.services.headline_service import _breakout_metrics, move_tier
 
 logger = get_logger(__name__)
 
-# Share of events that are genuine non-events under the current per-stock median
-# labelling. Measured over 5,553 events; see data_pipeline/compute_flat_bands.py.
-BASE_RATE = 0.477
-
-# A row earns the quiet list by being meaningfully more certain than the base rate,
-# not merely above 50%.
-QUIET_THRESHOLD = BASE_RATE + 0.13   # 0.607
-LOUD_THRESHOLD = BASE_RATE - 0.08    # 0.397
+# Which list a report lands in comes from the breakout model's own out-of-sample decile
+# cut-offs (artifacts/move_metrics.json), not hand-picked probabilities. The previous
+# P(FLAT) thresholds were tuned to one calibration and silently changed meaning — or
+# stopped selecting anything — each time the calibration moved.
 
 
 def _rows_for_window(db: Session, start: date, end: date, tickers: list[str] | None) -> list[dict[str, Any]]:
     sql = """
         SELECT e.ticker, e.company_name, e.sector, e.earnings_date, e.report_time,
                p.direction_prob_up, p.direction_prob_flat, p.direction_prob_down,
-               p.expected_move_pct, p.confidence_score,
-               f.atm_iv, f.iv_rank, f.iv_crush_hist
+               p.expected_move_pct, p.confidence_score, p.prob_move,
+               f.atm_iv, f.iv_rank, f.iv_crush_hist,
+               f.expected_move_pct AS implied_move_pct,
+               (SELECT o.flat_band FROM outcomes o WHERE o.ticker = e.ticker AND o.flat_band IS NOT NULL
+                ORDER BY o.earnings_date DESC LIMIT 1) AS own_band
         FROM earnings_events e
         LEFT JOIN predictions p
                ON p.ticker = e.ticker AND p.earnings_date = e.earnings_date
@@ -62,18 +61,14 @@ def build_brief(db: Session, for_date: date | None = None, tickers: list[str] | 
     today = for_date or date.today()
     rows = _rows_for_window(db, today, today + timedelta(days=horizon_days), tickers)
 
-    quiet, loud, unscored = [], [], []
+    metrics = _breakout_metrics()
+    breakout, elevated, normal, unscored = [], [], [], []
     for r in rows:
-        flat = r.get("direction_prob_flat")
-        if flat is None:
-            unscored.append(r)
-        elif float(flat) >= QUIET_THRESHOLD:
-            quiet.append(r)
-        elif float(flat) <= LOUD_THRESHOLD:
-            loud.append(r)
-
-    quiet.sort(key=lambda r: -float(r["direction_prob_flat"]))
-    loud.sort(key=lambda r: float(r["direction_prob_flat"]))
+        tier = move_tier(float(r["prob_move"]) if r.get("prob_move") is not None else None, metrics)
+        r["move_tier"] = tier
+        {"breakout": breakout, "elevated": elevated, "normal": normal}.get(tier, unscored).append(r)
+    for bucket in (breakout, elevated, normal):
+        bucket.sort(key=lambda r: -float(r["prob_move"]))
 
     def fmt(r: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -82,6 +77,10 @@ def build_brief(db: Session, for_date: date | None = None, tickers: list[str] | 
             "sector": r["sector"],
             "earnings_date": r["earnings_date"].isoformat() if r["earnings_date"] else None,
             "report_time": r["report_time"],
+            "prob_move": float(r["prob_move"]) if r.get("prob_move") is not None else None,
+            "move_tier": r.get("move_tier"),
+            "own_band": float(r["own_band"]) if r.get("own_band") is not None else None,
+            "implied_move_pct": float(r["implied_move_pct"]) if r.get("implied_move_pct") is not None else None,
             "p_flat": float(r["direction_prob_flat"]) if r["direction_prob_flat"] is not None else None,
             "p_up": float(r["direction_prob_up"]) if r["direction_prob_up"] is not None else None,
             "p_down": float(r["direction_prob_down"]) if r["direction_prob_down"] is not None else None,
@@ -96,13 +95,16 @@ def build_brief(db: Session, for_date: date | None = None, tickers: list[str] | 
         "horizon_days": horizon_days,
         "personalised": bool(tickers),
         "watchlist_size": len(tickers) if tickers else 0,
-        "counts": {"total": len(rows), "quiet": len(quiet), "loud": len(loud), "unscored": len(unscored)},
-        "quiet": [fmt(r) for r in quiet[:12]],
-        "loud": [fmt(r) for r in loud[:12]],
+        "counts": {"total": len(rows), "breakout": len(breakout), "elevated": len(elevated),
+                   "normal": len(normal), "unscored": len(unscored)},
+        "breakout": [fmt(r) for r in breakout[:12]],
+        "elevated": [fmt(r) for r in elevated[:12]],
+        "normal": [fmt(r) for r in normal[:20]],
+        # Live evaluation numbers, so the page states the measured skill, not a stale one.
+        "metrics": {k: metrics.get(k) for k in ("auc", "base_rate", "top_decile", "bottom_decile", "n",
+                                                  "threshold_top_decile", "threshold_top_quintile")}
+                   if metrics else None,
         "methodology": {
-            "quiet_threshold": QUIET_THRESHOLD,
-            "loud_threshold": LOUD_THRESHOLD,
-            "validated_skill": "At P(FLAT) >= 0.60 the model is correct 66.6% of the time vs a 49.8% base rate (n=862).",
             "no_directional_edge": "The model has no measurable directional skill. Direction is shown for completeness only.",
             "disclaimer": "Research and education only. Not investment advice.",
         },
@@ -118,18 +120,23 @@ def render_telegram(brief: dict[str, Any]) -> str:
         + (f" · watchlist of {brief['watchlist_size']}" if brief["personalised"] else ""),
         "",
     ]
-    if brief["quiet"]:
-        lines.append(f"*Likely quiet* ({c['quiet']})")
-        for r in brief["quiet"][:6]:
-            iv = f" · IV {r['atm_iv']*100:.0f}%" if r.get("atm_iv") else ""
-            lines.append(f"  `{r['ticker']:<6}` {r['earnings_date']}  P(flat) {r['p_flat']*100:.0f}%{iv}")
+    def line(r: dict[str, Any]) -> str:
+        pm = f"P(move) {r['prob_move']*100:.0f}%" if r.get("prob_move") is not None else ""
+        band = f" · usual ±{r['own_band']*100:.1f}%" if r.get("own_band") else ""
+        return f"  `{r['ticker']:<6}` {r['earnings_date']}  {pm}{band}"
+
+    if brief["breakout"]:
+        lines.append(f"*Breakout watch* ({c['breakout']})")
+        lines += [line(r) for r in brief["breakout"][:8]]
         lines.append("")
-    if brief["loud"]:
-        lines.append(f"*Move expected* ({c['loud']})")
-        for r in brief["loud"][:6]:
-            em = f" · ±{r['expected_move_pct']*100:.1f}%" if r.get("expected_move_pct") else ""
-            lines.append(f"  `{r['ticker']:<6}` {r['earnings_date']}  P(flat) {r['p_flat']*100:.0f}%{em}")
+    if brief["elevated"]:
+        lines.append(f"*Elevated* ({c['elevated']})")
+        lines += [line(r) for r in brief["elevated"][:6]]
         lines.append("")
-    lines.append("_Quiet calls are the model's one validated skill (66.6% vs 49.8% base rate)._")
-    lines.append("_It has no directional edge. Not investment advice._")
+    m = brief.get("metrics") or {}
+    top = (m.get("top_decile") or {}).get("move_rate")
+    if top is not None and m.get("base_rate") is not None:
+        lines.append(f"_Out of sample, top-decile calls moved more than usual {top*100:.0f}% of the time "
+                     f"vs a {m['base_rate']*100:.0f}% base rate (n={m.get('n')})._")
+    lines.append("_No directional edge. Not investment advice._")
     return "\n".join(lines)

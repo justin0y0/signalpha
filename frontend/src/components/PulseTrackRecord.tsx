@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { Activity, TrendingUp, TrendingDown } from 'lucide-react'
 import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts'
 import { useT } from '../i18n'
+import { fetchPulseTrackRecord } from '../api/pulseTrackRecord'
 
 interface TR {
   total_signals: number; closed: number; open: number
@@ -16,8 +17,7 @@ export function PulseTrackRecord() {
   const { t } = useT()
   const [d, setD] = useState<TR | null>(null)
   useEffect(() => {
-    const f = () => fetch('/api/v1/pulse/track-record')
-      .then(r => r.ok ? r.json() : null)
+    const f = () => fetchPulseTrackRecord()
       .then(j => { if (j && typeof j.total_signals === 'number') setD(j) })
       .catch(() => {})
     f()

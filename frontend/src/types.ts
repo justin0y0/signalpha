@@ -11,8 +11,36 @@ export type CalendarEvent = {
   direction_prob_flat?: number | null
   direction_prob_down?: number | null
   flat_band?: number | null
+  /** P(this report moves the stock more than its own band) — the breakout model. */
+  prob_move?: number | null
+  /** Where prob_move sits against the out-of-sample deciles. */
+  move_tier?: 'breakout' | 'elevated' | 'normal' | null
   expected_move_pct?: number | null
+  /** ATM straddle / spot — the move options are pricing for this report. */
+  implied_move_pct?: number | null
   has_prediction: boolean
+}
+
+export type BreakoutMetrics = {
+  n: number
+  auc: number
+  base_rate: number
+  top_decile: { n: number; move_rate: number; z: number }
+  bottom_decile: { n: number; quiet_rate: number; quiet_base: number }
+  threshold_top_decile: number
+  threshold_top_quintile: number
+  deciles: { decile: number; n: number; mean_p: number; move_rate: number }[]
+  features: number
+  first_oos_date: string
+  fitted_at: string
+}
+
+/** Live capability figures from /model/headline — every number the copy quotes. */
+export type Headline = {
+  three_class: { n: number; accuracy: number | null; flat_baseline: number | null; distribution: Record<string, number> }
+  direction: Record<'UP' | 'FLAT' | 'DOWN', { n: number; precision: number | null; base_rate: number | null }>
+  breakout: BreakoutMetrics | null
+  universe: { tickers: number; events: number; scored_events: number; features?: number }
 }
 
 export type CalendarResponse = {
@@ -71,6 +99,13 @@ export type PredictionResponse = {
   historical_reactions: HistoricalReaction[]
   similar_cases: SimilarCase[]
   feature_snapshot: Record<string, unknown>
+  prob_move?: number | null
+  move_tier?: 'breakout' | 'elevated' | 'normal' | null
+  breakout_base_rate?: number | null
+  /** The stock's usual move — median absolute reaction on earlier reports. */
+  flat_band?: number | null
+  /** ATM straddle / spot from the latest options snapshot. */
+  implied_move_pct?: number | null
 }
 
 export type EquityPoint = { date: string; equity: number; drawdown: number }

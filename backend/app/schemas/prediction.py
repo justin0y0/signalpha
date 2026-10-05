@@ -68,3 +68,10 @@ class PredictionResponse(BaseModel):
     historical_reactions: list[HistoricalReaction] = Field(default_factory=list)
     similar_cases: list[SimilarCase] = Field(default_factory=list)
     feature_snapshot: dict[str, float | str | int | list | dict | None] = Field(default_factory=dict)
+    # The breakout model — the one call with out-of-sample skill — and the two
+    # yardsticks for size: what this stock usually moves, and what options are pricing.
+    prob_move: float | None = None
+    move_tier: str | None = None
+    breakout_base_rate: float | None = None
+    flat_band: float | None = None
+    implied_move_pct: float | None = None

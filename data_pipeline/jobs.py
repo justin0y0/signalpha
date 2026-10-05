@@ -348,6 +348,25 @@ def retrain_models() -> None:
     logger.info("Finished model retraining")
 
 
+def retrain_full() -> None:
+    """Monthly: the whole chain, not just the models.
+
+    The schedule used to call retrain_models alone, which replaced the served models
+    while the stored history, prob_move and the calibration temperature stayed fitted to
+    the previous ones — the calendar and the record drifted apart until someone reran
+    the rest by hand. Same four steps as scripts/retrain_pipeline.sh.
+    """
+    from data_pipeline.move_model import run as run_move_model
+    from data_pipeline.recalibrate_predictions import recalibrate
+    from data_pipeline.regenerate_predictions import regenerate
+
+    retrain_models()
+    logger.info("retrain_full: regenerate %s", regenerate())
+    logger.info("retrain_full: move model AUC %s", run_move_model().get("auc"))
+    logger.info("retrain_full: recalibrate %s", recalibrate().get("after"))
+    run_predictions()
+
+
 def run_simulator_step() -> None:
     """Auto-step the simulator every 30 minutes during market hours."""
     from datetime import datetime

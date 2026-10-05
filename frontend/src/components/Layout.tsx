@@ -5,11 +5,14 @@ import { BootSequence } from './BootSequence'
 import { LocaleToggle } from './ui/LocaleToggle'
 import { useT } from '../i18n'
 import { AuthWidget } from './AuthWidget'
+import { RouteBoundary } from './RouteBoundary'
+import { useBuildCheck } from '../hooks/useBuildCheck'
 
 export function Layout() {
   const { t } = useT()
   const [open, setOpen] = useState(false)
   const location = useLocation()
+  useBuildCheck()
 
   useEffect(() => { setOpen(false) }, [location.pathname])
 
@@ -88,7 +91,9 @@ export function Layout() {
       </nav>
 
       <main className="app-main">
-        <Outlet />
+        <RouteBoundary key={location.pathname}>
+          <Outlet />
+        </RouteBoundary>
       </main>
     </div>
   )

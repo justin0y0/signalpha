@@ -27,7 +27,7 @@ class ToggleReq(BaseModel):
 @router.get("/figures")
 def figures():
     en = O._enabled()
-    return {"figures":[{"key":k,**v,"enabled":k in en} for k,v in O.FIGURES.items()]}
+    return {"figures":[{"key":k,**v,"enabled":k in en,"health":O.figure_health(k)} for k,v in O.FIGURES.items()]}
 
 @router.post("/figures")
 def toggle(req: ToggleReq):

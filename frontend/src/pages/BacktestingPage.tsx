@@ -6,6 +6,7 @@ import { api } from '../api/client'
 import type { BacktestResponse } from '../types'
 import { parseLocalDate } from '../utils/date'
 import { useT } from '../i18n'
+import { useHeadline } from '../hooks/useHeadline'
 
 const SECTORS = ['','Technology','Financial Services','Healthcare','Consumer Cyclical','Consumer Defensive','Industrials','Energy','Communication Services']
 const C = { cyan:'#38bdf8', purple:'#a78bfa', green:'#4ade80', red:'#f87171', amber:'#fbbf24', muted:'#475569' }
@@ -98,6 +99,7 @@ function MetricGroup({title, hero, heroSub, subs, accent, heroColor}: {
 
 export function BacktestingPage() {
   const { t } = useT()
+  const headline = useHeadline()
   const [ticker,setTicker]=useState('')
   const [sector,setSector]=useState('')
   const [startDate,setStartDate]=useState('2022-01-01')
@@ -149,7 +151,7 @@ export function BacktestingPage() {
       <motion.div className="bt-hero" initial={{opacity:0,y:-8}} animate={{opacity:1,y:0}}>
         <div className="bt-hero__badge"><span className="bt-hero__dot"/>BACKTESTER</div>
         <h1 className="bt-hero__title">{t('bt.title')}</h1>
-        <p className="bt-hero__sub">{t('bt.replay', { n: '5,477' })}</p>
+        <p className="bt-hero__sub">{t('bt.replay', { n: headline ? headline.three_class.n.toLocaleString() : '—' })}</p>
       </motion.div>
 
       <motion.div className="bt-config" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{delay:0.08}}>

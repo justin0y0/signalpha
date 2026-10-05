@@ -86,7 +86,9 @@ class PredictionService:
         warnings = self._build_warning_objects(prediction.feature_completeness, prediction.warning_flags)
         historical_avg = None
         if prediction.similar_cases:
-            rets = [abs(case.get("actual_t1_return", 0.0) or 0.0) for case in prediction.similar_cases]
+            # Cases with no recorded outcome used to count as 0.0, which is how GS showed
+            # "hist avg ±0.00%". Average only the ones that have a return.
+            rets = [abs(r) for r in (case.get("actual_t1_return") for case in prediction.similar_cases) if r is not None]
             if rets:
                 historical_avg = float(sum(rets) / len(rets))
         return PredictionResponse(
@@ -184,5 +186,24 @@ class PredictionService:
         if prediction is not None:
             response = self._map_prediction(event, prediction)
             response.historical_reactions = self._fetch_historical_reactions(db, event.ticker)
-            return response
-        return self._predict_on_demand(db, event)
+        else:
+            response = self._predict_on_demand(db, event)
+        self._attach_move_context(db, event, prediction, response)
+        return response
+
+    def _attach_move_context(self, db: Session, event: EarningsEvent, prediction: Prediction | None,
+                             response: PredictionResponse) -> None:
+        from backend.app.services.flat_band import load_flat_bands
+        from backend.app.services.headline_service import _breakout_metrics, move_tier
+
+        metrics = _breakout_metrics()
+        pm = prediction.prob_move if prediction is not None else None
+        response.prob_move = pm
+        response.move_tier = move_tier(pm, metrics)
+        response.breakout_base_rate = metrics.get("base_rate") if metrics else None
+        response.flat_band = load_flat_bands(db, [event.ticker]).get(event.ticker)
+        response.implied_move_pct = db.execute(
+            select(PriceFeature.expected_move_pct).where(
+                and_(PriceFeature.ticker == event.ticker, PriceFeature.earnings_date == event.earnings_date)
+            )
+        ).scalar_one_or_none()

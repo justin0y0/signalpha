@@ -1,9 +1,9 @@
 from fastapi import APIRouter
-from backend.app.services.market_pulse_service import scan_market
+from backend.app.services.market_pulse_service import scan_market_cached
 
 router = APIRouter(prefix="/pulse", tags=["pulse"])
 
 
 @router.get("")
 def get_pulse():
-    return scan_market()
+    return scan_market_cached()

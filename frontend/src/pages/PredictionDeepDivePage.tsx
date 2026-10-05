@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Activity, ArrowLeft, Compass, Gauge, Layers, Target } from 'lucide-react'
+import { Activity, ArrowLeft, Compass, Flame, Gauge, Layers, Target } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '../api/client'
 import type { PredictionResponse } from '../types'
@@ -121,7 +121,13 @@ export function PredictionDeepDivePage() {
         <div style={{ flex: '1 1 320px', position: 'relative', zIndex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.35rem' }}>
             <h1 className="ticker-symbol">{data.ticker}</h1>
-            <DirectionBadge direction={data.predicted_direction} confidence={data.confidence_score} />
+            {data.prob_move != null ? (
+              <span className={`tier-chip tier-chip--${data.move_tier ?? 'normal'}`}>
+                <Flame size={11} /> {t(`move.${data.move_tier ?? 'normal'}`)} · {(data.prob_move * 100).toFixed(0)}%
+              </span>
+            ) : (
+              <DirectionBadge direction={data.predicted_direction} confidence={data.confidence_score} />
+            )}
           </div>
           <p className="ticker-name">{data.company_name ?? '—'}</p>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -138,53 +144,42 @@ export function PredictionDeepDivePage() {
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
         <CrushChamber
           daysUntil={du}
-          expectedMove={data.expected_move.point_estimate_pct ?? 0}
-          quiet={data.direction_probabilities.flat}
+          expectedMove={data.implied_move_pct ?? data.flat_band ?? 0}
+          moveTier={data.move_tier}
         />
       </motion.div>
 
-      {/* === Core Prediction Stats === */}
+      {/* === Core Prediction Stats ===
+          Led by breakout risk, the call with out-of-sample skill. The old row led with
+          the predicted direction (near chance) and the regression's size estimate,
+          which ranks moves worse than the stock's own history. */}
       <div className="grid grid-4">
         <StatCard
-          label={t('dd.stat.direction')}
-          icon={<Compass size={12} />}
-          value={data.predicted_direction}
-          helper={`${(data.confidence_score * 100).toFixed(1)}% confidence`}
-          accent={
-            data.predicted_direction === 'UP'
-              ? 'emerald'
-              : data.predicted_direction === 'DOWN'
-              ? 'rose'
-              : 'default'
-          }
+          label={t('cal.col.moveRisk')}
+          icon={<Flame size={12} />}
+          value={data.prob_move != null ? `${(data.prob_move * 100).toFixed(0)}%` : '—'}
+          helper={data.prob_move != null
+            ? `${t(`move.${data.move_tier ?? 'normal'}`)}${data.breakout_base_rate != null ? ` · ${t('dd.baseRate', { v: (data.breakout_base_rate * 100).toFixed(0) })}` : ''}`
+            : t('move.unscored')}
+          accent={data.move_tier === 'breakout' ? 'amber' : data.move_tier === 'elevated' ? 'purple' : 'cyan'}
           delay={0.05}
         />
         <StatCard
-          label={t('dd.stat.move')}
+          label={t('brief.col.usual')}
           icon={<Activity size={12} />}
-          value={<>±{((data.expected_move.point_estimate_pct ?? 0) * 100).toFixed(2)}%</>}
-          helper={
-            data.expected_move.historical_avg_pct != null
-              ? `hist avg ±${(data.expected_move.historical_avg_pct * 100).toFixed(2)}%`
-              : undefined
-          }
+          value={data.flat_band != null ? <>±{(data.flat_band * 100).toFixed(1)}%</> : '—'}
+          helper={data.implied_move_pct != null
+            ? t('band.pop.expected', { v: (data.implied_move_pct * 100).toFixed(1) })
+            : t('dd.usualHelper')}
           accent="cyan"
           delay={0.1}
         />
         <StatCard
-          label={t('dd.stat.band')}
-          icon={<Layers size={12} />}
-          value={
-            data.convergence_band.lower != null && data.convergence_band.upper != null ? (
-              <>
-                {data.convergence_band.lower.toFixed(2)} → {data.convergence_band.upper.toFixed(2)}
-              </>
-            ) : (
-              '—'
-            )
-          }
-          helper={`${data.convergence_band.horizon_days}-day horizon`}
-          accent="purple"
+          label={t('dd.stat.direction')}
+          icon={<Compass size={12} />}
+          value={data.predicted_direction}
+          helper={t('dd.directionHelper', { p: (data.confidence_score * 100).toFixed(0) })}
+          accent="default"
           delay={0.15}
         />
         <StatCard

@@ -160,45 +160,81 @@ def src_truth(handle):
     except Exception as e: log.warning(f"truth {handle}: {e}"); return []
 
 def src_ark():
-    return []
+    # Was stubbed to `return []` in the 2026-07 snapshot with no note, which silently
+    # made Cathie Wood a news-only figure. ARK's daily trade file is the most direct
+    # primary source on the page, so it is back — limited to the latest trade date and to
+    # positions of at least ORACLE_ARK_MIN_PCT of the fund, because the full file is
+    # mostly rebalancing dust and a dozen pings a day would bury the rest of the feed.
     if not _due("ark",3600): return []
     try:
-        r=httpx.get("https://arkfunds.io/api/v2/etf/trades",params={"symbol":"ARKK","limit":15},headers=UA,timeout=15)
+        r=httpx.get("https://arkfunds.io/api/v2/etf/trades",params={"symbol":"ARKK","limit":40},headers=UA,timeout=15)
         if r.status_code!=200: return []
+        _mark_ok("ark")
+        trades=r.json().get("trades",[]) or []
+        if not trades: return []
+        latest=max(t.get("date","") for t in trades)
+        min_pct=float(os.getenv("ORACLE_ARK_MIN_PCT","0.10"))
+        big=[t for t in trades if t.get("date")==latest and float(t.get("etf_percent") or 0)>=min_pct]
+        big.sort(key=lambda t:-float(t.get("etf_percent") or 0))
         out=[]
-        for t in r.json().get("trades",[])[:15]:
+        for t in big[:3]:
             tk=(t.get("ticker") or "").upper().strip()
             if not tk.isalpha() or len(tk)>5: continue
             d=(t.get("direction") or "").lower()
             out.append({"kind":"trade","ticker":tk,"sentiment":"bullish" if "buy" in d else "bearish",
-                "headline":f"ARK {t.get('direction','')} {tk} ({t.get('shares','?')}sh)",
-                "rationale":f"Cathie Wood / ARK {d} {t.get('date','')}","url":"https://ark-funds.com/funds/arkk/",
-                "conf":0.8,"uid":f"ark:{t.get('date')}:{tk}:{d}"})
+                "headline":f"ARK {t.get('direction','')} {tk} — {int(t.get('shares') or 0):,} sh, {float(t.get('etf_percent') or 0):.2f}% of ARKK ({latest})",
+                "rationale":f"Cathie Wood's ARKK disclosed a {d} of {t.get('company') or tk} on {latest}, {float(t.get('etf_percent') or 0):.2f}% of the fund.",
+                "url":"https://ark-funds.com/funds/arkk/",
+                "conf":0.75,"uid":f"ark:{t.get('date')}:{tk}:{d}"})
         return out
     except Exception as e: log.warning(f"ark: {e}"); return []
 
+_PTR_ROW = re.compile(r"\(([A-Z][A-Z.]{0,5})\)\s*\[(ST|OP)\]\s*(P|S(?:\s*\(partial\))?)\s+(\d{2}/\d{2}/\d{4})")
+
 def src_congress(name):
+    """Periodic Transaction Reports straight from the House Clerk.
+
+    The old feed (house-stock-watcher's S3 dump) now returns 403, so Pelosi had been
+    dark since some time before the 2026 migration with nothing in the logs. The
+    Clerk publishes a free yearly index of every filing; PTRs are FilingType "P", and
+    each links a PDF whose rows read "... (NVDA) [OP]  P 07/24/2026 ...". Only filings
+    from the last ORACLE_CONGRESS_DAYS are turned into items, so first run after an
+    outage does not replay a quarter of stale trades as fresh signals.
+    """
     if not _due("congress",3600): return []
     try:
-        ck=f"oracle:cong:{name}"
-        if _rc is not None:
-            c=_rc.get(ck)
-            if c: return json.loads(c)
-        r=httpx.get("https://house-stock-watcher-data.s3-us-west-2.amazonaws.com/data/all_transactions.json",headers=UA,timeout=25)
-        if r.status_code!=200: return []
-        rows=[t for t in r.json() if name.lower() in (t.get("representative","") or "").lower()]
-        rows.sort(key=lambda x:x.get("disclosure_date",""),reverse=True)
+        import io, zipfile, datetime as _dt
+        import xml.etree.ElementTree as ET
+        today=_dt.date.today()
+        r=httpx.get(f"https://disclosures-clerk.house.gov/public_disc/financial-pdfs/{today.year}FD.zip",headers=UA,timeout=30)
+        if r.status_code!=200: log.warning(f"congress index {r.status_code}"); return []
+        z=zipfile.ZipFile(io.BytesIO(r.content))
+        root=ET.fromstring(z.read(next(n for n in z.namelist() if n.endswith(".xml"))))
+        _mark_ok("congress")
+        cutoff=today-_dt.timedelta(days=int(os.getenv("ORACLE_CONGRESS_DAYS","14")))
         out=[]
-        for t in rows[:8]:
-            tk=(t.get("ticker") or "").upper().strip()
-            if not tk.isalpha() or len(tk)>5: continue
-            typ=(t.get("type") or "").lower()
-            out.append({"kind":"trade","ticker":tk,"sentiment":"bullish" if "purchase" in typ else "bearish",
-                "headline":f"{name} {typ} {tk}","rationale":f"Congress disclosure {t.get('transaction_date','')}",
-                "url":"https://housestockwatcher.com","conf":0.7,"uid":f"cong:{t.get('transaction_date')}:{tk}:{typ}"})
-        if _rc is not None:
-            try: _rc.setex(ck,3600,json.dumps(out))
-            except Exception: pass
+        for m in root:
+            row={c.tag:(c.text or "").strip() for c in m}
+            if row.get("Last","").lower()!=name.lower() or row.get("FilingType")!="P": continue
+            try: filed=_dt.datetime.strptime(row.get("FilingDate",""),"%m/%d/%Y").date()
+            except ValueError: continue
+            if filed<cutoff: continue
+            doc=row.get("DocID","")
+            pdf_url=f"https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/{today.year}/{doc}.pdf"
+            pr=httpx.get(pdf_url,headers=UA,timeout=30)
+            if pr.status_code!=200: continue
+            from pypdf import PdfReader
+            text="\n".join(pg.extract_text() or "" for pg in PdfReader(io.BytesIO(pr.content)).pages)
+            seen=set()
+            for tk,kind,typ,tdate in _PTR_ROW.findall(text):
+                tk=tk.replace(".","-"); side="buy" if typ.startswith("P") else "sell"
+                if (tk,side) in seen: continue
+                seen.add((tk,side))
+                what="call options" if kind=="OP" else "shares"
+                out.append({"kind":"trade","ticker":tk,"sentiment":"bullish" if side=="buy" else "bearish",
+                    "headline":f"{name} disclosed a {side} of {tk} {what} (traded {tdate}, filed {filed:%m/%d/%Y})",
+                    "rationale":f"Periodic Transaction Report {doc}: {name} {'bought' if side=='buy' else 'sold'} {tk} {what} on {tdate}.",
+                    "url":pdf_url,"conf":0.7,"uid":f"cong:{doc}:{tk}:{side}"})
         return out
     except Exception as e: log.warning(f"congress: {e}"); return []
 
@@ -207,6 +243,7 @@ def src_edgar(cik,name):
     try:
         r=httpx.get(f"https://data.sec.gov/submissions/CIK{str(cik).zfill(10)}.json",headers=UA,timeout=15)
         if r.status_code!=200: return []
+        _mark_ok(f"edgar:{cik}")
         rec=r.json().get("filings",{}).get("recent",{})
         forms,dates,accns=rec.get("form",[]),rec.get("filingDate",[]),rec.get("accessionNumber",[])
         import datetime as _dt
@@ -232,10 +269,47 @@ def _domain_ok(url):
     except Exception:
         return True
 
+PRIMARY_SOURCES={"truth","trumparchive","x","nitter","ark","congress","edgar","rss"}
+
+def _note_source(fk, st, n):
+    """Remember when each (figure, source) was last confirmed working.
+
+    The page used to badge every figure LIVE regardless of whether anything reached
+    us — X/nitter has been unreachable from this server for months, so 'LIVE' on Musk
+    meant 'enabled', not 'working'. figure_health() reads this instead.
+
+    "Working" is either: the source delivered items, or a primary source answered
+    successfully with nothing new (see _mark_ok). Counting deliveries alone badged
+    Pelosi and Buffett "news only" between filings while their primary feeds were
+    being polled fine — quiet is not broken."""
+    if _rc is None or not n: return
+    try: _rc.hset(f"oracle:health:{fk}", st, str(int(time.time())))
+    except Exception: pass
+
+_OK_NOW: set = set()
+
+def _mark_ok(key):
+    """Called by a primary source right after a successful fetch; _gather turns it
+    into a health mark for the figure that asked."""
+    _OK_NOW.add(key)
+
+def figure_health(fk):
+    fig=FIGURES.get(fk,{})
+    try: seen=_rc.hgetall(f"oracle:health:{fk}") if _rc is not None else {}
+    except Exception: seen={}
+    now=time.time(); fresh={st for st,ts in (seen or {}).items() if now-float(ts) < 48*3600}
+    primary=sorted(fresh & PRIMARY_SOURCES); news=sorted(fresh - PRIMARY_SOURCES)
+    status="live" if primary else "news_only" if news else "quiet"
+    configured=sorted({s.get("type") for s in fig.get("sources",[])})
+    return {"status":status,"active_sources":primary+news,"configured_sources":configured,
+            "last_seen":{st:int(float(ts)) for st,ts in (seen or {}).items()}}
+
 def _gather(fk,fig):
     items=[]
     for src in fig.get("sources",[]):
         st=src.get("type")
+        before=len(items)
+        _OK_NOW.clear()
         try:
             if st=="news":
                 for q in src.get("queries",[]):
@@ -256,6 +330,7 @@ def _gather(fk,fig):
             elif st=="congress": items+=src_congress(src.get("name",""))
             elif st=="edgar": items+=src_edgar(src.get("cik",""),fig["name"])
         except Exception as e: log.warning(f"gather {st} {fk}: {e}")
+        _note_source(fk, st, max(len(items)-before, 1 if _OK_NOW else 0))
     return [it for it in items if _domain_ok(it.get("url",""))]
 
 def _llm_analyze(fn,headline,body):
@@ -461,6 +536,7 @@ def src_truth_cnn():
     try:
         r = httpx.get("https://ix.cnn.io/data/truth-social/truth_archive.json", headers=UA, timeout=20)
         if r.status_code != 200: log.warning(f"trump cnn {r.status_code}"); return []
+        _mark_ok("trumparchive")
         out=[]
         for p in r.json()[:12]:
             txt = re.sub("<[^>]+>", "", p.get("content","") or "").strip()

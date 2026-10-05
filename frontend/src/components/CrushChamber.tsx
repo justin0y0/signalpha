@@ -14,19 +14,23 @@ import { useT } from '../i18n'
  *
  * So: a vessel that visibly strains as the date approaches, and either ruptures (the
  * move broke the band) or sighs (it did not). Pressure is days-to-earnings scaled by
- * the expected move; the release is decided by the model's own quiet score.
+ * the move options are pricing; the release is decided by the breakout model's tier.
+ *
+ * It used to rupture whenever P(FLAT) < 0.5. Calibrated three-class probabilities put
+ * P(FLAT) between 0.3 and 0.45 for nearly every report, so every stock on the site was
+ * "likely to break out" — the opposite of a signal.
  */
 
 type Props = {
   /** Days until the print. Negative once it has happened. */
   daysUntil: number
-  /** Model's expected absolute move, as a fraction. */
+  /** Options-implied (or, failing that, usual) absolute move, as a fraction. */
   expectedMove: number
-  /** P(FLAT) — decides whether the vessel sighs or ruptures. */
-  quiet: number
+  /** Breakout model tier — decides whether the vessel sighs or ruptures. */
+  moveTier: 'breakout' | 'elevated' | 'normal' | null | undefined
 }
 
-export function CrushChamber({ daysUntil, expectedMove, quiet }: Props) {
+export function CrushChamber({ daysUntil, expectedMove, moveTier }: Props) {
   const { t } = useT()
   const ref = useRef<HTMLCanvasElement | null>(null)
   const tier = useRenderTier()
@@ -55,7 +59,7 @@ export function CrushChamber({ daysUntil, expectedMove, quiet }: Props) {
     // expected move means more vol priced in, so the vessel starts more loaded.
     const proximity = Math.max(0, Math.min(1, 1 - Math.min(daysUntil, 30) / 30))
     const load = Math.max(0.12, Math.min(1, proximity * (0.5 + Math.min(expectedMove, 0.12) * 5)))
-    const ruptures = quiet < 0.5
+    const ruptures = moveTier === 'breakout' || moveTier === 'elevated'
 
     let t = 0
     function paint(time: number) {
@@ -146,7 +150,7 @@ export function CrushChamber({ daysUntil, expectedMove, quiet }: Props) {
       ro.disconnect()
       io.disconnect()
     }
-  }, [tier, daysUntil, expectedMove, quiet])
+  }, [tier, daysUntil, expectedMove, moveTier])
 
   return (
     <div className="chamber">
@@ -154,9 +158,8 @@ export function CrushChamber({ daysUntil, expectedMove, quiet }: Props) {
       <div className="chamber__meta">
         <span className="chamber__kicker">{t('crush.ivInto')}</span>
         <p className="chamber__copy">
-          Vol builds while the number is unknown and collapses the moment it is published,
-          whichever way the stock goes. The model reads this one as{' '}
-          <b>{quiet >= 0.6 ? 'likely to stay inside its band' : quiet >= 0.5 ? 'borderline' : 'likely to break out'}</b>.
+          {t('crush.copy')}{' '}
+          <b>{t(`crush.tier.${moveTier ?? 'none'}`)}</b>
         </p>
       </div>
     </div>

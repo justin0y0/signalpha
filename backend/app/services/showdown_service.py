@@ -25,17 +25,17 @@ class StrategyDef:
 
 STRATEGIES: list[StrategyDef] = [
     StrategyDef("QUANT", "The Quant", "🤖", "Trust the algorithm",
-        "XGBoost + LightGBM ensemble · 102 features",
+        "Sector ensembles · point-in-time features",
         "#38bdf8",
-        "Pure ML signal. Trade direction whenever the model's confidence exceeds 55%."),
+        "Pure ML signal. Trades the model's direction whenever its confidence is in the top fifth of its own history."),
     StrategyDef("DRIFTER", "The Drifter", "🚀", "Ride the surprise",
         "Bernard & Thomas (JFE 1989) · Post-Earnings Drift",
         "#4ade80",
         "Stocks continue drifting in the direction of the earnings surprise. Long positive gaps, short negative ones."),
     StrategyDef("SNIPER", "The Sniper", "🎯", "Wait for the fat pitch",
-        "Buffett-inspired selectivity",
+        "Breakout model × post-earnings drift",
         "#fbbf24",
-        "Only trade when the model is highly confident (\u226575%) AND the expected move is large (\u22654%). Quality over quantity."),
+        "Only trades reports the breakout model flagged in its top decile beforehand — and only once the gap has actually cleared that stock's usual move. Then it rides the gap for a week. Rarely fires."),
     StrategyDef("TREND_LORD", "The Trend Lord", "🐢", "The trend is your friend",
         "Richard Dennis & The Turtle Traders (1983)",
         "#fb923c",
@@ -43,13 +43,33 @@ STRATEGIES: list[StrategyDef] = [
     StrategyDef("COMPOUNDER", "The Compounder", "🌱", "Long-only, never shorts",
         "Buffett \u2014 Rule #1: Don\u2019t lose money",
         "#2dd4bf",
-        "Long-only quality. Never shorts, even when the algorithm screams DOWN."),
+        "Long-only. Takes the model's UP calls in the top fifth for confidence; never shorts."),
 ]
 
 
 # Strategy entry rules
+#
+# Thresholds are percentiles of the model's own history, set by run_showdown from
+# predictions dated before the showdown began (so no trade sees the future). They used
+# to be absolute — confidence >= 0.55 / 0.75 — and after calibration put the median
+# confidence near 0.37, the three ML bots made zero trades from launch onward.
+_CTX: dict[str, float] = {"conf_hi": 1.01, "move_hi": 1.01}
+
+
+def _set_thresholds(db: Session, before: date) -> None:
+    import numpy as np
+    hist = db.execute(
+        select(Prediction.confidence_score, Prediction.prob_move)
+        .where(Prediction.earnings_date < before, OUT_OF_SAMPLE_ONLY)
+    ).all()
+    conf = [c for c, _ in hist if c is not None]
+    move = [m for _, m in hist if m is not None]
+    _CTX["conf_hi"] = float(np.quantile(conf, 0.80)) if conf else 1.01
+    _CTX["move_hi"] = float(np.quantile(move, 0.90)) if move else 1.01
+
+
 def _quant(r) -> int:
-    if (r["confidence"] or 0) < 0.55: return 0
+    if (r["confidence"] or 0) < _CTX["conf_hi"]: return 0
     if r["prob_up"] > r["prob_down"] and r["prob_up"] > r["prob_flat"]: return 1
     if r["prob_down"] > r["prob_up"] and r["prob_down"] > r["prob_flat"]: return -1
     return 0
@@ -60,10 +80,14 @@ def _drifter(r) -> int:
     return 0
 
 def _sniper(r) -> int:
-    if (r["confidence"] or 0) < 0.75: return 0
-    if (r["expected_move"] or 0) < 0.04: return 0
-    if r["prob_up"] > r["prob_down"] and r["prob_up"] > r["prob_flat"]: return 1
-    if r["prob_down"] > r["prob_up"] and r["prob_down"] > r["prob_flat"]: return -1
+    # Built on the one call the model makes better than chance: whether a report moves
+    # the stock more than usual. Direction is near chance, so the side comes from the
+    # gap itself, observed after the print. The previous version stacked a top-decile
+    # breakout filter on a top-quintile direction filter and made zero trades.
+    if r.get("prob_move") is None or r["prob_move"] < _CTX["move_hi"]: return 0
+    band = r.get("flat_band") or 0.03
+    if r["gap_pct"] > band: return 1
+    if r["gap_pct"] < -band: return -1
     return 0
 
 def _trendlord(r) -> int:
@@ -72,7 +96,7 @@ def _trendlord(r) -> int:
     return 0
 
 def _compounder(r) -> int:
-    if (r["confidence"] or 0) < 0.55: return 0
+    if (r["confidence"] or 0) < _CTX["conf_hi"]: return 0
     if r["prob_up"] > r["prob_down"] and r["prob_up"] > r["prob_flat"]: return 1
     return 0
 
@@ -83,7 +107,7 @@ SIGNALS: dict[str, Callable] = {
 }
 
 # Pre-earnings strategies (use ML predictions only, can signal in advance)
-PRE_EARNINGS = {"QUANT", "SNIPER", "COMPOUNDER"}
+PRE_EARNINGS = {"QUANT", "COMPOUNDER"}
 
 # ─── Signal timing helpers ─────────────────────────────────────────
 def _signal_clock(earnings_date: date, report_time: str | None) -> tuple[str, str]:
@@ -111,7 +135,7 @@ def _exec_clock(earnings_date: date, report_time: str | None, days_offset: int) 
 
 
 # Post-earnings strategies (need gap_pct, signal at T+1)
-POST_EARNINGS = {"DRIFTER", "TREND_LORD"}
+POST_EARNINGS = {"DRIFTER", "TREND_LORD", "SNIPER"}
 
 
 def _realized_return(r: dict, code: str) -> float | None:
@@ -122,7 +146,7 @@ def _realized_return(r: dict, code: str) -> float | None:
 
     - PRE_EARNINGS strategies are positioned before the print, hold through the gap,
       and legitimately earn all of it -> t5_return is correct as-is.
-    - POST_EARNINGS strategies (DRIFTER, TREND_LORD) only produce a signal once the gap
+    - POST_EARNINGS strategies (DRIFTER, TREND_LORD, SNIPER) only produce a signal once the gap
       is observable and enter at the T+1 open. Crediting them t5_return pays them for the
       catalyst day they explicitly missed -- for a PEAD strategy that is the whole edge,
       counted twice.
@@ -152,7 +176,9 @@ def _to_dict(p, o):
         "prob_flat": p.direction_prob_flat or 0.0,
         "confidence": p.confidence_score or 0.0,
         "expected_move": p.expected_move_pct or 0.0,
+        "prob_move": p.prob_move,
         "gap_pct": (o.actual_t1_gap_pct if o else 0.0) or 0.0,
+        "flat_band": (o.flat_band if o else None),
         "t5_return": (o.actual_t5_return if o else None),
         "outcome_known": (o is not None and o.actual_t5_return is not None),
         "report_time": getattr(p, "report_time", None) or "AMC",
@@ -168,6 +194,7 @@ def run_showdown(
 ) -> dict:
     """Run the full showdown — both historical equity curve AND live state."""
     today = date.today()
+    _set_thresholds(db, start_date)
 
     # Pull events from launch to today (need both with and without outcomes)
     rows = db.execute(

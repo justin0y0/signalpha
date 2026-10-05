@@ -17,7 +17,7 @@ from data_pipeline.jobs import (
     collect_macro_data,
     collect_options_data,
     collect_post_earnings_results,
-    retrain_models,
+    retrain_full,
     run_predictions,
 )
 
@@ -45,7 +45,7 @@ scheduler.add_job(
 )
 scheduler.add_job(collect_macro_data, CronTrigger(hour=8, minute=0, timezone=TZ), id="collect_macro_data", max_instances=1, coalesce=True)
 scheduler.add_job(run_predictions, CronTrigger(hour=17, minute=0, timezone=TZ), id="run_predictions", max_instances=1, coalesce=True)
-scheduler.add_job(retrain_models, CronTrigger(month="*/1", day=1, hour=2, minute=0, timezone=TZ), id="retrain_models", max_instances=1, coalesce=True)
+scheduler.add_job(retrain_full, CronTrigger(month="*/1", day=1, hour=2, minute=0, timezone=TZ), id="retrain_models", max_instances=1, coalesce=True)
 scheduler.add_job(
     run_simulator_step,
     IntervalTrigger(minutes=30),

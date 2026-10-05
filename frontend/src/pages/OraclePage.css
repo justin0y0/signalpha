@@ -140,3 +140,7 @@
 .orc2-lb-ret{font-family:var(--font-mono); font-size:19px; font-weight:700; letter-spacing:-.5px}
 .orc2-lb-ret.pos{color:var(--up)} .orc2-lb-ret.neg{color:var(--down)}
 .orc2-stat b.pos{color:var(--up)} .orc2-stat b.neg{color:var(--down)}
+/* Badge reflects what actually delivered in the last 48h, not the on/off switch. */
+.orc2-fig-state.is-news_only{color:var(--accent-amber)}
+.orc2-fig-state.is-news_only .orc2-pulse{background:var(--accent-amber); box-shadow:none; animation:none}
+.orc2-fig-state.is-quiet .orc2-pulse{background:var(--text-muted); box-shadow:none; animation:none}

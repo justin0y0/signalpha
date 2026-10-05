@@ -20,12 +20,20 @@ class CalendarEvent(BaseModel):
     direction_prob_up: float | None = None
     direction_prob_flat: float | None = None
     direction_prob_down: float | None = None
-    # The stock's own FLAT band — 0.5x its historical earnings-reaction sigma, clamped
-    # to [2.5%, 10%]. This is what the model labels against, and it differs enormously
-    # by name (MMM 2.5%, TSLA 4.4%). The frontend was reverse-engineering an
-    # approximation from expected_move; now it gets the real number.
+    # The stock's own band — the median absolute reaction it produced on earlier
+    # reports. What counts as a move for this name (JNJ ~0.5%, META ~6.8%).
     flat_band: float | None = None
+    # P(this report moves the stock more than its own band), from the pooled breakout
+    # model, and where that probability sits against the out-of-sample deciles:
+    # "breakout" = top decile, "elevated" = top quintile, else "normal".
+    prob_move: float | None = None
+    move_tier: str | None = None
+    # The regression model's size estimate. Out of sample it ranks actual moves worse
+    # than the stock's own band does (Spearman 0.27 vs 0.37, MAE 24.7pp vs 2.1pp), so the
+    # UI shows flat_band and the options-implied move instead and keeps this for the API.
     expected_move_pct: float | None = None
+    # ATM straddle / spot from the latest options snapshot: what the market is pricing.
+    implied_move_pct: float | None = None
     has_prediction: bool = False
 
 

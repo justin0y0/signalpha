@@ -23,17 +23,20 @@ import {
   Trophy,
 } from 'lucide-react'
 import { useT } from '../i18n'
+import { useHeadline, pct } from '../hooks/useHeadline'
 
 // ============================================================
 //  Signalpha — About Page
 //  Bloomberg-terminal aesthetic, Apple-grade motion design.
 // ============================================================
 
-const STAT_ROW: { labelKey: string; value: string; tint: 'cyan' | 'purple' | 'emerald' | 'amber' }[] = [
-  { labelKey: 'about.stat.equities', value: '199', tint: 'cyan' },
-  { labelKey: 'about.stat.events', value: '6,322', tint: 'purple' },
-  { labelKey: 'about.stat.features', value: '102', tint: 'emerald' },
-  { labelKey: 'about.stat.folds', value: '9', tint: 'amber' },
+// Filled from /model/headline at render time — these four used to be typed in and
+// drifted (199 tickers, 102 features) while the data underneath changed.
+const STAT_ROW: { labelKey: string; key: 'tickers' | 'events' | 'features' | 'auc'; tint: 'cyan' | 'purple' | 'emerald' | 'amber' }[] = [
+  { labelKey: 'about.stat.equities', key: 'tickers', tint: 'cyan' },
+  { labelKey: 'about.stat.events', key: 'events', tint: 'purple' },
+  { labelKey: 'about.stat.features', key: 'features', tint: 'emerald' },
+  { labelKey: 'about.stat.auc', key: 'auc', tint: 'amber' },
 ]
 
 const PIPELINE = [
@@ -54,41 +57,19 @@ const TAB_GUIDE = [
   { name: 'Contact', to: '/contact', icon: CandlestickChart, tag: 'Reach out', k: 'about.tab.contact' , nav: 'nav.contact', tagK: 'about.tag.contact' },
 ] as const
 
+// What the models actually train on: data dated strictly before the report.
 const FEATURE_GROUPS = [
-  {
-    k: 'about.fg.price',
-    items: ['RSI', 'MACD', 'Bollinger position', 'Dist 52w high/low', 'Pre-earn momentum 5/10/20d'],
-  },
-  {
-    k: 'about.fg.macro',
-    items: ['VIX / VIX9D', 'Yield curve slope', '10y yield', 'CPI / PCE YoY', 'HYG-LQD spread', 'Fed funds rate'],
-  },
-  {
-    k: 'about.fg.options',
-    items: ['IV rank', 'IV 52w high', 'ATM straddle / spot', 'Put/call ratio', 'Put/call skew', 'Expected move %'],
-  },
-  {
-    k: 'about.fg.funda',
-    items: [
-      'EPS surprise %',
-      'Forward EPS avg / low / high',
-      'Forward revenue growth',
-      'Analyst target upside',
-      'Analyst target dispersion',
-      'Recommendation mean',
-      'Profit margins',
-      'Debt / equity',
-      'Return on equity',
-    ],
-  },
-  {
-    k: 'about.fg.pos',
-    items: ['Short ratio', 'Short % float', 'Institutional ownership', 'Days to cover'],
-  },
-  {
-    k: 'about.fg.sent',
-    items: ['News headline sentiment', 'Positive news ratio', '10-Q MD&A sentiment', 'Forward-looking sentiment', 'Risk language intensity'],
-  },
+  { k: 'about.fg.price', used: true, items: ['Returns 1/5/10/20/60d', 'RSI', 'MACD', 'Bollinger position', 'Dist 52w high/low', 'Volume anomaly'] },
+  { k: 'about.fg.macro', used: true, items: ['VIX / VIX9D / VIX3M', 'Yield curve slope', '2y / 10y yield', 'CPI / PCE YoY', 'HYG-LQD spread', 'SPY / QQQ returns'] },
+  { k: 'about.fg.sector', used: true, items: ['Sector ETF 20d return', 'Relative strength vs SPY', 'Market regime'] },
+  { k: 'about.fg.band', used: true, items: ['Own median reaction', 'Momentum vs own band'] },
+  // Collected and displayed, but kept out of training: these sources return today's
+  // value whenever they are called, so for any backfilled event they describe a later
+  // moment — sometimes including the report itself. See models/features.py.
+  { k: 'about.fg.options', used: false, items: ['IV rank', 'ATM straddle / spot', 'Put/call ratio & skew'] },
+  { k: 'about.fg.funda', used: false, items: ['EPS surprise', 'Forward estimates', 'Analyst targets', 'Margins / ROE / leverage'] },
+  { k: 'about.fg.pos', used: false, items: ['Short interest', 'Institutional ownership'] },
+  { k: 'about.fg.sent', used: false, items: ['FinBERT news sentiment', '10-Q MD&A tone'] },
 ] as const
 
 // Author-year citations stay in the original regardless of locale — translating
@@ -246,6 +227,24 @@ function Counter({ value, decimals = 1 }: { value: number; decimals?: number }) 
 
 export function AboutPage() {
   const { t } = useT()
+  const h = useHeadline()
+  const statValue = (key: (typeof STAT_ROW)[number]['key']) => {
+    if (!h) return '—'
+    if (key === 'tickers') return h.universe.tickers.toLocaleString()
+    if (key === 'events') return h.universe.events.toLocaleString()
+    if (key === 'features') return String(h.universe.features ?? '—')
+    return h.breakout ? h.breakout.auc.toFixed(3) : '—'
+  }
+  const live = {
+    acc: pct(h?.three_class.accuracy, 1),
+    base: pct(h?.three_class.flat_baseline, 1),
+    n: h ? h.three_class.n.toLocaleString() : '—',
+    top: pct(h?.breakout?.top_decile.move_rate),
+    mbase: pct(h?.breakout?.base_rate),
+    mn: h?.breakout ? h.breakout.n.toLocaleString() : '—',
+    auc: h?.breakout ? h.breakout.auc.toFixed(3) : '—',
+    features: String(h?.universe.features ?? '—'),
+  }
   const sectionVariants = useMemo(
     () => ({
       hidden: { opacity: 0, y: 18 },
@@ -274,11 +273,11 @@ export function AboutPage() {
             <br />
             <span className="about-hero__title-grad">{t('about.hero.line2')}</span>
           </h1>
-          <p className="about-hero__lede">{t('about.hero.lede')}</p>
+          <p className="about-hero__lede">{t('about.hero.lede', live)}</p>
           <div className="about-hero__stats">
             {STAT_ROW.map((s) => (
               <div key={s.labelKey} className={`about-stat about-stat--${s.tint}`}>
-                <div className="about-stat__value">{s.value}</div>
+                <div className="about-stat__value">{statValue(s.key)}</div>
                 <div className="about-stat__label">{t(s.labelKey as never)}</div>
               </div>
             ))}
@@ -326,12 +325,12 @@ export function AboutPage() {
                   <div className="about-tab-card__tag">{t(tab.tagK as never)}</div>
                 </div>
                 <div className="about-tab-card__name">{t(tab.nav as never)}</div>
-                <p className="about-tab-card__blurb">{t(`${tab.k}.blurb` as never)}</p>
+                <p className="about-tab-card__blurb">{t(`${tab.k}.blurb` as never, live)}</p>
                 <ul className="about-tab-card__actions">
                   {[0, 1, 2].map((ai) => (
                     <li key={ai}>
                       <span className="about-tab-card__bullet" />
-                      {t(`${tab.k}.a${ai}` as never)}
+                      {t(`${tab.k}.a${ai}` as never, live)}
                     </li>
                   ))}
                 </ul>
@@ -413,7 +412,7 @@ export function AboutPage() {
             <GitBranch size={12} />
             <span>{t('about.tax.kicker')}</span>
           </div>
-          <h2 className="about-section__title">{t('about.tax.title')}</h2>
+          <h2 className="about-section__title">{t('about.tax.title', live)}</h2>
           <p className="about-section__sub">{t('about.tax.sub')}</p>
         </div>
 
@@ -421,13 +420,18 @@ export function AboutPage() {
           {FEATURE_GROUPS.map((g, i) => (
             <motion.div
               key={g.k}
-              className="about-feature-group"
+              className={`about-feature-group${g.used ? '' : ' about-feature-group--excluded'}`}
               initial={{ opacity: 0, y: 14 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.4, delay: i * 0.06 }}
             >
-              <div className="about-feature-group__title">{t(g.k as never)}</div>
+              <div className="about-feature-group__title">
+                {t(g.k as never)}
+                <span className={`about-feature-group__tag${g.used ? '' : ' is-off'}`}>
+                  {g.used ? t('about.fg.inUse') : t('about.fg.excluded')}
+                </span>
+              </div>
               <div className="about-feature-group__list">
                 {g.items.map((it) => (
                   <span key={it} className="about-feature-chip">
@@ -454,11 +458,16 @@ export function AboutPage() {
             <span>{t('about.lit.kicker')}</span>
           </div>
           <h2 className="about-section__title">{t('about.finding.title')}</h2>
-          <p className="about-section__sub">{t('about.finding.body')}</p>
+          <p className="about-section__sub">{t('about.finding.body', live)}</p>
         </div>
 
         <div className="benchmark-stack">
-          {BENCHMARKS.map((b, i) => (
+          {BENCHMARKS.map((b0, i) => {
+            // This project's bar and the always-FLAT bar come from the live evaluation.
+            const liveValue = b0.k === 'about.bm.self' ? h?.three_class.accuracy
+              : b0.k === 'about.bm.flat' ? h?.three_class.flat_baseline : null
+            const b = liveValue != null ? { ...b0, value: +(liveValue * 100).toFixed(1) } : b0
+            return (
             <motion.div
               key={b.k}
               className={`benchmark-row benchmark-row--${b.tint}`}
@@ -491,12 +500,12 @@ export function AboutPage() {
                       {CITATIONS[b.k]}
                     </a>
                   ) : (
-                    t(`${b.k}.s` as never)
+                    t(`${b.k}.s` as never, live)
                   )}
                 </span>
               </div>
             </motion.div>
-          ))}
+          )})}
         </div>
 
         <div className="about-callout">

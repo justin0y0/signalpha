@@ -31,7 +31,9 @@ export function StrategyPage() {
   { key: 'paper', label: t('strategy.tab.paper'), icon: <Wallet size={13} /> },
   ]
   const [params, setParams] = useSearchParams()
-  const requested = params.get('view') ?? ''
+  // 'simulator' was this tab's name before it became 'paper'; old links still use it.
+  const raw = params.get('view') ?? ''
+  const requested = raw === 'simulator' ? 'paper' : raw
   const [view, setView] = useState(['backtest','showdown','paper'].includes(requested) ? requested : 'backtest')
 
   const change = (key: string) => {
@@ -41,8 +43,9 @@ export function StrategyPage() {
     setParams(next, { replace: true })
   }
 
-  // The band timeline sits above every strategy view: whatever harness you are
-  // looking at, it is scoring against these per-stock bands.
+  // The band timeline sits above the backtest only. It used to head every view, which
+  // pushed the Showdown leaderboard and the paper account below the fold on a laptop
+  // screen — the explainer outranked the thing each tab is for.
   const [events, setEvents] = useState<CalendarEvent[]>([])
   useEffect(() => {
     const q = new URLSearchParams({ days_forward: '90', days_back: '0' })
@@ -52,8 +55,7 @@ export function StrategyPage() {
   return (
     <div>
       <SubNav items={ITEMS} active={view} onChange={change} />
-      <BandTimeline events={events} />
-      {view === 'backtest' && <BacktestingPage />}
+      {view === 'backtest' && <><BandTimeline events={events} /><BacktestingPage /></>}
       {view === 'showdown' && <ShowdownPage />}
       {view === 'paper' && <SimulatorPage />}
     </div>
