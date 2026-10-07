@@ -1,5 +1,5 @@
-fastapi==0.111.0
-uvicorn[standard]==0.30.1
+fastapi>=0.115.14,<0.116
+uvicorn[standard]>=0.39,<0.40
 pydantic-settings==2.11.0
 sqlalchemy>=2.0,<3.0
 psycopg[binary]>=3.2,<4.0
@@ -27,3 +27,5 @@ g4f
 ib_async
 moomoo-api
 pypdf>=4.2,<6
+anthropic
+mcp>=2.3,<3

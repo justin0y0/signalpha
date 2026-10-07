@@ -19,6 +19,8 @@ from data_pipeline.jobs import (
     collect_post_earnings_results,
     retrain_full,
     run_predictions,
+    seal_arena_forecasts,
+    resolve_arena_forecasts,
 )
 
 settings = get_settings()
@@ -67,6 +69,14 @@ def _shutdown(*_: object) -> None:
     scheduler.shutdown(wait=False)
     sys.exit(0)
 
+
+# Earnings Arena. Sealing every two hours (at :20, after the 17:00 prediction run has a
+# chance to land) catches new calendar entries well inside the 3-day window; resolution
+# runs 25 minutes after each hourly outcome collection.
+scheduler.add_job(seal_arena_forecasts, CronTrigger(minute=20, hour="*/2", timezone=TZ),
+                  id="seal_arena_forecasts", max_instances=1, coalesce=True)
+scheduler.add_job(resolve_arena_forecasts, CronTrigger(minute=25, timezone=TZ),
+                  id="resolve_arena_forecasts", max_instances=1, coalesce=True)
 
 scheduler.add_job(
     run_pulse_scan,

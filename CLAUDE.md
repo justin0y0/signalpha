@@ -295,6 +295,23 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 - FMP 免费档：国会交易只给最新 25 条且按名查询 402；10-05 下午配额已被打满（429）。别再拿它做轮询源。
 - Simulator 持仓卡仍显示回归 `expected_move_pct`。
 
+### 6e. 2026-10-06：Arena / Straddle Check / Pro / MCP / Paper Account 改版
+
+方向文件：`docs/STRATEGY.md`（定位、护城河、定价、路线图、kill criteria）。PIT 重训 10-05 22:37 UTC 完成并自动上线：3 分类 39.37% vs 47.3%；breakout 数字不变（确定性）。
+
+| 模块 | 文件 | 要点 | 验证 |
+|---|---|---|---|
+| **Earnings Arena** `/arena` | `services/arena_service.py`、`routes/arena.py`、`pages/ArenaPage.tsx` | 每份财报前 3 天内，5 个预测者（SignAlpha ML / 期权市场 / 基准率 / GPT-OSS 120B / Qwen3.8 27B，via Groq）回答同一问题 P(\|T+1\| > band)。payload 规范化 JSON → SHA-256 → 每批 manifest 的哈希提交 OpenTimestamps（alice+bob 两个日历）→ 比特币。T+1 后 Brier 打分，和基准率做配对 bootstrap 90% 区间；<20 份一律 warming_up。Claude 槽位已写好，设 `ANTHROPIC_API_KEY` 自动加入（`claude-opus-5-5`，structured output + `fallbacks: "default"`）。scheduler：每 2 小时 :20 封存、每小时 :25 判分 | 首批 PEP 5 条；外部下载 manifest/.ots 用官方 `ots verify` 通过（pending→Bitcoin）；每条 payload 哈希=digest |
+| **Straddle Check** | `routes/moves.py`、`components/StraddleCheck.tsx` | 单股页：历史每次财报反应的 beeswarm，平时 band / 期权定价两条线，可拖阈值；均值÷定价比率 | JNJ：平时 ±0.5%、均值 ±0.7%、定价 ±1.7%、25 次里只有 2 次超过 |
+| **Pro + waitlist** `/pro` | `pages/PricingPage.tsx`、`routes/waitlist.py`、表 `pro_waitlist` | 没有支付——如实说「还没开卖」，按创始价留邮箱 + 勾选愿付费功能 = WTP 数据。每个功能标 live / beta / coming | 非法邮箱 422 |
+| **MCP server** `/api/mcp` | `backend/app/mcp_server.py`（mcp 2.x 的 `MCPServer`，**不是** FastMCP） | 5 个只读 tool：upcoming_earnings / earnings_risk / portfolio_earnings_risk / model_track_record / arena_standings。stateless + JSON。**必须显式 allowed_hosts**，SDK 默认只放 localhost → 421。用精确 Route 挂载而非 Mount（Mount 会吞 trailing-slash 重定向） | 公网 initialize / tools/list / tools/call 均 200；伪造 Host 421 |
+| **Paper Account 改规则** | `services/simulation_service.py` | 旧规则（方向置信≥55% 且领先 FLAT 15pp）校准后永不触发。新：大动风险前 20% + 开盘跳空超过 band → 顺跳空方向，反应日按实时价进场，持有约 5 个交易日，5% 仓位不加杠杆。report_time 未知的取两个候选日中跳空大的那个，且要等两天都开盘 | 已重置为 $1M；旧数据备份 `~/backups/sim_pre_breakout_20261006.sql` |
+| **安全** | `routes/simulator.py` | `/simulator/reset` 原来无鉴权，任何人一个 POST 就清空公开战绩 → 需 `X-Admin-Token`；`/run-step` 全局 55 秒节流 | 无 token 403 |
+| 依赖 | `backend/requirements.txt` | mcp 2.x 需要 uvicorn≥0.31.1 → fastapi 0.111→0.115.14、starlette 0.46、uvicorn 0.39；新增 anthropic、mcp、pypdf | 全站 verify_deploy 通过 |
+| 导航 | `Layout.tsx` | 加 Arena、Pro；Contact 移出导航（About 和 Pro 页有入口） | — |
+
+**待办**：Arena 用户判断目前只存 localStorage（不能做跨设备排行榜）→ S2 加登录后服务端存储；`ots upgrade` 可在 Bitcoin 确认后把完整证明存回库里；期权快照只覆盖 51/77 个事件。
+
 ### 6b. 仍未解决
 
 0. **✅ 已解决 — 标签泄漏（walk-forward 重生成完成并上线）**

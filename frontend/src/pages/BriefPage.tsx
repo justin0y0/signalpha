@@ -5,6 +5,7 @@ import { StatCard } from '../components/ui/StatCard'
 import { OutcomeBar } from '../components/ui/OutcomeBar'
 import { SplitFlap } from '../components/ui/SplitFlap'
 import { MoveRisk } from '../components/ui/MoveRisk'
+import { ArenaTeaser } from '../components/ArenaTeaser'
 import { formatDateShort } from '../utils/date'
 import { pct } from '../hooks/useHeadline'
 import { useT } from '../i18n'
@@ -127,6 +128,8 @@ export function BriefPage() {
           {data.personalised ? ` ${t('brief.personalised', { n: data.watchlist_size })}` : t('brief.signIn')}
         </p>
       </motion.div>
+
+      <ArenaTeaser />
 
       <div className="grid grid-4">
         <StatCard label={t('brief.stat.ahead')} icon={<Clock size={12} />} value={data.counts.total}

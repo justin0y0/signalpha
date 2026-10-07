@@ -21,6 +21,7 @@ import {
   TrendingUp,
   ClipboardList,
   Trophy,
+  Swords,
 } from 'lucide-react'
 import { useT } from '../i18n'
 import { useHeadline, pct } from '../hooks/useHeadline'
@@ -50,10 +51,12 @@ const PIPELINE = [
 const TAB_GUIDE = [
   { name: 'Calendar', to: '/', icon: Calendar, tag: 'Live', k: 'about.tab.cal' , nav: 'nav.calendar', tagK: 'about.tag.cal' },
   { name: 'Brief', to: '/brief', icon: ClipboardList, tag: 'Daily', k: 'about.tab.brief' , nav: 'nav.brief', tagK: 'about.tag.brief' },
+  { name: 'Arena', to: '/arena', icon: Swords, tag: 'Sealed', k: 'about.tab.arena' , nav: 'nav.arena', tagK: 'about.tag.arena' },
   { name: 'Model', to: '/model', icon: BarChart3, tag: 'Diagnostic', k: 'about.tab.model' , nav: 'nav.model', tagK: 'about.tag.model' },
   { name: 'Strategy', to: '/strategy', icon: ChartLine, tag: 'Research', k: 'about.tab.strategy' , nav: 'nav.strategy', tagK: 'about.tag.strategy' },
   { name: 'Pulse', to: '/pulse', icon: Activity, tag: 'Real-time', k: 'about.tab.pulse' , nav: 'nav.pulse', tagK: 'about.tag.pulse' },
   { name: 'Oracle', to: '/oracle', icon: Trophy, tag: 'Signals', k: 'about.tab.oracle' , nav: 'nav.oracle', tagK: 'about.tag.oracle' },
+  { name: 'Pro', to: '/pro', icon: Sparkles, tag: 'Founding', k: 'about.tab.pro' , nav: 'nav.pro', tagK: 'about.tag.pro' },
   { name: 'Contact', to: '/contact', icon: CandlestickChart, tag: 'Reach out', k: 'about.tab.contact' , nav: 'nav.contact', tagK: 'about.tag.contact' },
 ] as const
 

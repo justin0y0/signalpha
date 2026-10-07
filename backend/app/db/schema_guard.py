@@ -120,6 +120,25 @@ DDL_STATEMENTS: list[str] = [
 ]
 
 
+# Earnings Arena (services/arena_service.py) and the Pro waitlist.
+from backend.app.services.arena_service import DDL as _ARENA_DDL  # noqa: E402
+
+DDL_STATEMENTS += _ARENA_DDL
+DDL_STATEMENTS += [
+    """
+    CREATE TABLE IF NOT EXISTS pro_waitlist (
+        id          BIGSERIAL PRIMARY KEY,
+        email       TEXT NOT NULL,
+        plan        TEXT,
+        wants       TEXT,
+        source      TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (email)
+    )
+    """,
+]
+
+
 def ensure_schema() -> None:
     """Apply every statement, isolating failures so one bad statement can't block the rest."""
     applied = failed = 0

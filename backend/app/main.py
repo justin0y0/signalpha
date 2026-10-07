@@ -26,6 +26,9 @@ from backend.app.api.routes.quote import router as quote_router
 from backend.app.api.routes.auth import router as auth_router
 from backend.app.api.routes.brief import router as brief_router
 from backend.app.api.routes.headline import router as headline_router
+from backend.app.api.routes.arena import router as arena_router
+from backend.app.api.routes.waitlist import router as waitlist_router
+from backend.app.api.routes.moves import router as moves_router
 from backend.app.core.config import get_settings
 from backend.app.core.logging import configure_logging
 from backend.app.db.base import Base
@@ -55,7 +58,11 @@ async def lifespan(_: FastAPI):
         warm_scan_cache()
     except Exception:
         pass
-    yield
+    # The MCP transport keeps a session manager that must be running while requests are
+    # served; as a route inside this app it does not get its own lifespan.
+    from backend.app.mcp_server import mcp as _mcp
+    async with _mcp.session_manager.run():
+        yield
 
 
 import math as _math
@@ -85,6 +92,18 @@ app.add_middleware(
 
 app.include_router(health_router, prefix=settings.api_v1_prefix)
 app.include_router(headline_router, prefix=settings.api_v1_prefix)
+app.include_router(arena_router, prefix=settings.api_v1_prefix)
+app.include_router(waitlist_router, prefix=settings.api_v1_prefix)
+app.include_router(moves_router, prefix=settings.api_v1_prefix)
+
+# SignAlpha as an MCP server for AI agents (backend/app/mcp_server.py). Registered as an
+# exact route rather than a Mount: a Mount on /api would swallow FastAPI's trailing-slash
+# redirects, and one on /api/mcp answers the bare path with a 307 that some clients drop.
+from starlette.routing import Route as _Route  # noqa: E402
+from backend.app.mcp_server import mcp_app as _mcp_app  # noqa: E402
+
+_mcp_endpoint = next(r for r in _mcp_app.routes if getattr(r, "path", None) == "/mcp").endpoint
+app.router.routes.append(_Route("/api/mcp", endpoint=_mcp_endpoint, methods=["GET", "POST", "DELETE"]))
 app.include_router(calendar_router, prefix=settings.api_v1_prefix)
 app.include_router(features_router, prefix=settings.api_v1_prefix)
 app.include_router(predict_router, prefix=settings.api_v1_prefix)

@@ -104,7 +104,9 @@ type SimPending = {
   earnings_date: string
   report_time: string | null
   confidence: number
-  direction: 'UP' | 'DOWN'
+  direction: 'UP' | 'DOWN' | null
+  tier?: 'breakout' | 'elevated' | 'normal' | null
+  band?: number | null
   expected_move_pct: number | null
   already_held: boolean
   tradeable: boolean
@@ -182,7 +184,9 @@ async function runStep() {
 }
 
 async function resetSim() {
-  const r = await fetch(`${API_BASE}/simulator/reset`, { method: 'POST' })
+  let tok = ''
+  try { tok = localStorage.getItem('sa_admin') || '' } catch { /* storage blocked */ }
+  const r = await fetch(`${API_BASE}/simulator/reset`, { method: 'POST', headers: { 'X-Admin-Token': tok } })
   if (!r.ok) throw new Error(await r.text())
 }
 
@@ -571,6 +575,8 @@ export function SimulatorPage() {
   const { state, positions, trades, equity_curve, pending, config, realised } = data
   const initial = config.initial_capital
   const profit = state.total_equity - initial
+  // Reset wipes the public record, so only an admin (token saved via /admin) sees it.
+  const isAdmin = (() => { try { return !!localStorage.getItem('sa_admin') } catch { return false } })()
   const inProfit = profit >= 0
 
   return (
@@ -582,6 +588,9 @@ export function SimulatorPage() {
 
       {/* ============ Bloomberg ticker tape ============ */}
       <TickerTape positions={positions} />
+
+      {/* What this account trades — stated up front, because it changed on 2026-10-06. */}
+      <p className="sim-strategy-line">{t('sim.strategyLine')}</p>
 
       {/* ============ HERO ============ */}
       <section className="sim-hero">
@@ -661,7 +670,7 @@ export function SimulatorPage() {
               <RefreshCw size={14} className={refreshing ? 'spin' : ''} />
               <span>{refreshing ? 'Refreshing…' : 'Refresh'}</span>
             </button>
-            {!confirmReset ? (
+            {!isAdmin ? null : !confirmReset ? (
               <button className="sim-btn sim-btn--danger" onClick={() => setConfirmReset(true)}>
                 <RotateCcw size={14} /> Reset to ${(initial / 1_000_000).toFixed(0)}M
               </button>
@@ -816,7 +825,7 @@ export function SimulatorPage() {
                     <th className="r">{t('col.mark')}</th>
                     <th className="r">{t('col.notional')}</th>
                     <th className="r">{t('col.lev')}</th>
-                    <th className="r">{t('col.conf')}</th>
+                    <th className="r">{t('sim.col.pmove')}</th>
                     <th className="r">{t('sim.unrealized')}</th>
                     <th className="r">{t('col.exit')}</th>
                   </tr>
@@ -937,7 +946,11 @@ export function SimulatorPage() {
                 >
                   <div className="sim-pending-card__head">
                     <span className="sim-pending-card__sym">{p.ticker}</span>
-                    <SideBadge side={p.direction === 'UP' ? 'LONG' : 'SHORT'} size="sm" />
+                    {p.direction ? (
+                      <SideBadge side={p.direction === 'UP' ? 'LONG' : 'SHORT'} size="sm" />
+                    ) : (
+                      <span className={`tier-chip tier-chip--${p.tier ?? 'normal'}`}>{t('sim.watch')}</span>
+                    )}
                   </div>
                   {p.company_name && <div className="sim-pending-card__name">{p.company_name}</div>}
                   <div className="sim-pending-card__meta">
@@ -949,12 +962,12 @@ export function SimulatorPage() {
                   </div>
                   <div className="sim-pending-card__stats">
                     <div className="sim-pending-card__stat">
-                      <span className="lbl">{t('col.confidence')}</span>
-                      <span className="val mono">{(p.confidence * 100).toFixed(1)}%</span>
+                      <span className="lbl">{t('cal.col.moveRisk')}</span>
+                      <span className="val mono">{(p.confidence * 100).toFixed(0)}%</span>
                     </div>
                     <div className="sim-pending-card__stat">
-                      <span className="lbl">{t('col.expMove')}</span>
-                      <span className="val mono">±{((p.expected_move_pct ?? 0) * 100).toFixed(1)}%</span>
+                      <span className="lbl">{t('sim.trigger')}</span>
+                      <span className="val mono">{p.band != null ? `gap > ±${(p.band * 100).toFixed(1)}%` : '—'}</span>
                     </div>
                   </div>
                   <div className="sim-pending-card__foot">
@@ -964,7 +977,7 @@ export function SimulatorPage() {
                       </span>
                     ) : p.tradeable ? (
                       <span className="sim-pending-card__pill sim-pending-card__pill--ready">
-                        <Circle size={6} fill="currentColor" className="sim-pulse-icon" /> entry-window open
+                        <Circle size={6} fill="currentColor" className="sim-pulse-icon" /> {t('sim.watching')}
                       </span>
                     ) : (
                       <span className="sim-pending-card__pill sim-pending-card__pill--skip">{skipLabel}</span>
@@ -986,7 +999,7 @@ export function SimulatorPage() {
           <div className="sim-card__title">{t('sim.hardcoded')}</div>
         </div>
         <div className="sim-meta-grid">
-          <MetaCell label="Confidence threshold" value={`≥ ${(config.confidence_threshold * 100).toFixed(0)}%`} />
+          <MetaCell label={t('sim.rule.label')} value={t('sim.rule.value')} />
           <MetaCell label="Base position" value={`${(config.base_position_pct * 100).toFixed(1)}% of equity`} />
           <MetaCell label="Max position" value={`${(config.max_position_pct * 100).toFixed(1)}% of equity`} />
           <MetaCell label="Leverage cap" value={`${config.portfolio_leverage_cap}× portfolio`} />
@@ -994,7 +1007,7 @@ export function SimulatorPage() {
           <MetaCell label="Take profit" value={`+${(config.take_profit_pct * 100).toFixed(1)}%`} />
           <MetaCell label="Holding period" value={`T+${config.holding_days} days`} />
           <MetaCell label="Slippage" value={`${config.slippage_bps} bps each side`} />
-          <MetaCell label="Entry window" value="T-1 day or T-0 AMC only" />
+          <MetaCell label={t('sim.entry.label')} value={t('sim.entry.value')} />
           <MetaCell label="Mark prices" value="24h yfinance · 30-min freshness gate" />
           <MetaCell label="Auto-step" value={autoStep ? 'every 60s' : 'paused'} />
           <MetaCell label="Data poll" value="every 15s" />

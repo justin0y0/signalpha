@@ -12,6 +12,7 @@ import { MoveRisk } from '../components/ui/MoveRisk'
 import { useHeadline, pct } from '../hooks/useHeadline'
 import { BlastField } from '../components/BlastField'
 import { RiskAudio } from '../components/RiskAudio'
+import { ArenaTeaser } from '../components/ArenaTeaser'
 import { useT } from '../i18n'
 import { formatDate, daysUntil } from '../utils/date'
 
@@ -83,6 +84,8 @@ export function EarningsCalendarPage() {
 
       {/* Calm = low breakout risk: the chord detunes as the week's breakout risk rises. */}
       <RiskAudio quietScores={events.filter((e) => daysUntil(e.earnings_date) >= 0 && e.prob_move != null).map((e) => 1 - (e.prob_move as number))} />
+
+      <ArenaTeaser />
 
       <div className="grid grid-4">
         <StatCard

@@ -72,18 +72,24 @@ def resolve(preferred_env: str | None = None, force: bool = False) -> str | None
 
 
 def chat(messages: list[dict], *, preferred_env: str | None = None, json_mode: bool = False,
-         temperature: float = 0.2, max_tokens: int = 600, timeout: float = 30) -> str | None:
-    """One completion with automatic recovery from a retired model. Returns text or None."""
+         temperature: float = 0.2, max_tokens: int = 600, timeout: float = 30,
+         model: str | None = None, reasoning_effort: str = "low") -> str | None:
+    """One completion with automatic recovery from a retired model. Returns text or None.
+
+    `model` pins an exact model and disables the fallback: the Earnings Arena scores
+    named forecasters, and quietly answering as a different model would corrupt their
+    record. A pinned model that Groq has retired returns None instead.
+    """
     if not _key():
         return None
     for attempt in (0, 1):
-        model = resolve(preferred_env, force=attempt == 1)
-        if not model:
+        chosen = model or resolve(preferred_env, force=attempt == 1)
+        if not chosen:
             return None
-        body: dict[str, Any] = {"model": model, "messages": messages, "temperature": temperature,
+        body: dict[str, Any] = {"model": chosen, "messages": messages, "temperature": temperature,
                                 "max_tokens": max_tokens}
-        if model.startswith("openai/gpt-oss"):
-            body["reasoning_effort"] = "low"
+        if chosen.startswith("openai/gpt-oss"):
+            body["reasoning_effort"] = reasoning_effort
             body["max_tokens"] = max(max_tokens, 1200)
         if json_mode:
             body["response_format"] = {"type": "json_object"}
@@ -91,13 +97,13 @@ def chat(messages: list[dict], *, preferred_env: str | None = None, json_mode: b
             r = httpx.post(f"{API}/chat/completions", headers={"Authorization": f"Bearer {_key()}"},
                            json=body, timeout=timeout)
         except Exception as exc:  # noqa: BLE001
-            log.warning("groq %s: %s", model, exc)
+            log.warning("groq %s: %s", chosen, exc)
             return None
-        if r.status_code == 404 and attempt == 0:
-            log.warning("groq model %s is gone (404) — re-resolving", model)
+        if r.status_code == 404 and attempt == 0 and not model:
+            log.warning("groq model %s is gone (404) — re-resolving", chosen)
             continue
         if r.status_code != 200:
-            log.warning("groq %s HTTP %s: %s", model, r.status_code, r.text[:200])
+            log.warning("groq %s HTTP %s: %s", chosen, r.status_code, r.text[:200])
             return None
         return r.json()["choices"][0]["message"]["content"]
     return None

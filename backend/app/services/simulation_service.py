@@ -291,6 +291,53 @@ def _path_extremes(ticker: str, since: date, until: date | None = None) -> tuple
         return None
 
 
+def _reaction_gap(ticker: str, earnings_date: date, report_time: str | None) -> tuple[date, float] | None:
+    """(reaction session, opening gap vs the last pre-report close).
+
+    BMO reports react the same morning, AMC the next one. Many calendar rows carry no
+    report time; for those both candidate sessions must have opened, and the bigger gap
+    is taken as the reaction — deciding on the first session alone would treat an
+    after-close report's quiet pre-report open as its reaction.
+    """
+    try:
+        import yfinance as yf
+        hist = yf.Ticker(ticker).history(start=(earnings_date - timedelta(days=10)).isoformat(),
+                                         end=(date.today() + timedelta(days=1)).isoformat(), auto_adjust=False)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("reaction bars failed for %s: %s", ticker, exc)
+        return None
+    if hist is None or hist.empty:
+        return None
+    days = [d.date() for d in hist.index]
+    opens, closes = hist["Open"].tolist(), hist["Close"].tolist()
+
+    def gap_at(i_post: int) -> float | None:
+        if i_post <= 0 or not closes[i_post - 1]:
+            return None
+        return float(opens[i_post]) / float(closes[i_post - 1]) - 1.0
+
+    same = next((i for i, d in enumerate(days) if d >= earnings_date), None)
+    rt = (report_time or "").upper()
+    if same is None:
+        return None
+    if rt == "BMO":
+        g = gap_at(same) if days[same] == earnings_date else None
+        return (days[same], g) if g is not None else None
+    nxt = same + 1 if days[same] == earnings_date else same
+    if nxt >= len(days):
+        return None
+    if rt == "AMC":
+        g = gap_at(nxt)
+        return (days[nxt], g) if g is not None else None
+    g0 = gap_at(same) if days[same] == earnings_date else None
+    g1 = gap_at(nxt)
+    if g1 is None:
+        return None
+    if g0 is not None and abs(g0) >= abs(g1):
+        return days[same], g0
+    return days[nxt], g1
+
+
 def _close_position(
     db: Session, pos: SimulationPosition, exit_price: float, exit_reason: str,
     cfg: SimulationConfig, cash_ref: list[float], realized_pnl_total: list[float],
@@ -321,13 +368,14 @@ def _open_position(
     notional = shares * fill_price
     margin = notional / max(leverage, 1.0)
     cash_ref[0] -= margin
-    target_exit = event.earnings_date + timedelta(days=cfg.holding_days + 1)
+    # About five sessions after entry (entry is the reaction day, not the report date).
+    target_exit = today + timedelta(days=cfg.holding_days + 2)
     db.add(SimulationPosition(
         ticker=event.ticker, sector=event.sector, side=side, shares=shares,
         entry_price=fill_price, entry_date=today, earnings_date=event.earnings_date,
         target_exit_date=target_exit, leverage=leverage, notional_value=notional, margin_used=margin,
         predicted_direction="UP" if side == "LONG" else "DOWN",
-        confidence=_to_float(pred.confidence_score),
+        confidence=_to_float(pred.prob_move),
         expected_move_pct=_to_float(pred.expected_move_pct),
         last_mark_price=fill_price, last_mark_at=datetime.utcnow(),
         unrealized_pnl=0.0, unrealized_pnl_pct=0.0,
@@ -335,7 +383,7 @@ def _open_position(
     db.add(SimulationTrade(
         ticker=event.ticker, sector=event.sector, side=side, action="OPEN",
         shares=shares, price=fill_price, notional=notional, leverage=leverage,
-        confidence=_to_float(pred.confidence_score),
+        confidence=_to_float(pred.prob_move),
         predicted_direction="UP" if side == "LONG" else "DOWN",
     ))
 
@@ -456,53 +504,68 @@ def run_step(db: Session) -> dict[str, Any]:
 
     db.flush()
 
-    # New entries
-    horizon_end = today + timedelta(days=2)
+    # New entries — breakout follow-through.
+    #
+    # The account used to buy the model's direction call ahead of the print when its
+    # confidence cleared 55% and beat FLAT by 15pp. After calibration no prediction gets
+    # there, so the account sat in cash for months; and direction is near chance anyway.
+    # It now trades the one call with measured skill, and only once it is confirmed: a
+    # report flagged elevated or breakout (top fifth of breakout risk) whose opening gap
+    # actually clears the stock's usual move. Side = the gap's sign. Entry is the live
+    # price when this step runs on the reaction day — never a back-dated open.
+    from backend.app.services.flat_band import load_flat_bands
+    from backend.app.services.headline_service import _breakout_metrics, move_tier
+
+    metrics = _breakout_metrics()
+    market_open = _market_status().get("status") == "OPEN"
     candidates = db.execute(
         select(EarningsEvent, Prediction)
         .join(Prediction, and_(Prediction.ticker == EarningsEvent.ticker, Prediction.earnings_date == EarningsEvent.earnings_date))
-        .where(EarningsEvent.earnings_date >= today, EarningsEvent.earnings_date <= horizon_end)
-        .where(Prediction.confidence_score >= _to_float(cfg.confidence_threshold))
-        .order_by(desc(Prediction.confidence_score))
+        .where(EarningsEvent.earnings_date >= today - timedelta(days=4), EarningsEvent.earnings_date <= today)
+        .where(Prediction.prob_move.is_not(None))
+        .order_by(desc(Prediction.prob_move))
     ).all()
+    candidates = [(e, p) for e, p in candidates if move_tier(p.prob_move, metrics) in ("breakout", "elevated")]
+    bands = load_flat_bands(db, sorted({e.ticker for e, _ in candidates})) if candidates else {}
     held = {p.ticker for p in db.execute(select(SimulationPosition)).scalars().all()}
+    traded = {
+        (t.ticker) for t in db.execute(
+            select(SimulationTrade).where(SimulationTrade.action == "OPEN",
+                                          SimulationTrade.executed_at >= datetime.utcnow() - timedelta(days=6))
+        ).scalars().all()
+    }
 
     opens_done: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     for event, pred in candidates:
-        if event.ticker in held:
+        if event.ticker in held or event.ticker in traded:
             continue
-        allowed, reason = _entry_window_open(event, db, today)
-        if not allowed:
-            skipped.append({"ticker": event.ticker, "reason": reason})
+        if not market_open:
+            skipped.append({"ticker": event.ticker, "reason": "market_closed"})
             continue
+        band = bands.get(event.ticker)
+        if not band:
+            skipped.append({"ticker": event.ticker, "reason": "no_band"})
+            continue
+        reaction = _reaction_gap(event.ticker, event.earnings_date, event.report_time)
+        if reaction is None:
+            skipped.append({"ticker": event.ticker, "reason": "no_reaction_bar_yet"})
+            continue
+        react_day, gap = reaction
+        if react_day != today:
+            skipped.append({"ticker": event.ticker, "reason": f"reaction_was_{react_day.isoformat()}"})
+            continue
+        if abs(gap) <= band:
+            skipped.append({"ticker": event.ticker, "reason": f"gap_{gap:+.3f}_inside_band_{band:.3f}"})
+            continue
+        side = "LONG" if gap > 0 else "SHORT"
+        live = _fetch_live_price(event.ticker)
+        if not live or not live[0] or not _is_price_fresh(live[2]):
+            skipped.append({"ticker": event.ticker, "reason": "no_fresh_price"})
+            continue
+        fill_price = _slip(live[0], side, "OPEN", _to_float(cfg.slippage_bps))
 
-        p_up = _to_float(pred.direction_prob_up)
-        p_down = _to_float(pred.direction_prob_down)
-        p_flat = _to_float(pred.direction_prob_flat)
-        # Require directional conviction: dominant class must beat FLAT by 15pp
-        # AND must beat the opposing class by 20pp. Otherwise skip.
-        MIN_FLAT_MARGIN = 0.15
-        MIN_DIR_MARGIN  = 0.20
-        if p_up > p_down and p_up > p_flat:
-            if (p_up - p_flat) < MIN_FLAT_MARGIN or (p_up - p_down) < MIN_DIR_MARGIN:
-                continue
-            side = "LONG"
-        elif p_down > p_up and p_down > p_flat:
-            if (p_down - p_flat) < MIN_FLAT_MARGIN or (p_down - p_up) < MIN_DIR_MARGIN:
-                continue
-            side = "SHORT"
-        else:
-            continue
-
-        confidence = _to_float(pred.confidence_score)
-        entry_p = _entry_price_for_position(db, event.ticker, event.earnings_date)
-        if not entry_p:
-            continue
-        fill_price = _slip(entry_p, side, "OPEN", _to_float(cfg.slippage_bps))
-
-        size_pct = _position_size_pct(confidence, cfg)
-        leverage = _leverage_for(confidence)
+        leverage = 1.0
         all_pos = db.execute(select(SimulationPosition)).scalars().all()
         gross = sum(_to_float(p.notional_value) for p in all_pos)
         eq_estimate = cash_ref[0] + sum(_to_float(p.margin_used) for p in all_pos)
@@ -511,25 +574,18 @@ def run_step(db: Session) -> dict[str, Any]:
         current_lev = gross / eq_estimate
         if current_lev >= _to_float(cfg.portfolio_leverage_cap):
             break
-
-        target_notional = eq_estimate * size_pct * leverage
-        max_extra_notional = max(0.0, (_to_float(cfg.portfolio_leverage_cap) - current_lev) * eq_estimate)
-        target_notional = min(target_notional, max_extra_notional)
-        if target_notional <= 0:
-            break
-        margin_required = target_notional / leverage
-        if margin_required > cash_ref[0]:
-            margin_required = cash_ref[0]
-            target_notional = margin_required * leverage
+        target_notional = min(eq_estimate * _to_float(cfg.base_position_pct),
+                              max(0.0, (_to_float(cfg.portfolio_leverage_cap) - current_lev) * eq_estimate),
+                              cash_ref[0])
         if target_notional < 100:
             continue
-
         shares = target_notional / fill_price
         _open_position(db, pred=pred, event=event, fill_price=fill_price,
                        side=side, shares=shares, leverage=leverage, cfg=cfg,
                        cash_ref=cash_ref, today=today)
         held.add(event.ticker)
-        opens_done.append({"ticker": event.ticker, "side": side, "confidence": confidence})
+        opens_done.append({"ticker": event.ticker, "side": side, "gap": gap, "band": band,
+                           "prob_move": _to_float(pred.prob_move)})
 
     db.flush()
     open_positions_now = db.execute(select(SimulationPosition)).scalars().all()
@@ -648,30 +704,34 @@ def get_dashboard(db: Session, equity_curve_limit: int = 200, trades_limit: int 
         idxs = np.linspace(0, len(curve) - 1, equity_curve_limit).astype(int).tolist()
         curve = [curve[i] for i in idxs]
 
+    from backend.app.services.flat_band import load_flat_bands
+    from backend.app.services.headline_service import _breakout_metrics, move_tier
+
     today = date.today()
-    horizon_end = today + timedelta(days=5)
+    metrics = _breakout_metrics()
     pending_rows = db.execute(
         select(EarningsEvent, Prediction)
         .join(Prediction, and_(Prediction.ticker == EarningsEvent.ticker, Prediction.earnings_date == EarningsEvent.earnings_date))
-        .where(EarningsEvent.earnings_date >= today, EarningsEvent.earnings_date <= horizon_end)
-        .where(Prediction.confidence_score >= _to_float(cfg.confidence_threshold))
-        .order_by(EarningsEvent.earnings_date.asc(), desc(Prediction.confidence_score))
-        .limit(20)
+        .where(EarningsEvent.earnings_date >= today - timedelta(days=1), EarningsEvent.earnings_date <= today + timedelta(days=7))
+        .where(Prediction.prob_move.is_not(None))
+        .order_by(EarningsEvent.earnings_date.asc(), desc(Prediction.prob_move))
     ).all()
+    pending_rows = [(e, p) for e, p in pending_rows if move_tier(p.prob_move, metrics) in ("breakout", "elevated")][:20]
+    bands = load_flat_bands(db, sorted({e.ticker for e, _ in pending_rows})) if pending_rows else {}
     held = {p.ticker for p in positions}
 
-    pending = []
-    for e, p in pending_rows:
-        allowed, reason = _entry_window_open(e, db, today)
-        pending.append({
-            "ticker": e.ticker, "company_name": e.company_name, "sector": e.sector,
-            "earnings_date": e.earnings_date.isoformat(), "report_time": e.report_time,
-            "confidence": _to_float(p.confidence_score),
-            "direction": "UP" if _to_float(p.direction_prob_up) > _to_float(p.direction_prob_down) else "DOWN",
-            "expected_move_pct": _to_float(p.expected_move_pct),
-            "already_held": e.ticker in held, "tradeable": allowed,
-            "skip_reason": None if allowed else reason,
-        })
+    # "Setups" are now reports the account is watching: it enters only if the opening
+    # gap clears the band, so there is no side until the stock has reacted.
+    pending = [{
+        "ticker": e.ticker, "company_name": e.company_name, "sector": e.sector,
+        "earnings_date": e.earnings_date.isoformat(), "report_time": e.report_time,
+        "confidence": _to_float(p.prob_move),
+        "tier": move_tier(p.prob_move, metrics),
+        "band": bands.get(e.ticker),
+        "direction": None,
+        "expected_move_pct": _to_float(p.expected_move_pct),
+        "already_held": e.ticker in held, "tradeable": True, "skip_reason": None,
+    } for e, p in pending_rows]
 
     return {
         "config": _config_dict(cfg),
@@ -692,6 +752,8 @@ def get_dashboard(db: Session, equity_curve_limit: int = 200, trades_limit: int 
 def _config_dict(cfg: SimulationConfig) -> dict[str, Any]:
     return {
         "initial_capital": _to_float(cfg.initial_capital),
+        "strategy": "breakout_follow_through",
+        "entry_rule": "Report in the top fifth of breakout risk AND opening gap beyond the stock's usual move; side = gap sign; enter at the live price on the reaction day.",
         "confidence_threshold": cfg.confidence_threshold,
         "base_position_pct": cfg.base_position_pct,
         "max_position_pct": cfg.max_position_pct,

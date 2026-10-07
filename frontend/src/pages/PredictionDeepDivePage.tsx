@@ -11,6 +11,7 @@ import { StatCard } from '../components/ui/StatCard'
 import { PriceTicker } from '../components/ui/PriceTicker'
 import { daysUntil, formatDate } from '../utils/date'
 import { CrushChamber } from '../components/CrushChamber'
+import { StraddleCheck } from '../components/StraddleCheck'
 import { useT } from '../i18n'
 
 function formatPct(v: number | null | undefined, signed = false) {
@@ -191,6 +192,8 @@ export function PredictionDeepDivePage() {
           delay={0.2}
         />
       </div>
+
+      <StraddleCheck ticker={data.ticker} />
 
       {/* === {t('dd.probs')} + Model Metadata === */}
       <div className="grid grid-2" style={{ gridTemplateColumns: '1.5fr 1fr' }}>

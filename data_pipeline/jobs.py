@@ -413,3 +413,27 @@ def run_pulse_scan() -> None:
                     sum(1 for s in result.get("signals", []) if s.get("high_conviction")))
     except Exception as e:
         logger.error("Pulse scan failed: %s", e)
+
+
+def seal_arena_forecasts() -> None:
+    """Earnings Arena: seal every forecaster's call for reports in the next few days."""
+    from backend.app.services.arena_service import seal_due
+    db = SessionLocal()
+    try:
+        logger.info("Arena seal: %s", seal_due(db))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Arena seal failed: %s", exc)
+    finally:
+        db.close()
+
+
+def resolve_arena_forecasts() -> None:
+    """Earnings Arena: grade sealed calls whose T+1 outcome has landed."""
+    from backend.app.services.arena_service import resolve_due
+    db = SessionLocal()
+    try:
+        logger.info("Arena resolve: %s", resolve_due(db))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Arena resolve failed: %s", exc)
+    finally:
+        db.close()

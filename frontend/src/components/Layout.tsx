@@ -28,12 +28,14 @@ export function Layout() {
     // still resolve via redirects in App.tsx.
     { to: '/', label: t('nav.calendar'), end: true },
     { to: '/brief', label: t('nav.brief') },
+    { to: '/arena', label: t('nav.arena') },
     { to: '/model', label: t('nav.model') },
     { to: '/strategy', label: t('nav.strategy') },
     { to: '/pulse', label: t('nav.pulse') },
     { to: '/oracle', label: t('nav.oracle') },
     { to: '/about', label: t('nav.about') },
-    { to: '/contact', label: t('nav.contact') },
+    // Contact moved off the bar to make room for Pro; it is linked from About and Pro.
+    { to: '/pro', label: t('nav.pro') },
   ]
 
   return (
