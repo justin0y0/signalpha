@@ -29,6 +29,7 @@ from backend.app.api.routes.headline import router as headline_router
 from backend.app.api.routes.arena import router as arena_router
 from backend.app.api.routes.waitlist import router as waitlist_router
 from backend.app.api.routes.moves import router as moves_router
+from backend.app.api.routes.playbook import router as playbook_router
 from backend.app.core.config import get_settings
 from backend.app.core.logging import configure_logging
 from backend.app.db.base import Base
@@ -95,6 +96,7 @@ app.include_router(headline_router, prefix=settings.api_v1_prefix)
 app.include_router(arena_router, prefix=settings.api_v1_prefix)
 app.include_router(waitlist_router, prefix=settings.api_v1_prefix)
 app.include_router(moves_router, prefix=settings.api_v1_prefix)
+app.include_router(playbook_router, prefix=settings.api_v1_prefix)
 
 # SignAlpha as an MCP server for AI agents (backend/app/mcp_server.py). Registered as an
 # exact route rather than a Mount: a Mount on /api would swallow FastAPI's trailing-slash

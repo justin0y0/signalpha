@@ -23,8 +23,9 @@ from backend.app.services.flat_band import load_flat_bands
 from backend.app.services.headline_service import _breakout_metrics, move_tier
 
 DISCLAIMER = (
-    "Research data, not investment advice. Direction is near chance out of sample; the only "
-    "call with measured skill is whether a report moves the stock more than it usually does."
+    "Research data, not investment advice. Before a report, direction is a coin flip; the "
+    "calls with measured skill are whether a report moves the stock more than usual, and "
+    "post-report follow-through after a large gap up."
 )
 
 mcp = MCPServer(
@@ -183,6 +184,24 @@ def portfolio_earnings_risk(tickers: list[str], days: int = 14) -> dict[str, Any
         "evidence": _evidence(),
         "disclaimer": DISCLAIMER,
     }
+
+
+@mcp.tool(title="Post-earnings follow-through signals")
+def post_earnings_signals(days: int = 10) -> dict[str, Any]:
+    """Reports that reacted in the last `days` days, with the one direction call SignAlpha
+    makes: 'long' when the stock opened up by more than twice its usual earnings move
+    (historically these kept rising over the next five sessions more often than other
+    reports). Long-only: big gap-downs have not kept falling, so they carry no call.
+    Includes the rule's full historical record."""
+    from backend.app.services.playbook_service import live
+
+    db = SessionLocal()
+    try:
+        out = live(db, max(1, min(int(days), 30)))
+    finally:
+        db.close()
+    out["disclaimer"] = DISCLAIMER
+    return out
 
 
 @mcp.tool(title="Model track record")

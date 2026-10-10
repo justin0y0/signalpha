@@ -22,7 +22,9 @@ Owner：**Justin**，USC Applied & Computational Mathematics，GitHub `justin0y0
 > 好消息是 `models/train.py:118` 的评估走的是**同一条 xgb-only 路径**，所以 **这个准确率测的就是线上真正跑的东西，数字本身诚实**，只有「三模型集成」这个说法不实。
 > 两条路（需 Justin 定）：① 把描述改成 XGBoost（零风险）；② 把推理切到真正的 soft-vote —— 但那样当前的准确率就不再描述线上，必须重测。
 
-**诚实定位（对外必须这么说，2026-10-05 PIT 口径）**：方向**没有 edge**——3 分类 **38.94% vs 全押 FLAT 47.3%**（n=5,603），每类 precision ≈ 基准率。真正站得住的一句话是：「breakout 风险前 10% 的财报里，**67.85%** 动得比该股平时大，基准 **53.93%**（n=339，z=5.14，AUC 0.569）。」7 月的「P(FLAT)≥0.60 识别非事件 76.30%」**已撤回**（泄漏特征上测的；PIT 下最低 10% 只有 53.4% vs 46.1%）。**绝不能包装成"能跑赢市场"**。可辩护的价值是：透明（赢和亏都展示）、每日复用、个性化、分发渠道。卖的是研究和教育，不是投资建议。
+> ⛔ **2026-10-10：下面这段的数字建立在错位的反应日和有泄漏的特征上，已作废，见 6f。当前口径：财报前方向 AUC 0.50（没有）；breakout AUC 0.584；方向只在财报后给——高开 > 2× 平时波动、收盘买、持有 20 天，64.3% vs 56.8%，t=3.9。**
+
+**（旧）诚实定位（2026-10-05 PIT 口径）**：方向**没有 edge**——3 分类 **38.94% vs 全押 FLAT 47.3%**（n=5,603），每类 precision ≈ 基准率。真正站得住的一句话是：「breakout 风险前 10% 的财报里，**67.85%** 动得比该股平时大，基准 **53.93%**（n=339，z=5.14，AUC 0.569）。」7 月的「P(FLAT)≥0.60 识别非事件 76.30%」**已撤回**（泄漏特征上测的；PIT 下最低 10% 只有 53.4% vs 46.1%）。**绝不能包装成"能跑赢市场"**。可辩护的价值是：透明（赢和亏都展示）、每日复用、个性化、分发渠道。卖的是研究和教育，不是投资建议。
 
 > **数字不许写死在前端或文案里**：一律读 `GET /api/v1/model/headline`（`headline_service.py`，10 分钟缓存；breakout 部分来自 `artifacts/move_metrics.json`）。前端用 `useHeadline()`。这个站点两次因为文案引用已不存在的模型的数字而自相矛盾。
 
@@ -311,6 +313,38 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 | 导航 | `Layout.tsx` | 加 Arena、Pro；Contact 移出导航（About 和 Pro 页有入口） | — |
 
 **待办**：Arena 用户判断目前只存 localStorage（不能做跨设备排行榜）→ S2 加登录后服务端存储；`ots upgrade` 可在 Bitcoin 确认后把完整证明存回库里；期权快照只覆盖 51/77 个事件。
+
+### 6f. 2026-10-10：反应日 bug + 特征泄漏 + 方向信号（**此前所有数字作废**）
+
+**起因**：Justin 要求把产品做成方向性的。为了测"财报后方向"去抓 EPS surprise，顺带暴露了两个底层 bug。
+
+**Bug 1 — 反应日错位（影响 47% 的标签）**：`earnings_events.report_time` 对全部 5,730 个事件都是 NULL；`outcome_snapshot` 一律把 `earnings_date` 那根 K 线当反应日。盘后（AMC，约 42%）的财报真正在**下一个交易日**反应。例：GTLB 2022-03-14 库里 T+1 = −6.8%（财报前的白天），真实反应是次日 +27%。
+- 修法：`data_pipeline/earnings_timing.py`（yfinance `get_earnings_dates` 的时间戳 → BMO/AMC/DMH + EPS surprise，存 `earnings_surprises` 表，回写 `report_time`）；`outcome_snapshot(history, date, report_time)` 按正确 session 算，新增 `outcomes.reaction_date`；无 report_time 时取两个候选日里跳空大的。
+- 结果：5,718 事件打上时间（3,251 BMO / 2,429 AMC），**2,661 / 5,655 条 outcome 被改写**。备份 `~/backups/pre_reaction_fix_20261010.sql.gz`。
+
+**Bug 2 — 特征两批约定相反**：A 批特征截到 D−1、标签用 D（BMO 对、AMC 错）；B 批（2020 后为主，占 BMO 约四成）特征截到 D、标签用 D+1（AMC 对；BMO 的特征里含反应本身，`ret_1d_pre == 标签`）。标签错的时候两个错互相掩盖；标签一修正，B 批变成"财报前方向 AUC 0.66、前 10% 上涨 81%"——**是泄漏，不是信号**。另有实时采集的事件特征是数月前的陈旧快照。
+- 修法：`data_pipeline/rebuild_pit_features.py`，统一规则 = **特征只用 `reaction_date` 之前的 K 线**（未来事件用到今天为止）；每个 symbol 行情只下一次。慢宏观（收益率/联邦基金/CPI/PCE）保持原值。重建 5,707 个事件。备份 `~/backups/price_features_pre_rebuild_20261010.sql.gz`。`run_predictions` 每次先刷新未来事件的特征。
+
+**干净数据上的结论（walk-forward，pooled XGB）**：
+
+| 问题 | 结果 |
+|---|---|
+| 财报**前**方向 | AUC **0.502**，多空 −0.19%。彻底没有 |
+| breakout（会不会大动） | AUC **0.584**，前 10% 69.4% vs 基准 56.9%；后 10% 平静 60.6% vs 43.1%（现在两头都有效）。以重训后的 `move_metrics.json` 为准 |
+| 财报**后**方向，模型（开盘→T+5） | 前 10% 上涨 59.4% / 后 10% 48.8%，L/S +0.87%，t=3.0。有但弱，且不比规则好 |
+| **规则：高开 > 2× band，反应日收盘买，持有 20 session** | n=555（2008–2026），64.3% 上涨 vs 全体 56.8%，每笔超额 **+1.73%，t=3.9**，13 个样本≥20 的年份里 9 年为正 |
+| 同规则只持有 5 session | t=2.4（只看 2021+ 是 3.9——**不要挑窗口**） |
+| 低开做空 | ≈0，没有 |
+
+**产品决定**：方向只在财报后给，且只做多。`services/playbook_service.py`（`SIGNAL_K=2.0, SIGNAL_HOLD=20, SIGNAL_ENTRY="close"`；`test()` 任意规则 vs「对全部财报做同样交易」基准，`grid()`，`live()`，`signal_summary()`）；`/api/v1/playbook/{test,grid,live}`；headline 新增 `follow_through`。局限写死在 payload：幸存者偏差（今天的大盘股）、成本、多重检验。
+
+**Strategy tab 重写**：原 Backtest（方向回测）、Showdown（5 机器人）都交易已证伪的财报前方向，删除（`BacktestingPage.tsx` / `ShowdownPage.tsx` / `BandTimeline.tsx`）。现在两块：**Playbook**（`PlaybookPage.tsx`：最近反应的财报 + 规则实验室 + 热力图）和 **Live book**（模拟盘，规则改为同一条：高开 > 2× band 只做多，持有约 20 session）。日历/简报的"方向概率"列换成发布时间（盘前/盘后）。
+
+**新增任务**：`sync_earnings_timing`（7:40/16:40/21:40 ET）；`alert_follow_through`（9:38/9:50/10:20 ET，Telegram，每 ticker 每天一次，靠 redis 去重）。MCP 新工具 `post_earnings_signals`。
+
+**重训**：10-10 19:1x UTC 启动 `~/retrain_and_promote.sh`（log `~/retrain_fix_20261010.log`），成功后自动刷新未来特征 → run_predictions → 重启 backend；有 Traceback 不上线。**完成前，站上 3 分类/ breakout 数字仍是旧模型对新标签，不可引用。**
+
+**教训**：(1) 同一份数据两批回填、约定不同，是最隐蔽的泄漏来源；(2) 结果好得不像真的就一定不是真的——81% 那一刻要先查泄漏而不是庆祝；(3) 选规则要在全历史上选，不能挑好看的窗口。
 
 ### 6b. 仍未解决
 

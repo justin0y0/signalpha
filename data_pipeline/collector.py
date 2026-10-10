@@ -391,11 +391,12 @@ class DataCollector:
         engineered = self.fe.engineer_event(raw)
         return {"raw": raw, "engineered": engineered}
 
-    def collect_post_earnings_outcome(self, ticker: str, earnings_date: date) -> dict[str, Any]:
+    def collect_post_earnings_outcome(self, ticker: str, earnings_date: date,
+                                      report_time: str | None = None) -> dict[str, Any]:
         earnings_dt = datetime.combine(earnings_date, datetime.min.time())
         history = self.yf.history(
             ticker,
             start=(earnings_dt - timedelta(days=10)).date().isoformat(),
-            end=(earnings_dt + timedelta(days=40)).date().isoformat(),
+            end=(earnings_dt + timedelta(days=45)).date().isoformat(),
         )
-        return self.yf.outcome_snapshot(history, earnings_dt)
+        return self.yf.outcome_snapshot(history, earnings_dt, report_time)

@@ -4677,3 +4677,13 @@ input, select { font: inherit; color: inherit; }
 .pro-agent__url code { flex: 1; min-width: 0; padding: 0.5rem 0.65rem; border-radius: var(--radius-sm); background: var(--bg-1); border: 1px solid var(--border-strong); overflow-x: auto; white-space: nowrap; }
 .pro-agent__prompt { padding: 0.6rem 0.75rem; border-radius: var(--radius-sm); border-left: 2px solid var(--accent-purple); background: rgba(167, 139, 250, 0.06); font-size: 0.78rem; color: var(--text-secondary); font-style: italic; }
 @media (max-width: 780px) { .pro-agent { grid-template-columns: 1fr; } }
+
+/* Follow-through teaser reuses the arena teaser shape in the signal's colour. */
+.ft-teaser { border-color: color-mix(in srgb, var(--accent-emerald) 30%, transparent); background: linear-gradient(90deg, rgba(52, 211, 153, 0.08), rgba(56, 189, 248, 0.04)); }
+.ft-teaser svg:first-child { color: var(--accent-emerald); }
+.ft-teaser b { color: var(--accent-emerald); font-weight: 600; }
+
+/* Report timing chip (Calendar) */
+.when-chip { font: 600 0.62rem var(--font-mono); letter-spacing: 0.05em; text-transform: uppercase; padding: 0.18rem 0.5rem; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--text-secondary); white-space: nowrap; }
+.when-chip--bmo { color: var(--accent-amber); border-color: color-mix(in srgb, var(--accent-amber) 35%, transparent); }
+.when-chip--amc { color: var(--accent-purple); border-color: color-mix(in srgb, var(--accent-purple) 35%, transparent); }

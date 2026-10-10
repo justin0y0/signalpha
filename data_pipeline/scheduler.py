@@ -20,6 +20,8 @@ from data_pipeline.jobs import (
     retrain_full,
     run_predictions,
     seal_arena_forecasts,
+    sync_earnings_timing,
+    alert_follow_through,
     resolve_arena_forecasts,
 )
 
@@ -69,6 +71,17 @@ def _shutdown(*_: object) -> None:
     scheduler.shutdown(wait=False)
     sys.exit(0)
 
+
+# Report times and surprises, before the open, after the close, and late evening when
+# after-close numbers have been posted.
+scheduler.add_job(sync_earnings_timing, CronTrigger(hour="7,16,21", minute=40, timezone=TZ),
+                  id="sync_earnings_timing", max_instances=1, coalesce=True)
+
+# Follow-through alerts shortly after the open, when the gap is known and still tradable.
+scheduler.add_job(alert_follow_through, CronTrigger(day_of_week="mon-fri", hour=9, minute="38,50", timezone=TZ),
+                  id="alert_follow_through", max_instances=1, coalesce=True)
+scheduler.add_job(alert_follow_through, CronTrigger(day_of_week="mon-fri", hour=10, minute=20, timezone=TZ),
+                  id="alert_follow_through_late", max_instances=1, coalesce=True)
 
 # Earnings Arena. Sealing every two hours (at :20, after the 17:00 prediction run has a
 # chance to land) catches new calendar entries well inside the 3-day window; resolution

@@ -85,12 +85,12 @@ def backfill_outcomes(since: date) -> int:
             .where(EarningsEvent.earnings_date > since, EarningsEvent.earnings_date < today)
             .order_by(EarningsEvent.earnings_date.asc())
         ).scalars().all()
-        todo = [(e.ticker, e.earnings_date) for e in events if (e.ticker, e.earnings_date) not in have]
+        todo = [(e.ticker, e.earnings_date, e.report_time) for e in events if (e.ticker, e.earnings_date) not in have]
     print(f"outcomes: {len(todo)} to collect")
     written = 0
-    for i, (ticker, d) in enumerate(todo, 1):
+    for i, (ticker, d, rt) in enumerate(todo, 1):
         try:
-            outcome = collector.collect_post_earnings_outcome(ticker, d)
+            outcome = collector.collect_post_earnings_outcome(ticker, d, rt)
             if outcome:
                 with SessionLocal() as s:
                     _upsert(s, Outcome, {"ticker": ticker, "earnings_date": d}, outcome)

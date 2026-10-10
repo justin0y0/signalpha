@@ -1,40 +1,32 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { FlaskConical, Swords, Wallet } from 'lucide-react'
+import { BookOpen, Wallet } from 'lucide-react'
 import { SubNav } from '../components/ui/SubNav'
-import { BandTimeline } from '../components/BandTimeline'
-import { api } from '../api/client'
-import type { CalendarEvent } from '../types'
-import { BacktestingPage } from './BacktestingPage'
-import { ShowdownPage } from './ShowdownPage'
+import { PlaybookPage } from './PlaybookPage'
 import { SimulatorPage } from './SimulatorPage'
 import { useT } from '../i18n'
 
 /**
- * "Strategy" — the three ways the same ML signal gets turned into trades.
+ * "Strategy" — one rule, shown twice: the evidence and the live account trading it.
  *
- * Backtest, Showdown and Simulator were three top-level tabs running one signal
- * through three harnesses: an interactive parameter sweep, five preset personas, and a
- * $1M paper account. They belong together — Showdown is Backtest with fixed presets,
- * and the Simulator is the same thing again with a live clock.
+ * This tab used to hold three harnesses (a direction backtest, a five-bot showdown and
+ * a paper account) that all traded the model's pre-report direction call. On clean data
+ * that call is a coin flip, so two of the three were elaborate views of nothing. What
+ * replaced them is the Playbook — the post-report follow-through signal with a lab to
+ * test any variation — and the paper account, which now trades that same rule.
  *
- * The section is kept in the URL (?view=) so old links keep working.
+ * Old ?view= values (backtest, showdown, simulator) still land somewhere sensible.
  */
-
-
-
 export function StrategyPage() {
   const { t } = useT()
   const ITEMS = [
-  { key: 'backtest', label: t('strategy.tab.backtest'), icon: <FlaskConical size={13} /> },
-  { key: 'showdown', label: t('strategy.tab.showdown'), icon: <Swords size={13} /> },
-  { key: 'paper', label: t('strategy.tab.paper'), icon: <Wallet size={13} /> },
+    { key: 'playbook', label: t('strategy.tab.playbook'), icon: <BookOpen size={13} /> },
+    { key: 'paper', label: t('strategy.tab.paper'), icon: <Wallet size={13} /> },
   ]
   const [params, setParams] = useSearchParams()
-  // 'simulator' was this tab's name before it became 'paper'; old links still use it.
   const raw = params.get('view') ?? ''
-  const requested = raw === 'simulator' ? 'paper' : raw
-  const [view, setView] = useState(['backtest','showdown','paper'].includes(requested) ? requested : 'backtest')
+  const requested = raw === 'simulator' || raw === 'paper' ? 'paper' : 'playbook'
+  const [view, setView] = useState(requested)
 
   const change = (key: string) => {
     setView(key)
@@ -43,21 +35,10 @@ export function StrategyPage() {
     setParams(next, { replace: true })
   }
 
-  // The band timeline sits above the backtest only. It used to head every view, which
-  // pushed the Showdown leaderboard and the paper account below the fold on a laptop
-  // screen — the explainer outranked the thing each tab is for.
-  const [events, setEvents] = useState<CalendarEvent[]>([])
-  useEffect(() => {
-    const q = new URLSearchParams({ days_forward: '90', days_back: '0' })
-    api.getCalendar(q).then((r) => setEvents(r.items)).catch(() => setEvents([]))
-  }, [])
-
   return (
     <div>
       <SubNav items={ITEMS} active={view} onChange={change} />
-      {view === 'backtest' && <><BandTimeline events={events} /><BacktestingPage /></>}
-      {view === 'showdown' && <ShowdownPage />}
-      {view === 'paper' && <SimulatorPage />}
+      {view === 'playbook' ? <PlaybookPage /> : <SimulatorPage />}
     </div>
   )
 }

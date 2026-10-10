@@ -130,17 +130,53 @@ class YFinanceClient:
             "iv_52w_high": float(all_iv.max()) if not all_iv.empty else None,
         }
 
-    def outcome_snapshot(self, history: pd.DataFrame, earnings_date: datetime) -> dict[str, Any]:
+    def outcome_snapshot(self, history: pd.DataFrame, earnings_date: datetime,
+                         report_time: str | None = None) -> dict[str, Any]:
+        """The stock's reaction to a report, measured from the right session.
+
+        A pre-market report (BMO) is traded the same day. An after-close report (AMC)
+        is traded the NEXT session — the bar dated `earnings_date` closed before the
+        numbers were out. Until 2026-10-10 this always used the bar on `earnings_date`,
+        and `report_time` was NULL for every event, so for the ~40% of reports that
+        come after the close the stored "T+1 reaction" was the session before the news
+        (GTLB 2022-03-14: stored -6.8%, real reaction +27% the next day). Every label,
+        band and model trained before that date inherited the error.
+
+        With no report time, both candidate sessions must exist and the one with the
+        larger opening gap is taken as the reaction.
+        """
         if history.empty:
             return {}
-        frame = history.copy().sort_values("date")
-        frame = frame[frame["date"] >= pd.Timestamp(earnings_date)].reset_index(drop=True)
-        if frame.empty:
+        full = history.copy().sort_values("date").reset_index(drop=True)
+        after = full.index[full["date"] >= pd.Timestamp(earnings_date)]
+        if len(after) == 0:
             return {}
+        i0 = int(after[0])
+        on_date = full.loc[i0, "date"].date() == pd.Timestamp(earnings_date).date()
+        rt = (report_time or "").upper()
+
+        def gap_at(i: int) -> float | None:
+            if i <= 0 or i >= len(full) or not full.loc[i - 1, "Close"]:
+                return None
+            return float(full.loc[i, "Open"]) / float(full.loc[i - 1, "Close"]) - 1
+
+        if rt == "AMC":
+            idx = i0 + 1 if on_date else i0
+        elif rt in ("BMO", "DMH"):
+            idx = i0
+        else:
+            nxt = i0 + 1 if on_date else i0
+            if nxt >= len(full):
+                return {}  # too early to tell which session reacted
+            g0, g1 = gap_at(i0) if on_date else None, gap_at(nxt)
+            idx = i0 if (g0 is not None and g1 is not None and abs(g0) >= abs(g1)) else nxt
+        if idx >= len(full) or idx <= 0:
+            return {}
+        frame = full.iloc[idx:].reset_index(drop=True)
+        prev_close = float(full.loc[idx - 1, "Close"])
+        reaction_date = full.loc[idx, "date"].date()
         open_t1 = float(frame.iloc[0]["Open"])
         close_t1 = float(frame.iloc[0]["Close"])
-        prev = history[history["date"] < pd.Timestamp(earnings_date)].sort_values("date")
-        prev_close = float(prev.iloc[-1]["Close"]) if not prev.empty else None
 
         def safe_future(idx: int) -> float | None:
             if len(frame) > idx:
@@ -161,6 +197,7 @@ class YFinanceClient:
         if prev_close is not None and len(frame):
             gap_filled = bool(frame.head(20)["Low"].min() <= prev_close <= frame.head(20)["High"].max())
         return {
+            "reaction_date": reaction_date,
             "actual_t1_gap_pct": gap_pct,
             "actual_t1_close_return": t1_close_return,
             "actual_t5_return": t5_return,

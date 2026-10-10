@@ -361,29 +361,30 @@ def _close_position(
 
 
 def _open_position(
-    db: Session, *, pred: Prediction, event: EarningsEvent, fill_price: float,
+    db: Session, *, pred: Prediction | None, event: EarningsEvent, fill_price: float,
     side: str, shares: float, leverage: float, cfg: SimulationConfig,
     cash_ref: list[float], today: date,
 ) -> None:
     notional = shares * fill_price
     margin = notional / max(leverage, 1.0)
     cash_ref[0] -= margin
-    # About five sessions after entry (entry is the reaction day, not the report date).
-    target_exit = today + timedelta(days=cfg.holding_days + 2)
+    # The Playbook rule holds SIGNAL_HOLD sessions; 7 calendar days per 5 sessions.
+    from backend.app.services.playbook_service import SIGNAL_HOLD
+    target_exit = today + timedelta(days=round(SIGNAL_HOLD * 7 / 5))
     db.add(SimulationPosition(
         ticker=event.ticker, sector=event.sector, side=side, shares=shares,
         entry_price=fill_price, entry_date=today, earnings_date=event.earnings_date,
         target_exit_date=target_exit, leverage=leverage, notional_value=notional, margin_used=margin,
         predicted_direction="UP" if side == "LONG" else "DOWN",
-        confidence=_to_float(pred.prob_move),
-        expected_move_pct=_to_float(pred.expected_move_pct),
+        confidence=_to_float(pred.prob_move) if pred is not None else 0.0,
+        expected_move_pct=_to_float(pred.expected_move_pct) if pred is not None else 0.0,
         last_mark_price=fill_price, last_mark_at=datetime.utcnow(),
         unrealized_pnl=0.0, unrealized_pnl_pct=0.0,
     ))
     db.add(SimulationTrade(
         ticker=event.ticker, sector=event.sector, side=side, action="OPEN",
         shares=shares, price=fill_price, notional=notional, leverage=leverage,
-        confidence=_to_float(pred.prob_move),
+        confidence=_to_float(pred.prob_move) if pred is not None else 0.0,
         predicted_direction="UP" if side == "LONG" else "DOWN",
     ))
 
@@ -504,28 +505,25 @@ def run_step(db: Session) -> dict[str, Any]:
 
     db.flush()
 
-    # New entries — breakout follow-through.
+    # New entries — post-earnings follow-through, long only.
     #
-    # The account used to buy the model's direction call ahead of the print when its
-    # confidence cleared 55% and beat FLAT by 15pp. After calibration no prediction gets
-    # there, so the account sat in cash for months; and direction is near chance anyway.
-    # It now trades the one call with measured skill, and only once it is confirmed: a
-    # report flagged elevated or breakout (top fifth of breakout risk) whose opening gap
-    # actually clears the stock's usual move. Side = the gap's sign. Entry is the live
-    # price when this step runs on the reaction day — never a back-dated open.
+    # History of this block: (1) bought the model's pre-report direction call, which
+    # never cleared its own threshold after calibration; (2) required a breakout flag
+    # plus any gap beyond the band, either side. The 2026-10-10 rebuild (correct
+    # reaction sessions, leak-free features) showed what the data supports: a gap UP of
+    # more than SIGNAL_K x the usual move keeps drifting up (t > 3 over the all-reports
+    # baseline), a gap down does not keep falling, and the breakout flag adds nothing
+    # once the gap is known. So: long only, on that trigger. Entry is the live price
+    # when this step runs on the reaction day — never a back-dated open.
     from backend.app.services.flat_band import load_flat_bands
-    from backend.app.services.headline_service import _breakout_metrics, move_tier
+    from backend.app.services.playbook_service import SIGNAL_K
 
-    metrics = _breakout_metrics()
     market_open = _market_status().get("status") == "OPEN"
     candidates = db.execute(
         select(EarningsEvent, Prediction)
-        .join(Prediction, and_(Prediction.ticker == EarningsEvent.ticker, Prediction.earnings_date == EarningsEvent.earnings_date))
+        .outerjoin(Prediction, and_(Prediction.ticker == EarningsEvent.ticker, Prediction.earnings_date == EarningsEvent.earnings_date))
         .where(EarningsEvent.earnings_date >= today - timedelta(days=4), EarningsEvent.earnings_date <= today)
-        .where(Prediction.prob_move.is_not(None))
-        .order_by(desc(Prediction.prob_move))
     ).all()
-    candidates = [(e, p) for e, p in candidates if move_tier(p.prob_move, metrics) in ("breakout", "elevated")]
     bands = load_flat_bands(db, sorted({e.ticker for e, _ in candidates})) if candidates else {}
     held = {p.ticker for p in db.execute(select(SimulationPosition)).scalars().all()}
     traded = {
@@ -555,10 +553,10 @@ def run_step(db: Session) -> dict[str, Any]:
         if react_day != today:
             skipped.append({"ticker": event.ticker, "reason": f"reaction_was_{react_day.isoformat()}"})
             continue
-        if abs(gap) <= band:
-            skipped.append({"ticker": event.ticker, "reason": f"gap_{gap:+.3f}_inside_band_{band:.3f}"})
+        if gap <= SIGNAL_K * band:
+            skipped.append({"ticker": event.ticker, "reason": f"gap_{gap:+.3f}_below_{SIGNAL_K:g}x_band_{band:.3f}"})
             continue
-        side = "LONG" if gap > 0 else "SHORT"
+        side = "LONG"
         live = _fetch_live_price(event.ticker)
         if not live or not live[0] or not _is_price_fresh(live[2]):
             skipped.append({"ticker": event.ticker, "reason": "no_fresh_price"})
@@ -584,8 +582,7 @@ def run_step(db: Session) -> dict[str, Any]:
                        side=side, shares=shares, leverage=leverage, cfg=cfg,
                        cash_ref=cash_ref, today=today)
         held.add(event.ticker)
-        opens_done.append({"ticker": event.ticker, "side": side, "gap": gap, "band": band,
-                           "prob_move": _to_float(pred.prob_move)})
+        opens_done.append({"ticker": event.ticker, "side": side, "gap": gap, "band": band})
 
     db.flush()
     open_positions_now = db.execute(select(SimulationPosition)).scalars().all()
@@ -752,8 +749,8 @@ def get_dashboard(db: Session, equity_curve_limit: int = 200, trades_limit: int 
 def _config_dict(cfg: SimulationConfig) -> dict[str, Any]:
     return {
         "initial_capital": _to_float(cfg.initial_capital),
-        "strategy": "breakout_follow_through",
-        "entry_rule": "Report in the top fifth of breakout risk AND opening gap beyond the stock's usual move; side = gap sign; enter at the live price on the reaction day.",
+        "strategy": "post_earnings_follow_through",
+        "entry_rule": "Long only: the report gaps UP by more than 2x the stock's usual earnings move; enter at the live price on the reaction day, hold about twenty sessions.",
         "confidence_threshold": cfg.confidence_threshold,
         "base_position_pct": cfg.base_position_pct,
         "max_position_pct": cfg.max_position_pct,

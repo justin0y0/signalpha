@@ -120,6 +120,23 @@ DDL_STATEMENTS: list[str] = [
 ]
 
 
+DDL_STATEMENTS += [
+    "ALTER TABLE outcomes ADD COLUMN IF NOT EXISTS reaction_date DATE",
+    """
+    CREATE TABLE IF NOT EXISTS earnings_surprises (
+        ticker        TEXT NOT NULL,
+        report_date   DATE NOT NULL,
+        report_ts     TIMESTAMPTZ,
+        report_time   TEXT,
+        eps_estimate  REAL,
+        eps_actual    REAL,
+        surprise_pct  REAL,
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (ticker, report_date)
+    )
+    """,
+]
+
 # Earnings Arena (services/arena_service.py) and the Pro waitlist.
 from backend.app.services.arena_service import DDL as _ARENA_DDL  # noqa: E402
 

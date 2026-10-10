@@ -34,8 +34,8 @@ export default function App() {
             bookmarks working after the eleven-tab nav was collapsed to seven. */}
         <Route path="/performance" element={<Navigate to="/model?view=quality" replace />} />
         <Route path="/track-record" element={<Navigate to="/model?view=record" replace />} />
-        <Route path="/backtest" element={<Navigate to="/strategy?view=backtest" replace />} />
-        <Route path="/showdown" element={<Navigate to="/strategy?view=showdown" replace />} />
+        <Route path="/backtest" element={<Navigate to="/strategy?view=playbook" replace />} />
+        <Route path="/showdown" element={<Navigate to="/strategy?view=playbook" replace />} />
         <Route path="/simulator" element={<Navigate to="/strategy?view=paper" replace />} />
       </Route>
       <Route path="/admin" element={<AdminPage />} />

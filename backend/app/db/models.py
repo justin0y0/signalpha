@@ -189,6 +189,9 @@ class Outcome(Base):
     # and every scoring surface read one number, and so an event is judged by what was
     # knowable when it happened. Written by data_pipeline/compute_flat_bands.py.
     flat_band: Mapped[float | None] = mapped_column(Float)
+    # The session the stock actually reacted in: earnings_date for a pre-market report,
+    # the next session for an after-close one. See YFinanceClient.outcome_snapshot.
+    reaction_date: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

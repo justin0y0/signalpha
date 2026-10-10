@@ -220,8 +220,26 @@ def collect_options_data() -> None:
     logger.info("Finished company feature collection: %s/%s events written", written, len(event_list))
 
 
+def sync_earnings_timing() -> None:
+    """Report times (pre-market / after-close) and EPS surprises for names reporting
+    around now. Outcomes, Arena cut-offs and the paper account all depend on knowing
+    which session trades a report."""
+    try:
+        from data_pipeline.earnings_timing import sync
+        logger.info("Earnings timing: %s", sync(recent=True))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Earnings timing sync failed: %s", exc)
+
+
 def run_predictions() -> None:
     logger.info("Starting prediction generation job")
+    # A snapshot taken weeks ahead and never refreshed gave live predictions stale
+    # prices; rebuild the price/market features of every upcoming report first.
+    try:
+        from data_pipeline.rebuild_pit_features import run as _rebuild
+        logger.info("Upcoming features refreshed: %s", _rebuild(upcoming_only=True))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Upcoming feature refresh failed: %s", exc)
     from data_pipeline.recalibrate_predictions import calibrate_live, load_temperature
     temperature = load_temperature()
     if temperature is None:
@@ -312,7 +330,7 @@ def collect_post_earnings_results() -> None:
         written = 0
         for event in event_list:
             try:
-                outcome = collector.collect_post_earnings_outcome(event.ticker, event.earnings_date)
+                outcome = collector.collect_post_earnings_outcome(event.ticker, event.earnings_date, event.report_time)
                 if not outcome:
                     continue
                 _upsert(session, Outcome, {"ticker": event.ticker, "earnings_date": event.earnings_date}, outcome)
@@ -437,3 +455,55 @@ def resolve_arena_forecasts() -> None:
         logger.error("Arena resolve failed: %s", exc)
     finally:
         db.close()
+
+
+def alert_follow_through() -> None:
+    """Telegram ping when a report gaps up beyond the Playbook threshold.
+
+    The one direction call the product makes is only useful near the open of the
+    reaction day, so it is pushed rather than left for someone to find on the site.
+    One alert per ticker per day (redis); without redis nothing is sent, because an
+    un-deduplicated job on a 15-minute schedule would spam every subscriber.
+    """
+    from backend.app.services import oracle_service
+    from backend.app.services.flat_band import load_flat_bands
+    from backend.app.services.playbook_service import SIGNAL_K, signal_summary
+    from backend.app.services.simulation_service import _market_status, _reaction_gap
+
+    if _market_status().get("status") != "OPEN" or oracle_service._rc is None:
+        return
+    today = date.today()
+    sent = 0
+    with _session() as session:
+        events = session.execute(
+            select(EarningsEvent).where(EarningsEvent.earnings_date >= today - timedelta(days=4),
+                                        EarningsEvent.earnings_date <= today)
+        ).scalars().all()
+        if not events:
+            return
+        bands = load_flat_bands(session, sorted({e.ticker for e in events}))
+        summary = signal_summary(session)
+        for e in events:
+            band = bands.get(e.ticker)
+            key = f"ft:alert:{e.ticker}:{today.isoformat()}"
+            if not band or oracle_service._rc.exists(key):
+                continue
+            try:
+                reaction = _reaction_gap(e.ticker, e.earnings_date, e.report_time)
+            except Exception:  # noqa: BLE001
+                reaction = None
+            if not reaction or reaction[0] != today or reaction[1] <= SIGNAL_K * band:
+                continue
+            gap = reaction[1]
+            oracle_service._rc.setex(key, 3 * 86400, "1")
+            oracle_service._push(
+                f"📈 *FOLLOW-THROUGH · {e.ticker}*\n\n"
+                f"Opened *{gap:+.1%}* on earnings — {gap / band:.1f}× its usual ±{band:.1%} move.\n"
+                f"History: bought at that day's close, {summary['hit']:.0%} of gaps this size were "
+                f"higher {summary['hold']} sessions later (avg {summary['mean']:+.1%}, n={summary['n']}; "
+                f"all reports {summary['baseline_hit']:.0%}).\n\n"
+                f"_Research, not advice. Long-only signal; big gap-downs do not keep falling._\n"
+                f"[Playbook](https://signalpha.app/strategy)"
+            )
+            sent += 1
+    logger.info("Follow-through alerts: %s sent", sent)

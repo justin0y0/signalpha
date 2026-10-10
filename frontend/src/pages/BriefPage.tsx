@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Activity, Clock, Flame, Star } from 'lucide-react'
 import { StatCard } from '../components/ui/StatCard'
-import { OutcomeBar } from '../components/ui/OutcomeBar'
 import { SplitFlap } from '../components/ui/SplitFlap'
 import { MoveRisk } from '../components/ui/MoveRisk'
 import { ArenaTeaser } from '../components/ArenaTeaser'
+import { FollowThroughTeaser } from '../components/FollowThroughTeaser'
 import { formatDateShort } from '../utils/date'
 import { pct } from '../hooks/useHeadline'
 import { useT } from '../i18n'
@@ -62,7 +62,6 @@ function Section({ title, icon, rows, metrics, note }: {
               <th>{t('cal.col.moveRisk')}</th>
               <th style={{ textAlign: 'right' }}>{t('brief.col.usual')}</th>
               <th style={{ textAlign: 'right' }}>{t('brief.col.implied')}</th>
-              <th>{t('cal.col.forecast')}</th>
             </tr>
           </thead>
           <tbody>
@@ -74,7 +73,6 @@ function Section({ title, icon, rows, metrics, note }: {
                 <td><MoveRisk compact prob={r.prob_move} tier={r.move_tier} baseRate={metrics?.base_rate} /></td>
                 <td className="mono r">{r.own_band != null ? `±${(r.own_band * 100).toFixed(1)}%` : '—'}</td>
                 <td className="mono r">{r.implied_move_pct != null ? `±${(r.implied_move_pct * 100).toFixed(1)}%` : '—'}</td>
-                <td className="cal-direction"><OutcomeBar compact up={r.p_up} flat={r.p_flat} down={r.p_down} /></td>
               </tr>
             ))}
           </tbody>
@@ -129,6 +127,7 @@ export function BriefPage() {
         </p>
       </motion.div>
 
+      <FollowThroughTeaser />
       <ArenaTeaser />
 
       <div className="grid grid-4">

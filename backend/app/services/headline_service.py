@@ -98,8 +98,19 @@ def _compute(db: Session) -> dict:
         },
         "direction": direction,
         "breakout": breakout,
+        # The post-report direction signal (services/playbook_service.py): gap up beyond
+        # SIGNAL_K x the usual move, long from the open, held SIGNAL_HOLD sessions.
+        "follow_through": _follow_through(db),
         "universe": universe,
     }
+
+
+def _follow_through(db: Session) -> dict | None:
+    try:
+        from backend.app.services.playbook_service import signal_summary
+        return signal_summary(db)
+    except Exception:  # noqa: BLE001 - the headline must not fail on one block
+        return None
 
 
 def headline(db: Session) -> dict:

@@ -7,12 +7,12 @@ import type { CalendarEvent, CalendarResponse } from '../types'
 import { DirectionBadge } from '../components/ui/DirectionBadge'
 import { Badge } from '../components/ui/Badge'
 import { StatCard } from '../components/ui/StatCard'
-import { Superposition } from '../components/ui/Superposition'
 import { MoveRisk } from '../components/ui/MoveRisk'
 import { useHeadline, pct } from '../hooks/useHeadline'
 import { BlastField } from '../components/BlastField'
 import { RiskAudio } from '../components/RiskAudio'
 import { ArenaTeaser } from '../components/ArenaTeaser'
+import { FollowThroughTeaser } from '../components/FollowThroughTeaser'
 import { useT } from '../i18n'
 import { formatDate, daysUntil } from '../utils/date'
 
@@ -85,6 +85,7 @@ export function EarningsCalendarPage() {
       {/* Calm = low breakout risk: the chord detunes as the week's breakout risk rises. */}
       <RiskAudio quietScores={events.filter((e) => daysUntil(e.earnings_date) >= 0 && e.prob_move != null).map((e) => 1 - (e.prob_move as number))} />
 
+      <FollowThroughTeaser />
       <ArenaTeaser />
 
       <div className="grid grid-4">
@@ -180,7 +181,7 @@ export function EarningsCalendarPage() {
                 <th>{t('cal.col.sector')}</th>
                 <th>{t('cal.col.date')}</th>
                 <th>{t('cal.col.moveRisk')}</th>
-                <th>{t('cal.col.forecast')}</th>
+                <th>{t('cal.col.when')}</th>
                 <th style={{ textAlign: 'right' }}>{t('cal.col.move')}</th>
                 <th style={{ width: 40 }}></th>
               </tr>
@@ -215,8 +216,11 @@ export function EarningsCalendarPage() {
                     <td>
                       <MoveRisk compact prob={e.prob_move} tier={e.move_tier} band={e.flat_band} baseRate={breakout?.base_rate} />
                     </td>
-                    <td className="cal-direction">
-                      <Superposition compact up={e.direction_prob_up} flat={e.direction_prob_flat} down={e.direction_prob_down} />
+                    {/* Was a three-way direction bar. Pre-report direction scores AUC 0.50 on
+                        clean data, so the column now says when the report lands — which
+                        decides the session that trades it. */}
+                    <td>
+                      {e.report_time ? <span className={`when-chip when-chip--${e.report_time.toLowerCase()}`}>{t(`when.${e.report_time.toLowerCase()}` as 'when.bmo')}</span> : <span className="tertiary">—</span>}
                     </td>
                     {/* The regression's own size estimate used to sit here. Out of sample it
                         ranks moves worse than the stock's own history does, so the column now
