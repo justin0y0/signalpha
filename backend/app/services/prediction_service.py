@@ -207,3 +207,8 @@ class PredictionService:
                 and_(PriceFeature.ticker == event.ticker, PriceFeature.earnings_date == event.earnings_date)
             )
         ).scalar_one_or_none()
+        if prediction is not None:
+            response.lean_up = prediction.lean_up
+            response.lean_factors = list(prediction.lean_factors or [])
+        from backend.app.services.headline_service import lean_metrics
+        response.lean_metrics = lean_metrics()

@@ -21,10 +21,10 @@ function accuracyColor(acc: number | null | undefined): string {
 function heatmapBg(acc: number | null | undefined): string {
   if (acc == null) return 'transparent'
   const v = acc
-  if (v >= 0.65) return `rgba(52, 211, 153, ${Math.min(v * 0.5, 0.4)})`
-  if (v >= 0.5) return `rgba(56, 189, 248, ${Math.min(v * 0.4, 0.3)})`
-  if (v >= 0.4) return `rgba(251, 191, 36, ${Math.min(v * 0.35, 0.25)})`
-  return `rgba(251, 113, 133, ${Math.min((0.5 - v) * 0.6, 0.3)})`
+  if (v >= 0.65) return `rgba(99, 230, 168, ${Math.min(v * 0.5, 0.4)})`
+  if (v >= 0.5) return `rgba(245, 181, 68, ${Math.min(v * 0.4, 0.3)})`
+  if (v >= 0.4) return `rgba(245, 181, 68, ${Math.min(v * 0.35, 0.25)})`
+  return `rgba(255, 125, 107, ${Math.min((0.5 - v) * 0.6, 0.3)})`
 }
 
 /**
@@ -133,13 +133,7 @@ export function PerformanceTrackerPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-        <h1 className="hero-headline">{t('perf.title')}</h1>
-        <p className="hero-sub">
-          {t('perf.sub')} ·
-          Model version <span className="mono" style={{ color: 'var(--accent-cyan)' }}>{data.model_version ?? '—'}</span>
-        </p>
-      </motion.div>
+      <p className="page-note">{t('perf.sub')} · <span className="mono">{data.model_version ?? '—'}</span></p>
 
       <div className="grid grid-4">
         <StatCard
@@ -275,18 +269,18 @@ export function PerformanceTrackerPage() {
           <div style={{ height: 380 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={topFeatures} layout="vertical" margin={{ left: 10 }}>
-                <CartesianGrid strokeDasharray="2 4" stroke="rgba(148,163,214,0.08)" horizontal={false} />
-                <XAxis type="number" tick={{ fill: '#6b7593', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <CartesianGrid strokeDasharray="2 4" stroke="rgba(236, 226, 205,0.08)" horizontal={false} />
+                <XAxis type="number" tick={{ fill: '#7d7568', fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis
                   type="category"
                   dataKey="feature"
-                  tick={{ fill: '#a8b3d1', fontSize: 11, fontFamily: 'var(--font-mono)' }}
+                  tick={{ fill: '#b5ac9c', fontSize: 11, fontFamily: 'var(--font-mono)' }}
                   axisLine={false}
                   tickLine={false}
                   width={150}
                 />
                 <Tooltip
-                  contentStyle={{ background: '#0f1524', border: '1px solid rgba(148,163,214,0.2)', borderRadius: 10, fontSize: 12 }}
+                  contentStyle={{ background: '#1a1816', border: '1px solid rgba(236, 226, 205,0.2)', borderRadius: 10, fontSize: 12 }}
                   formatter={(v: number) => [v.toFixed(4), 'Importance']}
                 />
                 <Bar dataKey="importance" radius={[0, 6, 6, 0]}>
@@ -329,9 +323,9 @@ export function PerformanceTrackerPage() {
                         style={{
                           padding: '1rem',
                           background: isCorrect
-                            ? `rgba(52, 211, 153, ${0.12 + pct * 0.3})`
-                            : `rgba(251, 113, 133, ${0.05 + pct * 0.2})`,
-                          border: `1px solid ${isCorrect ? 'rgba(52,211,153,0.3)' : 'var(--border)'}`,
+                            ? `rgba(99, 230, 168, ${0.12 + pct * 0.3})`
+                            : `rgba(255, 125, 107, ${0.05 + pct * 0.2})`,
+                          border: `1px solid ${isCorrect ? 'rgba(99, 230, 168,0.3)' : 'var(--border)'}`,
                           borderRadius: 8,
                           textAlign: 'center',
                           display: 'flex',

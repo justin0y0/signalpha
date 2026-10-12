@@ -18,6 +18,8 @@ export type CalendarEvent = {
   expected_move_pct?: number | null
   /** ATM straddle / spot — the move options are pricing for this report. */
   implied_move_pct?: number | null
+  /** Direction lean: P(up) from the experimental scorecard. */
+  lean_up?: number | null
   has_prediction: boolean
 }
 
@@ -41,6 +43,8 @@ export type Headline = {
   direction: Record<'UP' | 'FLAT' | 'DOWN', { n: number; precision: number | null; base_rate: number | null }>
   breakout: BreakoutMetrics | null
   universe: { tickers: number; events: number; scored_events: number; features?: number }
+  follow_through?: { k: number; hold: number; n: number; mean: number; hit: number; excess: number; t: number; baseline_mean: number; baseline_hit: number; years_positive: number; years_total: number; mean_5d: number; hit_5d: number; t_5d: number } | null
+  lean?: LeanMetrics | null
 }
 
 export type CalendarResponse = {
@@ -106,6 +110,9 @@ export type PredictionResponse = {
   flat_band?: number | null
   /** ATM straddle / spot from the latest options snapshot. */
   implied_move_pct?: number | null
+  lean_up?: number | null
+  lean_factors?: LeanFactor[]
+  lean_metrics?: LeanMetrics | null
 }
 
 export type EquityPoint = { date: string; equity: number; drawdown: number }
@@ -169,3 +176,6 @@ export type PerformanceResponse = {
   confusion_matrix: number[][]
   feature_importance: { feature: string; importance: number }[]
 }
+
+export type LeanFactor = { key: string; label: string; value: number | null; contrib: number; proven: boolean }
+export type LeanMetrics = { n: number; accuracy: number; z: number; auc: number; verdict: 'coin_flip' | 'weak' | 'edge'; top_quintile_up: number; bottom_quintile_up: number; base_up: number }

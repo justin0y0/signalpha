@@ -4,7 +4,8 @@ import { PulseTrackRecordDetail } from '../components/PulseTrackRecordDetail'
 import { PulseTrackRecord } from '../components/PulseTrackRecord'
 import { ActiveSignalsBanner } from '../components/ActiveSignalsBanner'
 import { SectorTreemap } from '../components/SectorTreemap'
-import { PressureField } from '../components/PressureField'
+import { PageHead } from '../components/PageHead'
+import { Num } from '../components/ui/Num'
 import { StockLogo } from '../components/StockLogo'
 import { motion } from 'framer-motion'
 import { Activity, Bell, BellOff, Flame, Star, TrendingDown, TrendingUp, Zap } from 'lucide-react'
@@ -110,8 +111,6 @@ export function PulsePage() {
 
   return (
     <div className="mc-page">
-      {/* Turbulence driven by the same breadth and volatility the page reports. */}
-      <PressureField intensity={Math.min(1, Math.abs(data.market.avg_vol_z ?? 0) / 2.2)} />
       <PulseHero data={data} now={now} highConv={highConv.length} />
       <NotifBanner status={data.notifications} sent={data.signals.filter(s => s.notified).length} />
       <MarketGauges data={data} />
@@ -144,7 +143,7 @@ export function PulsePage() {
       )}
       <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.21 }}>
         <div className="mc-panel__title">
-          🗺️ SECTOR TREEMAP
+          SECTOR TREEMAP
           <span className="mc-panel__sub">{t('pulse.clickHint')}</span>
         </div>
         {/* ACTIVE SIGNALS BANNER */}
@@ -155,7 +154,7 @@ export function PulsePage() {
       {/* SECTOR TREEMAP WITH FILTER + LEGEND + HOVER DETAIL */}
       <div className="treemap-legend">
         <div className="treemap-legend__item">
-          <span className="treemap-legend__dot" style={{ background: '#4ade80' }} />
+          <span className="treemap-legend__dot" style={{ background: '#63e6a8' }} />
           <span>{t('pulse.bullish')}</span>
         </div>
         <div className="treemap-legend__scale">
@@ -164,7 +163,7 @@ export function PulsePage() {
           <span className="treemap-legend__num">+2</span>
         </div>
         <div className="treemap-legend__item">
-          <span className="treemap-legend__dot" style={{ background: '#f87171' }} />
+          <span className="treemap-legend__dot" style={{ background: '#ff7d6b' }} />
           <span>{t('pulse.bearish')}</span>
         </div>
         <div className="treemap-legend__hint">
@@ -237,31 +236,25 @@ export function PulsePage() {
 function PulseHero({ data, now, highConv }: { data: PulseData; now: Date; highConv: number }) {
   const { t } = useT()
   return (
-    <div className="mc-hero">
-      <div className="mc-hero__scanlines" />
-      <div className="mc-hero__grid" />
-      <div className="mc-hero__content">
-        <div className="mc-hero__top">
-          <div className="mc-status"><span className="mc-status__dot" /><span className="mc-status__txt">SCANNING</span></div>
-          <div className="mc-clock"><span className="mc-clock__time">{now.toLocaleTimeString('en-US', { hour12: false })}</span><span className="mc-clock__tz">ET</span></div>
-          <div className="mc-system">
-            PULSE · {data.market.n_tickers} TICKERS · {data.signals.length} SIGNALS · {highConv} HIGH-CONVICTION
-          </div>
+    <>
+      <PageHead
+        kicker={t('pulse.kicker')}
+        title={<>{t('pulse.h.a')} <em>{t('pulse.h.b')}</em></>}
+        lede={t('pulse.h.lede', { signal: data.thresholds.signal, notify: data.thresholds.notify })}
+        spike={0.36}
+      >
+        <div className="figs">
+          <div><b><Num value={data.market.n_tickers} /></b><span>{t('pulse.fig.scanned')}</span></div>
+          <div className="is-signal"><b><Num value={data.signals.length} /></b><span>{t('pulse.fig.signals')}</span></div>
+          <div><b><Num value={highConv} /></b><span>{t('pulse.fig.high')}</span></div>
         </div>
-        <div className="mc-hero__main">
-          <div>
-            <div className="mc-hero__eyebrow">{t('pulse.eyebrow')}</div>
-            <h1 className="mc-hero__title">{t('pulse.title')}</h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0.4rem 0 0', maxWidth: 720, lineHeight: 1.55 }}>
-              Σ = Avellaneda–Lee mean reversion (0.55) + Gao 2018 intraday momentum (0.25)
-              + Connors RSI(2) regime (0.15), damped by a volume z-score. Trades fire at
-              |Σ| ≥ {data.thresholds.signal}, phone alerts at |Σ| ≥ {data.thresholds.notify}.
-            </p>
-            <ResearchDisclaimer />
-          </div>
-        </div>
+      </PageHead>
+      <div className="pulse-status">
+        <span className="pulse-status__live"><i />{t('pulse.scanning')}</span>
+        <span className="mono">{now.toLocaleTimeString('en-US', { hour12: false })}</span>
+        <ResearchDisclaimer />
       </div>
-    </div>
+    </>
   )
 }
 
@@ -328,18 +321,18 @@ function MarketGauges({ data }: { data: PulseData }) {
   return (
     <div className="pulse-gauges">
       <Gauge label="SPY" value={`$${(m.spy_price || 0).toFixed(2)}`}
-        accent="#38bdf8" sub="market factor anchor" />
+        accent="#f5b544" sub="market factor anchor" />
       <Gauge label="AVG |s|" value={(m.avg_abs_s_score || 0).toFixed(2)}
-        accent={(m.avg_abs_s_score || 0) > 1.0 ? '#fbbf24' : '#38bdf8'}
+        accent={(m.avg_abs_s_score || 0) > 1.0 ? '#f5b544' : '#f5b544'}
         sub="mean residual deviation" />
       <Gauge label="AVG RSI(2)" value={(m.avg_rsi2 || 0).toFixed(1)}
-        accent={(m.avg_rsi2 || 50) > 70 ? '#f87171' : (m.avg_rsi2 || 50) < 30 ? '#4ade80' : '#38bdf8'}
+        accent={(m.avg_rsi2 || 50) > 70 ? '#ff7d6b' : (m.avg_rsi2 || 50) < 30 ? '#63e6a8' : '#f5b544'}
         sub="Connors short-term" />
       <Gauge label="UPTREND" value={`${m.n_uptrend || 0}/${m.n_tickers || 0}`}
-        accent={(m.n_uptrend || 0) > (m.n_tickers || 1) / 2 ? '#4ade80' : '#f87171'}
+        accent={(m.n_uptrend || 0) > (m.n_tickers || 1) / 2 ? '#63e6a8' : '#ff7d6b'}
         sub="above 200-SMA" />
       <Gauge label="SIGNALS" value={data.signals.length.toString()}
-        accent="#a78bfa" sub={`|score| ≥ ${data.thresholds.signal}`} />
+        accent="#8fc7ff" sub={`|score| ≥ ${data.thresholds.signal}`} />
     </div>
   )
 }
@@ -357,7 +350,7 @@ function Gauge({ label, value, accent, sub }: { label: string; value: string; ac
 
 function HighConvCard({ sig, onClick }: { sig: Signal; onClick?: () => void }) {
   const stars = Math.min(5, Math.max(1, Math.round(Math.abs(sig.score) * 6)))
-  const color = sig.side === 'LONG' ? '#4ade80' : '#f87171'
+  const color = sig.side === 'LONG' ? '#63e6a8' : '#ff7d6b'
   const engineLabel: { [k: string]: string } = {
     AL_REVERSION: 'Avellaneda-Lee',
     GAO_MOMENTUM: 'Gao 2018 intraday',
@@ -410,7 +403,7 @@ function HighConvCard({ sig, onClick }: { sig: Signal; onClick?: () => void }) {
         {sig.factors.map((f, i) => (
           <div key={i} className="pulse-hi-card__factor">
             <span className="pulse-hi-card__factor-l">{f.label}</span>
-            <span className="mono" style={{ color: f.value >= 0 ? '#4ade80' : '#f87171' }}>
+            <span className="mono" style={{ color: f.value >= 0 ? '#63e6a8' : '#ff7d6b' }}>
               {f.value >= 0 ? '+' : ''}{f.value.toFixed(2)}
             </span>
           </div>
@@ -425,14 +418,14 @@ function HighConvCard({ sig, onClick }: { sig: Signal; onClick?: () => void }) {
             <div className="pulse-hi-card__ai-act">
               <span className="pulse-hi-card__ai-act-l">ACTION</span>
               <span className="pulse-hi-card__ai-act-v" style={{
-                color: sig.ai.action === 'LONG' ? '#4ade80' :
-                       sig.ai.action === 'SHORT' || sig.ai.action === 'FADE' ? '#f87171' : '#fbbf24'
+                color: sig.ai.action === 'LONG' ? '#63e6a8' :
+                       sig.ai.action === 'SHORT' || sig.ai.action === 'FADE' ? '#ff7d6b' : '#f5b544'
               }}>{sig.ai.action}</span>
             </div>
             <div className="pulse-hi-card__ai-rat">{sig.ai.rationale}</div>
           </div>
           <div className="pulse-hi-card__ai-risk">
-            <span style={{ color: '#fbbf24' }}>⚠ Risk:</span> {sig.ai.risk}
+            <span style={{ color: '#f5b544' }}>⚠ Risk:</span> {sig.ai.risk}
           </div>
         </div>
       )}
@@ -455,7 +448,7 @@ function HighConvCard({ sig, onClick }: { sig: Signal; onClick?: () => void }) {
 }
 
 function SignalCard({ sig, onClick }: { sig: Signal; onClick?: () => void }) {
-  const color = sig.side === 'LONG' ? '#4ade80' : '#f87171'
+  const color = sig.side === 'LONG' ? '#63e6a8' : '#ff7d6b'
   return (
     <motion.div className="pulse-signal pulse-clickable"
       initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}
@@ -477,7 +470,7 @@ function SignalCard({ sig, onClick }: { sig: Signal; onClick?: () => void }) {
         {sig.factors.slice(0, 3).map((f, i) => (
           <span key={i} className="pulse-signal__chip">
             {f.label}
-            <b style={{ color: f.value >= 0 ? '#4ade80' : '#f87171' }}> {f.value >= 0 ? '+' : ''}{f.value.toFixed(2)}</b>
+            <b style={{ color: f.value >= 0 ? '#63e6a8' : '#ff7d6b' }}> {f.value >= 0 ? '+' : ''}{f.value.toFixed(2)}</b>
           </span>
         ))}
         {sig.factors.length > 3 && <span className="pulse-signal__chip pulse-signal__chip--more">+{sig.factors.length - 3}</span>}
@@ -496,14 +489,14 @@ function PortfolioPanel({ portfolio: p }: { portfolio: PulseData['portfolio'] })
         <span className="mc-panel__sub">$1M book · multi-factor signals · size scales with |score| · 1-hr hold · 5d</span></div>
       <div className="pulse-port">
         {p.status && (p.status === 'computing' || p.status === 'refreshing') && (
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#fbbf24',
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: '#f5b544',
             padding: '0.4rem 0', borderBottom: '1px solid var(--border)', marginBottom: '0.5rem' }}>
             ⟳ Portfolio simulation running in background ({p.trades === 0 ? 'first load ~2min' : 'refreshing'})
           </div>
         )}
         <div className="pulse-port__lcd">
           <div className="pulse-port__lcd-label">EQUITY</div>
-          <div className="pulse-port__lcd-val mono" style={{ color: p.total_return >= 0 ? '#4ade80' : '#f87171' }}>
+          <div className="pulse-port__lcd-val mono" style={{ color: p.total_return >= 0 ? '#63e6a8' : '#ff7d6b' }}>
             ${Math.round(eq).toLocaleString()}
           </div>
           <div className={`pulse-port__ret mono ${p.total_return >= 0 ? 'up' : 'down'}`}>
@@ -528,7 +521,7 @@ function PortfolioPanel({ portfolio: p }: { portfolio: PulseData['portfolio'] })
                     <div className="mc-tt"><b className="mono">${Math.round(payload[0].value as number).toLocaleString()}</b></div>
                   ) : null}
                 />
-                <Line type="monotone" dataKey="equity" stroke={p.total_return >= 0 ? '#4ade80' : '#f87171'}
+                <Line type="monotone" dataKey="equity" stroke={p.total_return >= 0 ? '#63e6a8' : '#ff7d6b'}
                   strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
@@ -551,13 +544,13 @@ function PortfolioPanel({ portfolio: p }: { portfolio: PulseData['portfolio'] })
                 </div>
                 <div className="pulse-engine-card__row">
                   <span>{t('col.winRate')}</span>
-                  <b className="mono" style={{ color: d.win_rate > 0.55 ? '#4ade80' : d.win_rate > 0.50 ? '#fbbf24' : '#f87171' }}>
+                  <b className="mono" style={{ color: d.win_rate > 0.55 ? '#63e6a8' : d.win_rate > 0.50 ? '#f5b544' : '#ff7d6b' }}>
                     {(d.win_rate * 100).toFixed(0)}%
                   </b>
                 </div>
                 <div className="pulse-engine-card__row">
                   <span>P&amp;L</span>
-                  <b className="mono" style={{ color: d.pnl >= 0 ? '#4ade80' : '#f87171' }}>
+                  <b className="mono" style={{ color: d.pnl >= 0 ? '#63e6a8' : '#ff7d6b' }}>
                     {d.pnl >= 0 ? '+' : ''}${Math.round(d.pnl).toLocaleString()}
                   </b>
                 </div>
@@ -576,14 +569,14 @@ function PortfolioPanel({ portfolio: p }: { portfolio: PulseData['portfolio'] })
                   IN  {t.entry_time.slice(5, 16).replace('T', ' ')}<br/>
                   OUT {t.exit_time.slice(5, 16).replace('T', ' ')}
                 </span>
-                <span className="mono pulse-trade-row__tkr" style={{ color: '#38bdf8' }}>
+                <span className="mono pulse-trade-row__tkr" style={{ color: '#f5b544' }}>
                   {t.ticker}<br/>
                   <span style={{ fontSize: '0.6rem', color: 'var(--text-tertiary)' }}>
                     {t.primary === 'AL_REVERSION' ? 'AL' : t.primary === 'GAO_MOMENTUM' ? 'GAO' : t.primary === 'CONNORS' ? 'CON' : '?'}
                   </span>
                 </span>
                 <span className="pulse-trade-row__side" style={{
-                  color: t.side === 'LONG' ? '#4ade80' : '#f87171', fontWeight: 700, fontSize: '0.7rem'
+                  color: t.side === 'LONG' ? '#63e6a8' : '#ff7d6b', fontWeight: 700, fontSize: '0.7rem'
                 }}>{t.side}</span>
                 <span className="mono pulse-trade-row__hold" style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>
                   ${(t.size / 1000).toFixed(0)}k<br/>
@@ -591,14 +584,14 @@ function PortfolioPanel({ portfolio: p }: { portfolio: PulseData['portfolio'] })
                 </span>
                 <span className="mono pulse-trade-row__exit" style={{
                   fontSize: '0.6rem', fontWeight: 700,
-                  color: t.exit_reason === 'PROFIT' ? '#4ade80' :
-                         t.exit_reason === 'STOP' ? '#f87171' : '#fbbf24'
+                  color: t.exit_reason === 'PROFIT' ? '#63e6a8' :
+                         t.exit_reason === 'STOP' ? '#ff7d6b' : '#f5b544'
                 }}>{t.exit_reason}</span>
                 <span className="mono pulse-trade-row__price" style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>
                   ${t.entry_price.toFixed(2)} →<br/>${t.exit_price.toFixed(2)}
                 </span>
                 <span className="mono pulse-trade-row__pnl" style={{
-                  color: t.win ? '#4ade80' : '#f87171', fontWeight: 700, textAlign: 'right'
+                  color: t.win ? '#63e6a8' : '#ff7d6b', fontWeight: 700, textAlign: 'right'
                 }}>
                   {t.pnl >= 0 ? '+' : ''}${Math.round(t.pnl).toLocaleString()}<br/>
                   <span style={{ fontWeight: 400, fontSize: '0.62rem' }}>

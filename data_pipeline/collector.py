@@ -336,7 +336,8 @@ class DataCollector:
                     beats += 1
         return {"last_8q_reactions": reactions, "beats": beats, "total_quarters": total}
 
-    def collect_event_snapshot(self, ticker: str, earnings_date: date, sector: str | None = None) -> dict[str, Any]:
+    def collect_event_snapshot(self, ticker: str, earnings_date: date, sector: str | None = None,
+                               report_time: str | None = None) -> dict[str, Any]:
         earnings_dt = datetime.combine(earnings_date, datetime.min.time())
         try:
             history = self.yf.history(ticker, start=(earnings_dt - timedelta(days=420)).date().isoformat(), end=earnings_date.isoformat())
@@ -351,7 +352,12 @@ class DataCollector:
         except Exception:
             price_snapshot = {}
         try:
-            options_snapshot = self.yf.options_snapshot(ticker)
+            # The session that trades the report: the day itself for a pre-market or
+            # mid-session report, otherwise the next one. An unknown time is treated as
+            # after-close, because an expiry on the report day would miss that move.
+            same_day = (report_time or "").upper() in ("BMO", "DMH")
+            reacts = earnings_date if same_day else earnings_date + timedelta(days=1)
+            options_snapshot = self.yf.options_snapshot(ticker, on_or_after=reacts)
         except Exception:
             options_snapshot = {}
         try:

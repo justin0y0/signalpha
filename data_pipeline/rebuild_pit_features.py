@@ -146,8 +146,50 @@ def features_asof(bars: Bars, ticker: str, sector: str | None, cutoff: date) -> 
     out["volume_anomaly"] = _ratio(out.get("volume_t1"), out.get("volume_20d_avg"))
     out["dist_52w_high"] = None if not _ratio(p0, out.get("high_52w")) else _ratio(p0, out["high_52w"]) - 1
     out["dist_52w_low"] = None if not _ratio(p0, out.get("low_52w")) else _ratio(p0, out["low_52w"]) - 1
+    out.update(_reversion(bars, hist, sector, cutoff))
     out["features_asof"] = (hist["date"].iloc[-1]).date().isoformat()
     return {k: (None if isinstance(v, float) and not math.isfinite(v) else v) for k, v in out.items()}
+
+
+def _reversion(bars: Bars, hist: pd.DataFrame, sector: str | None, cutoff: date) -> dict:
+    """Daily Avellaneda-Lee s-score and the stock-specific run-up into the report.
+
+    The same residual mean-reversion model Pulse runs on 5-minute bars, on daily ones:
+    regress 60 sessions of the stock's returns on SPY and its sector ETF, treat the
+    cumulative residual as an Ornstein-Uhlenbeck process, and report how many
+    equilibrium standard deviations it sits from its mean (`al_s`). `resid5` is the
+    last five sessions of residual return — the part of the pre-report move that the
+    market and the sector do not explain.
+    """
+    empty = {"al_s": None, "al_half": None, "resid5": None, "vol20": None}
+    sr = hist.set_index("date")["Close"].astype(float).pct_change().dropna().tail(60)
+    cols = [bars.before("SPY", cutoff, 130).set_index("date")["Close"].astype(float).pct_change()]
+    etf = SECTOR_ETF_MAP.get(sector or "")
+    if etf:
+        eh = bars.before(etf, cutoff, 130)
+        if len(eh) > 61:
+            cols.append(eh.set_index("date")["Close"].astype(float).pct_change())
+    m = pd.concat([sr, *cols], axis=1, join="inner").dropna()
+    if len(m) < 45:
+        return empty
+    y = m.iloc[:, 0].to_numpy()
+    a = np.column_stack([np.ones(len(m)), m.iloc[:, 1:].to_numpy()])
+    resid = y - a @ np.linalg.lstsq(a, y, rcond=None)[0]
+    out = {**empty, "resid5": float(resid[-5:].sum()), "vol20": float(sr.tail(20).std())}
+    x = np.cumsum(resid)
+    z, nxt = x[:-1], x[1:]
+    if z.std() < 1e-9:
+        return out
+    b = float(np.cov(z, nxt, bias=True)[0, 1] / z.var())
+    if not 0 < b < 1:
+        return out  # not mean-reverting over this window: no score, rather than a made-up one
+    c = float(nxt.mean() - b * z.mean())
+    rv = float(np.var(nxt - c - b * z))
+    if rv < 1e-12:
+        return out
+    out["al_s"] = float((x[-1] - c / (1 - b)) / math.sqrt(rv / (1 - b * b)))
+    out["al_half"] = float(math.log(2) / -math.log(b))
+    return out
 
 
 def next_session(d: date) -> date:

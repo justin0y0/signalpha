@@ -26,11 +26,11 @@ type RecentItem = {
   actual_t5_return: number | null; hit: boolean
 }
 
-const CYAN = '#38bdf8'
-const PURPLE = '#a78bfa'
-const GREEN = '#4ade80'
-const RED = '#f87171'
-const AMBER = '#fbbf24'
+const CYAN = '#f5b544'
+const PURPLE = '#8fc7ff'
+const GREEN = '#63e6a8'
+const RED = '#ff7d6b'
+const AMBER = '#f5b544'
 
 const fmt = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`
 const fmtRet = (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(2)}%`
@@ -67,8 +67,8 @@ function ConfusionMatrix({ data }: { data: Confusion }) {
               const isHit = pred === actual
               const intensity = maxVal > 0 ? val / maxVal : 0
               const bg = isHit
-                ? `rgba(56,189,248,${0.1 + intensity * 0.55})`
-                : `rgba(248,113,113,${intensity * 0.35})`
+                ? `rgba(245, 181, 68,${0.1 + intensity * 0.55})`
+                : `rgba(255, 125, 107,${intensity * 0.35})`
               return (
                 <div key={`${pred}-${actual}`} className="tr-confusion__cell" style={{ background: bg }}>
                   <span className="tr-confusion__n">{val.toLocaleString()}</span>
@@ -96,13 +96,13 @@ function CalibrationChart({ data }: { data: CalibPt[] }) {
         <ScatterChart margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
           <XAxis dataKey="confidence_bin" type="number" domain={[30, 100]}
-            tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={v => `${v}%`}
-            label={{ value: t('tr.calib.xaxis'), fill: '#64748b', fontSize: 11, position: 'insideBottom', offset: -4 }} />
+            tick={{ fill: '#b5ac9c', fontSize: 11 }} tickFormatter={v => `${v}%`}
+            label={{ value: t('tr.calib.xaxis'), fill: '#7d7568', fontSize: 11, position: 'insideBottom', offset: -4 }} />
           <YAxis dataKey="actual_rate" type="number" domain={[0.3, 1]}
-            tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={v => `${(v * 100).toFixed(0)}%`} />
+            tick={{ fill: '#b5ac9c', fontSize: 11 }} tickFormatter={v => `${(v * 100).toFixed(0)}%`} />
           <ReferenceLine stroke="rgba(255,255,255,0.2)"
             segment={[{ x: 30, y: 0.3 }, { x: 100, y: 1.0 }]}
-            strokeDasharray="6 3" label={{ value: t('tr.calib.perfect'), fill: '#64748b', fontSize: 10, position: 'insideTopRight' }} />
+            strokeDasharray="6 3" label={{ value: t('tr.calib.perfect'), fill: '#7d7568', fontSize: 10, position: 'insideTopRight' }} />
           <Tooltip
             cursor={{ strokeDasharray: '3 3' }}
             content={({ payload }) => {
@@ -120,7 +120,7 @@ function CalibrationChart({ data }: { data: CalibPt[] }) {
           <Scatter data={pts} dataKey="actual_rate" fill={CYAN}
             shape={(props: any) => {
               const { cx, cy } = props
-              return <circle cx={cx} cy={cy} r={6} fill={CYAN} fillOpacity={0.85} stroke="#0d1829" strokeWidth={1.5} />
+              return <circle cx={cx} cy={cy} r={6} fill={CYAN} fillOpacity={0.85} stroke="#131210" strokeWidth={1.5} />
             }} />
         </ScatterChart>
       </ResponsiveContainer>
@@ -137,14 +137,14 @@ function RollingChart({ data, baseline }: { data: RollingPt[]; baseline: number 
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={pts} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-          <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 10 }}
+          <XAxis dataKey="date" tick={{ fill: '#b5ac9c', fontSize: 10 }}
             tickFormatter={v => v.slice(0, 7)} interval="preserveStartEnd" />
-          <YAxis domain={[30, 100]} tick={{ fill: '#94a3b8', fontSize: 11 }}
+          <YAxis domain={[30, 100]} tick={{ fill: '#b5ac9c', fontSize: 11 }}
             tickFormatter={v => `${v}%`} />
-          <ReferenceLine y={33.3} stroke="rgba(248,113,113,0.4)" strokeDasharray="4 3"
-            label={{ value: t('tr.rolling.random'), fill: '#f87171', fontSize: 10, position: 'right' }} />
-          <ReferenceLine y={+(baseline * 100).toFixed(1)} stroke="rgba(251,191,36,0.55)" strokeDasharray="4 3"
-            label={{ value: `${t('tr.rolling.flatOnly')} ${(baseline * 100).toFixed(1)}%`, fill: '#fbbf24', fontSize: 10, position: 'right' }} />
+          <ReferenceLine y={33.3} stroke="rgba(255, 125, 107,0.4)" strokeDasharray="4 3"
+            label={{ value: t('tr.rolling.random'), fill: '#ff7d6b', fontSize: 10, position: 'right' }} />
+          <ReferenceLine y={+(baseline * 100).toFixed(1)} stroke="rgba(245, 181, 68,0.55)" strokeDasharray="4 3"
+            label={{ value: `${t('tr.rolling.flatOnly')} ${(baseline * 100).toFixed(1)}%`, fill: '#f5b544', fontSize: 10, position: 'right' }} />
           <Tooltip
             content={({ payload, label }) => {
               if (!payload?.length) return null
@@ -220,19 +220,19 @@ function RecentTable({ items, total, onFilter, verdict, setVerdict, minConf, set
                 <td>
                   <div className="tr-conf-bar">
                     <div className="tr-conf-bar__fill"
-                      style={{ width: `${r.confidence * 100}%`, background: r.confidence >= 0.75 ? CYAN : r.confidence >= 0.6 ? PURPLE : '#64748b' }} />
+                      style={{ width: `${r.confidence * 100}%`, background: r.confidence >= 0.75 ? CYAN : r.confidence >= 0.6 ? PURPLE : '#7d7568' }} />
                     <span>{fmt(r.confidence)}</span>
                   </div>
                 </td>
                 <td>
-                  <span className="tr-dir" style={{ color: DIR_COLOR[r.actual_class as keyof typeof DIR_COLOR] || '#94a3b8' }}>
+                  <span className="tr-dir" style={{ color: DIR_COLOR[r.actual_class as keyof typeof DIR_COLOR] || '#b5ac9c' }}>
                     {DIR_ICON[r.actual_class as keyof typeof DIR_ICON]} {r.actual_class}
                   </span>
                 </td>
                 <td className="mono" style={{ color: r.actual_t1_return >= 0 ? GREEN : RED }}>
                   {fmtRet(r.actual_t1_return)}
                 </td>
-                <td className="mono" style={{ color: r.actual_t5_return == null ? '#64748b' : r.actual_t5_return >= 0 ? GREEN : RED }}>
+                <td className="mono" style={{ color: r.actual_t5_return == null ? '#7d7568' : r.actual_t5_return >= 0 ? GREEN : RED }}>
                   {r.actual_t5_return != null ? fmtRet(r.actual_t5_return) : '—'}
                 </td>
                 <td>
@@ -290,21 +290,13 @@ export function TrackRecordPage() {
 
   if (!summary || typeof summary.total !== 'number') return (
     <div className="tr-page">
-      <div className="tr-hero">
-        <h1 className="tr-hero__title">{t('tr.title')}</h1>
-        <p className="tr-hero__sub">{t('tr.empty')}</p>
-      </div>
+      <p className="empty-state">{t('tr.empty')}</p>
     </div>
   )
 
   return (
     <div className="tr-page">
-      <div className="tr-hero">
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="tr-hero__title">{t('tr.title')}</h1>
-          <p className="tr-hero__sub">{t('tr.hero.sub', { n: summary?.total.toLocaleString() ?? '' })}</p>
-        </motion.div>
-      </div>
+      <p className="page-note">{t('tr.hero.sub', { n: summary?.total.toLocaleString() ?? '' })}</p>
 
       {summary && (
         <div className="tr-kpi-strip">
@@ -337,7 +329,7 @@ export function TrackRecordPage() {
                 <div className="tr-sector-row__name">{s.name}</div>
                 <div className="tr-sector-row__bar-wrap">
                   <div className="tr-sector-row__bar"
-                    style={{ width: `${s.hit_rate * 100}%`, background: s.hit_rate > 0.7 ? CYAN : s.hit_rate > 0.5 ? PURPLE : '#64748b' }} />
+                    style={{ width: `${s.hit_rate * 100}%`, background: s.hit_rate > 0.7 ? CYAN : s.hit_rate > 0.5 ? PURPLE : '#7d7568' }} />
                 </div>
                 <div className="tr-sector-row__stat mono">{fmt(s.hit_rate)} <span className="tr-sector-row__n">({s.n})</span></div>
               </div>
@@ -359,7 +351,7 @@ export function TrackRecordPage() {
                 <div className="tr-confbreak__bar-wrap">
                   <div className="tr-confbreak__bar" style={{
                     width: `${r.hit_rate * 100}%`,
-                    background: r.hit_rate >= 0.85 ? '#4ade80' : r.hit_rate >= 0.75 ? '#38bdf8' : r.hit_rate >= 0.6 ? '#a78bfa' : '#64748b'
+                    background: r.hit_rate >= 0.85 ? '#63e6a8' : r.hit_rate >= 0.75 ? '#f5b544' : r.hit_rate >= 0.6 ? '#8fc7ff' : '#7d7568'
                   }} />
                   <div className="tr-confbreak__baseline" style={{ left: '33.3%' }} />
                   <div className="tr-confbreak__baseline tr-confbreak__baseline--amber"
@@ -367,7 +359,7 @@ export function TrackRecordPage() {
                 </div>
                 <div className="tr-confbreak__stat">
                   <span className="tr-confbreak__pct" style={{
-                    color: r.hit_rate >= 0.85 ? '#4ade80' : r.hit_rate >= 0.75 ? '#38bdf8' : '#a78bfa'
+                    color: r.hit_rate >= 0.85 ? '#63e6a8' : r.hit_rate >= 0.75 ? '#f5b544' : '#8fc7ff'
                   }}>{(r.hit_rate * 100).toFixed(1)}%</span>
                   <span className="tr-confbreak__n">n={r.n.toLocaleString()}</span>
                 </div>

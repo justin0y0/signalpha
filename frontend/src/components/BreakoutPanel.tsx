@@ -43,19 +43,19 @@ export function BreakoutPanel({ m }: { m: BreakoutMetrics }) {
       <div style={{ height: 220, marginTop: '1rem' }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.08)" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(236, 226, 205,0.08)" vertical={false} />
             <XAxis dataKey="name" tick={{ fill: 'var(--text-tertiary)', fontSize: 11 }} axisLine={false} tickLine={false} />
             <YAxis domain={[30, 80]} tickFormatter={(v) => `${v}%`} tick={{ fill: 'var(--text-tertiary)', fontSize: 11 }} axisLine={false} tickLine={false} />
             <Tooltip
-              cursor={{ fill: 'rgba(148,163,184,0.06)' }}
-              contentStyle={{ background: 'var(--bg-elevated, #0f172a)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 10, fontSize: 12 }}
+              cursor={{ fill: 'rgba(236, 226, 205,0.06)' }}
+              contentStyle={{ background: 'var(--bg-elevated, #131210)', border: '1px solid rgba(236, 226, 205,0.2)', borderRadius: 10, fontSize: 12 }}
               formatter={(v: number, _k, item) => [`${v}% moved more than usual · n=${item.payload.n}`, `mean P(move) ${(item.payload.p * 100).toFixed(0)}%`]}
             />
-            <ReferenceLine y={+(m.base_rate * 100).toFixed(1)} stroke="rgba(226,232,240,0.45)" strokeDasharray="4 4"
+            <ReferenceLine y={+(m.base_rate * 100).toFixed(1)} stroke="rgba(242, 236, 223,0.45)" strokeDasharray="4 4"
               label={{ value: t('model.breakout.baseLine'), fill: 'var(--text-tertiary)', fontSize: 10, position: 'insideTopLeft' }} />
             <Bar dataKey="rate" radius={[4, 4, 0, 0]}>
               {data.map((d, i) => (
-                <Cell key={d.name} fill={i === 9 ? 'var(--accent-amber)' : i === 8 ? 'var(--accent-purple)' : 'rgba(168,179,209,0.45)'} />
+                <Cell key={d.name} fill={i === 9 ? 'var(--accent-amber)' : i === 8 ? 'var(--accent-purple)' : 'rgba(181, 172, 156,0.45)'} />
               ))}
             </Bar>
           </BarChart>

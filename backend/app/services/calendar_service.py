@@ -84,6 +84,7 @@ class CalendarService:
                     move_tier=move_tier(prediction.prob_move if prediction else None, metrics),
                     expected_move_pct=prediction.expected_move_pct if prediction else None,
                     implied_move_pct=implied.get((event.ticker, event.earnings_date)),
+                    lean_up=prediction.lean_up if prediction else None,
                     has_prediction=prediction is not None,
                 )
             )

@@ -1,22 +1,30 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { Calendar, Clock, Cpu, Search, TrendingUp } from 'lucide-react'
+import { ArrowUpRight, Search } from 'lucide-react'
 import { api } from '../api/client'
 import type { CalendarEvent, CalendarResponse } from '../types'
-import { DirectionBadge } from '../components/ui/DirectionBadge'
-import { Badge } from '../components/ui/Badge'
-import { StatCard } from '../components/ui/StatCard'
 import { MoveRisk } from '../components/ui/MoveRisk'
-import { useHeadline, pct } from '../hooks/useHeadline'
-import { BlastField } from '../components/BlastField'
+import { LeanChip } from '../components/ui/LeanChip'
+import { Num } from '../components/ui/Num'
+import { useHeadline } from '../hooks/useHeadline'
+import { EarningsTrace } from '../components/EarningsTrace'
 import { RiskAudio } from '../components/RiskAudio'
-import { ArenaTeaser } from '../components/ArenaTeaser'
-import { FollowThroughTeaser } from '../components/FollowThroughTeaser'
+import { PageHead } from '../components/PageHead'
+import { WireStrip } from '../components/WireStrip'
 import { useT } from '../i18n'
-import { formatDate, daysUntil } from '../utils/date'
+import { daysUntil, parseLocalDate } from '../utils/date'
+import './CalendarPage.css'
+
+/**
+ * 01 · Calendar — what is coming, and which of it matters.
+ *
+ * Step one of the loop. The trace shows the next three weeks at a glance; the docket
+ * below is the same reports as a list, grouped by day because that is how an earnings
+ * week is actually read.
+ */
 
 const SECTORS = ['All', 'Technology', 'Financial Services', 'Healthcare', 'Consumer Cyclical', 'Consumer Defensive', 'Industrials', 'Energy', 'Communication Services']
+type Scope = 'upcoming' | 'flagged' | 'past'
 
 export function EarningsCalendarPage() {
   const { t } = useT()
@@ -24,22 +32,19 @@ export function EarningsCalendarPage() {
   const headline = useHeadline()
   const breakout = headline?.breakout
   const [events, setEvents] = useState<CalendarEvent[]>([])
-  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [sector, setSector] = useState('All')
+  const [scope, setScope] = useState<Scope>('upcoming')
 
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       try {
-        const params = new URLSearchParams()
-        params.set('days_forward', '90')
-        params.set('days_back', '30')
+        const params = new URLSearchParams({ days_forward: '90', days_back: '30' })
         const res: CalendarResponse = await api.getCalendar(params)
         setEvents(res.items)
-        setTotal(res.total)
         setError(null)
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'failed to load calendar')
@@ -50,200 +55,134 @@ export function EarningsCalendarPage() {
     load()
   }, [])
 
-  const filtered = useMemo(() => {
-    return events.filter((e) => {
+  const upcoming = useMemo(() => events.filter((e) => daysUntil(e.earnings_date) >= 0), [events])
+  const stats = useMemo(() => ({
+    ahead: upcoming.length,
+    week: upcoming.filter((e) => daysUntil(e.earnings_date) <= 7).length,
+    watch: upcoming.filter((e) => e.move_tier === 'breakout').length,
+    elevated: upcoming.filter((e) => e.move_tier === 'elevated').length,
+  }), [upcoming])
+
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const rows = events.filter((e) => {
+      const du = daysUntil(e.earnings_date)
+      if (scope === 'past' ? du >= 0 : du < 0) return false
+      if (scope === 'flagged' && e.move_tier !== 'breakout' && e.move_tier !== 'elevated') return false
       if (sector !== 'All' && e.sector !== sector) return false
-      if (query && !(
-        e.ticker.toLowerCase().includes(query.toLowerCase()) ||
-        (e.company_name ?? '').toLowerCase().includes(query.toLowerCase())
-      )) return false
+      if (q && !(e.ticker.toLowerCase().includes(q) || (e.company_name ?? '').toLowerCase().includes(q))) return false
       return true
     })
-  }, [events, query, sector])
+    rows.sort((a, b) => (scope === 'past' ? b.earnings_date.localeCompare(a.earnings_date) : a.earnings_date.localeCompare(b.earnings_date))
+      || (b.prob_move ?? 0) - (a.prob_move ?? 0))
+    const out: { date: string; rows: CalendarEvent[] }[] = []
+    for (const r of rows) {
+      const last = out[out.length - 1]
+      if (last && last.date === r.earnings_date) last.rows.push(r)
+      else out.push({ date: r.earnings_date, rows: [r] })
+    }
+    return out
+  }, [events, query, sector, scope])
+  const shown = groups.reduce((n, g) => n + g.rows.length, 0)
 
-  const stats = useMemo(() => {
-    const withPrediction = events.filter((e) => e.has_prediction).length
-    const upcoming7 = events.filter((e) => {
-      const du = daysUntil(e.earnings_date)
-      return du >= 0 && du <= 7
-    }).length
-    const upcoming = events.filter((e) => daysUntil(e.earnings_date) >= 0)
-    const watch = upcoming.filter((e) => e.move_tier === 'breakout').length
-    return { withPrediction, upcoming7, watch }
-  }, [events])
+  const open = (e: CalendarEvent) => navigate(`/predict/${e.ticker}?earnings_date=${e.earnings_date}`)
+  const dayLabel = (iso: string) => {
+    const du = daysUntil(iso)
+    return du === 0 ? t('cal.today') : du === 1 ? t('cal.tomorrow') : du > 0 ? t('cal.inDays', { n: du }) : t('cal.daysAgo', { n: -du })
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
-      <motion.div
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+    <div className="cal">
+      <PageHead
+        kicker={t('nav.calendar')}
+        title={<>{t('cal.h.a')} <em>{t('cal.h.b')}</em></>}
+        lede={t('cal.h.lede')}
+        spike={0.72}
       >
-        <BlastField events={events} />
-      </motion.div>
-
-      {/* Calm = low breakout risk: the chord detunes as the week's breakout risk rises. */}
-      <RiskAudio quietScores={events.filter((e) => daysUntil(e.earnings_date) >= 0 && e.prob_move != null).map((e) => 1 - (e.prob_move as number))} />
-
-      <FollowThroughTeaser />
-      <ArenaTeaser />
-
-      <div className="grid grid-4">
-        <StatCard
-          label={t('cal.stat.tracked')}
-          icon={<Calendar size={12} />}
-          value={total.toLocaleString()}
-          helper={t('cal.stat.tracked.helper')}
-          accent="cyan"
-          delay={0.05}
-        />
-        <StatCard
-          label={t('cal.stat.next7')}
-          icon={<Clock size={12} />}
-          value={stats.upcoming7}
-          helper={t('cal.stat.next7.helper')}
-          accent="purple"
-          delay={0.1}
-        />
-        <StatCard
-          label={t('cal.stat.withPrediction')}
-          icon={<Cpu size={12} />}
-          value={stats.withPrediction}
-          helper={t('cal.stat.coverage', { pct: Math.round((stats.withPrediction / Math.max(total, 1)) * 100) })}
-          accent="emerald"
-          delay={0.15}
-        />
-        <StatCard
-          label={t('cal.stat.quiet')}
-          icon={<TrendingUp size={12} />}
-          value={stats.watch}
-          helper={t('cal.stat.quiet.helper', { rate: pct(breakout?.top_decile.move_rate) })}
-          accent="amber"
-          delay={0.2}
-        />
-      </div>
-
-      <motion.div
-        className="card"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.25 }}
-      >
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ flex: '2 1 260px' }}>
-            <label className="field-label">{t('cal.search')}</label>
-            <div style={{ position: 'relative' }}>
-              <Search size={16} style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-              <input
-                className="input"
-                style={{ paddingLeft: '2.3rem' }}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t('cal.search.placeholder')}
-              />
-            </div>
-          </div>
-          <div style={{ flex: '1 1 200px' }}>
-            <label className="field-label">{t('cal.sector')}</label>
-            <select className="select" value={sector} onChange={(e) => setSector(e.target.value)}>
-              {SECTORS.map((s) => <option key={s} value={s}>{s === 'All' ? t('cal.sector.all') : s}</option>)}
-            </select>
-          </div>
-          <div style={{ marginLeft: 'auto' }}>
-            <Badge variant="live">{t('cal.live')}</Badge>
-          </div>
+        <div className="figs">
+          <div><b><Num value={stats.ahead} /></b><span>{t('cal.fig.ahead')}</span></div>
+          <div><b><Num value={stats.week} /></b><span>{t('cal.fig.week')}</span></div>
+          <div className="is-signal"><b><Num value={stats.watch} /></b><span>{t('cal.fig.watch')}</span></div>
         </div>
-      </motion.div>
+      </PageHead>
 
-      <motion.div
-        className="card"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.3 }}
-        style={{ padding: 0, overflow: 'hidden' }}
-      >
-        {loading ? (
-          <div style={{ padding: '2rem' }}>
-            <div className="shimmer" style={{ height: 40, marginBottom: 8 }} />
-            <div className="shimmer" style={{ height: 40, marginBottom: 8 }} />
-            <div className="shimmer" style={{ height: 40 }} />
+      <section className="cal-trace">
+        <div className="cal-trace__head">
+          <span className="eyebrow">{t('trace.title')}</span>
+          <RiskAudio quietScores={upcoming.filter((e) => e.prob_move != null).map((e) => 1 - (e.prob_move as number))} />
+        </div>
+        {loading ? <div className="shimmer" style={{ height: 300 }} /> : <EarningsTrace events={upcoming} baseRate={breakout?.base_rate} />}
+      </section>
+
+      <WireStrip />
+
+      <section className="docket">
+        <div className="docket__bar">
+          <h2 className="docket__title">{t('cal.docket')}</h2>
+          <div className="seg" role="group" aria-label={t('cal.scope')}>
+            {(['upcoming', 'flagged', 'past'] as const).map((s) => (
+              <button key={s} type="button" className={scope === s ? 'is-on' : ''} onClick={() => setScope(s)}>
+                {t(`cal.scope.${s}` as 'cal.scope.upcoming')}
+                {s === 'flagged' && stats.watch + stats.elevated > 0 && <i>{stats.watch + stats.elevated}</i>}
+              </button>
+            ))}
           </div>
+          <div className="docket__search">
+            <Search size={14} />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('cal.search.placeholder')} aria-label={t('cal.search')} />
+          </div>
+          <select className="docket__select" value={sector} onChange={(e) => setSector(e.target.value)} aria-label={t('cal.sector')}>
+            {SECTORS.map((s) => <option key={s} value={s}>{s === 'All' ? t('cal.sector.all') : s}</option>)}
+          </select>
+        </div>
+
+        {loading ? (
+          <div style={{ display: 'grid', gap: 8 }}>{[0, 1, 2, 3].map((i) => <div key={i} className="shimmer" style={{ height: 52 }} />)}</div>
         ) : error ? (
           <div className="empty-state">{error}</div>
-        ) : filtered.length === 0 ? (
+        ) : groups.length === 0 ? (
           <div className="empty-state">{t('cal.empty')}</div>
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>{t('cal.col.ticker')}</th>
-                <th>{t('cal.col.company')}</th>
-                <th>{t('cal.col.sector')}</th>
-                <th>{t('cal.col.date')}</th>
-                <th>{t('cal.col.moveRisk')}</th>
-                <th>{t('cal.col.when')}</th>
-                <th style={{ textAlign: 'right' }}>{t('cal.col.move')}</th>
-                <th style={{ width: 40 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((e, i) => {
-                const du = daysUntil(e.earnings_date)
-                const duLabel = du === 0 ? 'Today' : du > 0 ? `in ${du}d` : `${-du}d ago`
-                return (
-                  <motion.tr
-                    key={`${e.ticker}-${e.earnings_date}`}
-                    onClick={() => navigate(`/predict/${e.ticker}?earnings_date=${e.earnings_date}`)}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.2, delay: Math.min(i * 0.015, 0.4) }}
-                  >
-                    <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, letterSpacing: '-0.01em' }}>
-                      {e.ticker}
-                    </td>
-                    <td className="muted" style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {e.company_name ?? '—'}
-                    </td>
-                    <td>
-                      {e.sector ? <Badge variant="default">{e.sector}</Badge> : <span className="tertiary">—</span>}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <span className="mono">{formatDate(e.earnings_date)}</span>
-                        <span className="tertiary" style={{ fontSize: '0.75rem' }}>{duLabel}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <MoveRisk compact prob={e.prob_move} tier={e.move_tier} band={e.flat_band} baseRate={breakout?.base_rate} />
-                    </td>
-                    {/* Was a three-way direction bar. Pre-report direction scores AUC 0.50 on
-                        clean data, so the column now says when the report lands — which
-                        decides the session that trades it. */}
-                    <td>
-                      {e.report_time ? <span className={`when-chip when-chip--${e.report_time.toLowerCase()}`}>{t(`when.${e.report_time.toLowerCase()}` as 'when.bmo')}</span> : <span className="tertiary">—</span>}
-                    </td>
-                    {/* The regression's own size estimate used to sit here. Out of sample it
-                        ranks moves worse than the stock's own history does, so the column now
-                        shows what options are pricing, with the usual move underneath. */}
-                    <td className="mono cal-move" style={{ textAlign: 'right' }}>
-                      {e.implied_move_pct != null ? `±${(e.implied_move_pct * 100).toFixed(1)}%` : <span className="tertiary">—</span>}
-                      {e.flat_band != null && <span className="cal-move__usual">{t('cal.usual', { v: (e.flat_band * 100).toFixed(1) })}</span>}
-                    </td>
-                    <td className="tertiary">
-                      <TrendingUp size={14} />
-                    </td>
-                  </motion.tr>
-                )
-              })}
-            </tbody>
-          </table>
+          <div className="docket__list">
+            <div className="docket__cols" aria-hidden="true">
+              <span>{t('cal.col.company')}</span><span>{t('cal.col.when')}</span><span>{t('cal.col.moveRisk')}</span>
+              <span>{t('cal.col.lean')}</span><span className="r">{t('cal.col.move')}</span><span />
+            </div>
+            {groups.map((g) => {
+              const d = parseLocalDate(g.date)
+              return (
+                <div key={g.date} className="docket__day">
+                  <div className="docket__date">
+                    <b className="serif">{d.toLocaleDateString(undefined, { weekday: 'long' })}</b>
+                    <span>{d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                    <i>{dayLabel(g.date)}</i>
+                    <em>{t('cal.nReports', { n: g.rows.length })}</em>
+                  </div>
+                  {g.rows.map((e) => (
+                    <button key={e.ticker} type="button" className={`docket__row is-${e.move_tier ?? 'none'}`} onClick={() => open(e)}>
+                      <span className="docket__name">
+                        <b>{e.ticker}</b>
+                        <small>{e.company_name ?? '—'}{e.sector ? <i> · {e.sector}</i> : null}</small>
+                      </span>
+                      <span>{e.report_time
+                        ? <span className={`when-chip when-chip--${e.report_time.toLowerCase()}`}>{t(`when.${e.report_time.toLowerCase()}` as 'when.bmo')}</span>
+                        : <span className="tertiary">—</span>}</span>
+                      <span><MoveRisk compact prob={e.prob_move} tier={e.move_tier} band={e.flat_band} baseRate={breakout?.base_rate} /></span>
+                      <span><LeanChip p={e.lean_up} /></span>
+                      <span className="mono r docket__move">
+                        {e.implied_move_pct != null ? `±${(e.implied_move_pct * 100).toFixed(1)}%` : <span className="tertiary">—</span>}
+                        {e.flat_band != null && <small>{t('cal.usual', { v: (e.flat_band * 100).toFixed(1) })}</small>}
+                      </span>
+                      <span className="docket__go"><ArrowUpRight size={15} /></span>
+                    </button>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
         )}
-      </motion.div>
-
-      <div className="tertiary" style={{ fontSize: '0.8rem', textAlign: 'center', padding: '1rem 0' }}>
-        <Calendar size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-        {t('cal.footer', { shown: filtered.length, total: events.length, auc: breakout ? breakout.auc.toFixed(3) : '—' })}
-      </div>
+        <p className="docket__foot">{t('cal.footer', { shown, total: events.length, auc: breakout ? breakout.auc.toFixed(3) : '—' })}</p>
+      </section>
     </div>
   )
 }

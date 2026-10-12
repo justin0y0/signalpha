@@ -35,7 +35,7 @@ def _rows_for_window(db: Session, start: date, end: date, tickers: list[str] | N
     sql = """
         SELECT e.ticker, e.company_name, e.sector, e.earnings_date, e.report_time,
                p.direction_prob_up, p.direction_prob_flat, p.direction_prob_down,
-               p.expected_move_pct, p.confidence_score, p.prob_move,
+               p.expected_move_pct, p.confidence_score, p.prob_move, p.lean_up,
                f.atm_iv, f.iv_rank, f.iv_crush_hist,
                f.expected_move_pct AS implied_move_pct,
                (SELECT o.flat_band FROM outcomes o WHERE o.ticker = e.ticker AND o.flat_band IS NOT NULL
@@ -78,6 +78,7 @@ def build_brief(db: Session, for_date: date | None = None, tickers: list[str] | 
             "earnings_date": r["earnings_date"].isoformat() if r["earnings_date"] else None,
             "report_time": r["report_time"],
             "prob_move": float(r["prob_move"]) if r.get("prob_move") is not None else None,
+            "lean_up": float(r["lean_up"]) if r.get("lean_up") is not None else None,
             "move_tier": r.get("move_tier"),
             "own_band": float(r["own_band"]) if r.get("own_band") is not None else None,
             "implied_move_pct": float(r["implied_move_pct"]) if r.get("implied_move_pct") is not None else None,

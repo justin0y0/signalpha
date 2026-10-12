@@ -160,6 +160,10 @@ class Prediction(Base):
     # P(the stock moves more than its own median earnings reaction). The magnitude head —
     # the one question the features have measurable signal on, unlike direction.
     prob_move: Mapped[float | None] = mapped_column(Float)
+    # Direction lean (data_pipeline/direction_lean.py): P(up) from the transparent
+    # scorecard, and each factor's contribution. Experimental — see that module.
+    lean_up: Mapped[float | None] = mapped_column(Float)
+    lean_factors: Mapped[list | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

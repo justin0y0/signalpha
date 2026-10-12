@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Anchor, CheckCircle2, Lock, ShieldCheck, Swords, Timer, XCircle } from 'lucide-react'
+import { Anchor, CheckCircle2, Lock, ShieldCheck, Timer, XCircle } from 'lucide-react'
 import { useT } from '../i18n'
 import { formatDateShort } from '../utils/date'
+import { PageHead } from '../components/PageHead'
+import { Num } from '../components/ui/Num'
 import './ArenaPage.css'
 
 /**
@@ -27,7 +29,7 @@ type ArenaEvent = {
   actual_move: number | null; broke_out: boolean | null; calls: Call[]
 }
 type Forecaster = { code: string; name: string; kind: string; provider: string; blurb: string; active: boolean; calls: number }
-type Lb = { code: string; n: number; brier: number; skill?: number; skill_lo?: number; skill_hi?: number; bss?: number; verdict: string }
+type Lb = { code: string; n: number; brier: number; skill?: number; skill_lo?: number; skill_hi?: number; bss?: number; verdict: string; dir_n?: number; dir_hit?: number; dir_lo?: number; dir_hi?: number }
 type Board = {
   season: { id: string; name: string; opened: string }
   question: string
@@ -37,7 +39,9 @@ type Board = {
   resolved: ArenaEvent[]
   queued: { ticker: string; company: string | null; earnings_date: string; report_time: string | null; opens: string }[]
   anchors: { id: number; root: string; calendars: string; created_at: string; calls: number }[]
-  totals: { calls: number; graded: number; events: number }
+  totals: { calls: number; graded: number; events: number; voided?: number }
+  voided?: { ticker: string; earnings_date: string; calls: number; sealed_at: string; voided_at: string
+    band: number; implied_move: number | null; anchor_id: number | null; reason: string }[]
 }
 type MyCall = { p: number; lean: 'UP' | 'DOWN' | null; at: string }
 
@@ -194,7 +198,8 @@ function VerifyPanel({ call, name }: { call: Call; name: string }) {
     setState(h === call.digest ? 'ok' : 'bad')
   }
   return (
-    <div className="arena-verify">
+    <div className={`arena-verify paper${state === 'ok' ? ' is-verified' : ''}`}>
+      <span className="arena-verify__stamp" aria-hidden="true">{state === 'ok' ? t('arena.stamp.ok') : t('arena.stamp.sealed')}</span>
       <div className="arena-verify__head">
         <span style={{ color: COLOR[call.forecaster] }}>{name}</span>
         <span className="tertiary"> · {t('arena.sealedAt')} {new Date(call.sealed_at).toLocaleString()}</span>
@@ -316,23 +321,24 @@ export function ArenaPage() {
 
   return (
     <div className="arena">
-      {/* ── hero ── */}
-      <motion.section className="arena-hero" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
-        <div className="arena-hero__kicker"><Swords size={12} /> {data.season.name}</div>
-        <h1 className="arena-hero__title">{t('arena.title')}</h1>
-        <p className="arena-hero__lede">{t('arena.lede')}</p>
-        <div className="arena-hero__stats">
-          <div><b>{data.totals.calls}</b><span>{t('arena.stat.sealed')}</span></div>
-          <div><b>{data.totals.graded}</b><span>{t('arena.stat.graded')}</span></div>
-          <div><b>{data.anchors.length}</b><span>{t('arena.stat.anchors')}</span></div>
-          <div><b>{data.forecasters.filter((f) => f.active).length}</b><span>{t('arena.stat.forecasters')}</span></div>
+      <PageHead
+        kicker={data.season.name}
+        title={<>{t('arena.h.a')} <em>{t('arena.h.b')}</em></>}
+        lede={t('arena.lede')}
+        spike={0.4}
+      >
+        <div className="figs">
+          <div><b><Num value={data.totals.calls} /></b><span>{t('arena.stat.sealed')}</span></div>
+          <div><b><Num value={data.totals.graded} /></b><span>{t('arena.stat.graded')}</span></div>
+          <div className="is-signal"><b><Num value={data.anchors.length} /></b><span>{t('arena.stat.anchors')}</span></div>
         </div>
-        <ol className="arena-steps">
-          <li><b>{t('arena.step1.t')}</b><span>{t('arena.step1.d')}</span></li>
-          <li><b>{t('arena.step2.t')}</b><span>{t('arena.step2.d')}</span></li>
-          <li><b>{t('arena.step3.t')}</b><span>{t('arena.step3.d')}</span></li>
-        </ol>
-      </motion.section>
+      </PageHead>
+
+      <ol className="arena-steps">
+        <li><b>{t('arena.step1.t')}</b><span>{t('arena.step1.d')}</span></li>
+        <li><b>{t('arena.step2.t')}</b><span>{t('arena.step2.d')}</span></li>
+        <li><b>{t('arena.step3.t')}</b><span>{t('arena.step3.d')}</span></li>
+      </ol>
 
       {/* ── leaderboard ── */}
       <section className="card arena-board">
@@ -340,7 +346,7 @@ export function ArenaPage() {
         <p className="arena-board__note">{t('arena.board.note')}</p>
         <div className="arena-board__head">
           <span>{t('arena.board.who')}</span><span>{t('arena.board.n')}</span><span>Brier</span>
-          <span>{t('arena.board.skill')}</span><span>{t('arena.board.verdict')}</span>
+          <span>{t('arena.board.skill')}</span><span>{t('arena.board.dir')}</span><span>{t('arena.board.verdict')}</span>
         </div>
         {rows.map(({ f, lb }) => (
           <div key={f.code} className="arena-board__row">
@@ -354,6 +360,9 @@ export function ArenaPage() {
             <span className="mono">{lb?.n ?? 0}</span>
             <span className="mono">{lb ? lb.brier.toFixed(3) : '—'}</span>
             <SkillBar lo={lb?.skill_lo} hi={lb?.skill_hi} mid={lb?.skill} scale={scale} />
+            <span className="mono arena-dir">
+              {lb?.dir_n ? <>{(lb.dir_hit! * 100).toFixed(0)}%<i> {t('arena.board.dirN', { n: lb.dir_n })}</i></> : <i>—</i>}
+            </span>
             <span className={`arena-verdict arena-verdict--${lb?.verdict ?? 'warming_up'}`}>
               {t(`arena.verdict.${lb?.verdict ?? 'warming_up'}` as 'arena.verdict.warming_up')}
             </span>
@@ -368,6 +377,7 @@ export function ArenaPage() {
             <span className="mono">{myRow.n}</span>
             <span className="mono">{myRow.brier.toFixed(3)}</span>
             <span className="mono small">{myRow.skill != null ? `${myRow.skill >= 0 ? '+' : ''}${myRow.skill.toFixed(3)}` : '—'}</span>
+            <span className="mono arena-dir"><i>—</i></span>
             <span className="arena-verdict arena-verdict--warming_up">{t('arena.verdict.warming_up')}</span>
           </div>
         )}
@@ -502,6 +512,23 @@ export function ArenaPage() {
           <p>{t('arena.why.d3')}</p>
         </div>
       </section>
+
+      {(data.voided?.length ?? 0) > 0 && (
+        <details className="arena-voided">
+          <summary>{t('arena.voided.title', { n: data.totals.voided ?? 0, r: data.voided!.length })}</summary>
+          <p>{data.voided![0].reason}</p>
+          <div className="arena-voided__list">
+            {data.voided!.map((v) => (
+              <div key={v.ticker + v.earnings_date}>
+                <b className="mono">{v.ticker}</b>
+                <span>{v.earnings_date}</span>
+                <span>{t('arena.voided.row', { n: v.calls, band: (v.band * 100).toFixed(1), implied: v.implied_move != null ? (v.implied_move * 100).toFixed(1) : '—' })}</span>
+                {v.anchor_id != null && <a href={`/api/v1/arena/anchors/${v.anchor_id}/manifest.txt`}>manifest #{v.anchor_id}</a>}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
 
       {data.anchors.length > 0 && (
         <section className="arena-anchors">

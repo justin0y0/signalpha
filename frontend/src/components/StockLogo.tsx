@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 interface Props { ticker: string; size?: number; className?: string }
-const COLORS = ['#38bdf8','#a78bfa','#4ade80','#fbbf24','#f87171','#ec4899','#06b6d4','#fb923c']
+const COLORS = ['#f5b544','#8fc7ff','#63e6a8','#f5b544','#ff7d6b','#ff7d6b','#e09a2b','#f08c3a']
 
 export function StockLogo({ ticker, size = 36, className = '' }: Props) {
   const [failed, setFailed] = useState(false)

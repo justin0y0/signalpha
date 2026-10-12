@@ -81,7 +81,7 @@ export function CrushChamber({ daysUntil, expectedMove, moveTier }: Props) {
       for (let k = 3; k >= 0; k--) {
         ctx!.beginPath()
         ctx!.ellipse(cx, cy, rw + k * 6, rh + k * 5, 0, 0, Math.PI * 2)
-        ctx!.strokeStyle = `rgba(56, 189, 248, ${0.42 - k * 0.09 + p * 0.28})`
+        ctx!.strokeStyle = `rgba(245, 181, 68, ${0.42 - k * 0.09 + p * 0.28})`
         ctx!.lineWidth = k === 0 ? 2 : 1
         ctx!.stroke()
       }
@@ -95,7 +95,7 @@ export function CrushChamber({ daysUntil, expectedMove, moveTier }: Props) {
         const py = cy + Math.sin(a) * (rh * 0.72 + jitter)
         ctx!.beginPath()
         ctx!.arc(px, py, 1.6 + p * 2, 0, Math.PI * 2)
-        ctx!.fillStyle = p > 0.72 ? 'rgba(251, 191, 36, 0.75)' : 'rgba(167, 139, 250, 0.6)'
+        ctx!.fillStyle = p > 0.72 ? 'rgba(245, 181, 68, 0.75)' : 'rgba(143, 199, 255, 0.6)'
         ctx!.fill()
       }
 
@@ -109,15 +109,15 @@ export function CrushChamber({ daysUntil, expectedMove, moveTier }: Props) {
           ctx!.beginPath()
           ctx!.arc(cx + Math.cos(a) * dist, cy + Math.sin(a) * dist * 0.72, (ruptures ? 2.6 : 1.8) * (1 - release), 0, Math.PI * 2)
           ctx!.fillStyle = ruptures
-            ? `rgba(251, 113, 133, ${1 - release})`
-            : `rgba(52, 211, 153, ${(1 - release) * 0.8})`
+            ? `rgba(255, 125, 107, ${1 - release})`
+            : `rgba(99, 230, 168, ${(1 - release) * 0.8})`
           ctx!.fill()
         }
       }
 
       ctx!.font = '600 10px ui-monospace, monospace'
       ctx!.textAlign = 'center'
-      ctx!.fillStyle = 'rgba(148, 163, 214, 0.8)'
+      ctx!.fillStyle = 'rgba(236, 226, 205, 0.8)'
       const label = release > 0
         ? (ruptures ? 'BREAKS THE BAND' : 'VOL COLLAPSES')
         : `IV LOAD ${Math.round(p * 100)}%`

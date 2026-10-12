@@ -1,0 +1,89 @@
+/* The dossier (single report) */
+.dossier { display: flex; flex-direction: column; gap: 1.5rem; }
+.dossier__back { align-self: flex-start; display: inline-flex; align-items: center; gap: 0.35rem; font: 500 0.66rem var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-tertiary); text-decoration: none; transition: color 0.15s, gap 0.2s var(--ease); }
+.dossier__back:hover { color: var(--signal); gap: 0.6rem; }
+.dossier__head { display: flex; justify-content: space-between; align-items: flex-end; gap: 1.5rem; flex-wrap: wrap; padding-bottom: 1.3rem; border-bottom: 1px solid var(--border-strong); }
+.dossier__kicker { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem 0.9rem; font: 500 0.66rem var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 0.7rem; }
+.dossier__when { color: var(--signal); }
+.dossier__head .ticker-name { margin-bottom: 0; }
+
+.dossier__calls { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 1rem; align-items: stretch; }
+@media (max-width: 900px) { .dossier__calls { grid-template-columns: 1fr; } }
+
+/* ── dial ── */
+.dialcard { display: flex; flex-direction: column; }
+.dial { max-width: 380px; width: 100%; margin: 0.2rem auto 0; container-type: inline-size; }
+.dial__face { position: relative; }
+.dial svg { display: block; width: 100%; height: auto; overflow: visible; }
+.dial__track { fill: none; stroke: var(--border-strong); stroke-width: 2; }
+.dial__fill { fill: none; stroke: var(--tone); stroke-width: 6; stroke-linecap: butt; stroke-dasharray: 1; stroke-dashoffset: 1; animation: dial-fill 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 0.35s forwards; }
+.dial__tick { stroke: var(--text-muted); stroke-width: 1; }
+.dial__lbl { fill: var(--text-muted); font: 500 9px var(--font-mono); text-anchor: middle; }
+.dial__base { stroke: var(--text-primary); stroke-width: 1.5; stroke-dasharray: 3 3; }
+/* view-box makes the origin the dial's centre in SVG units, whatever size it renders at */
+.dial__needle { transform-box: view-box; transform-origin: 150px 150px; transform: rotate(var(--deg)); animation: dial-swing 1.25s cubic-bezier(0.3, 1.5, 0.5, 1) 0.15s both; }
+.dial__needle path { fill: var(--tone); }
+@keyframes dial-swing { from { transform: rotate(-90deg); } to { transform: rotate(var(--deg)); } }
+@keyframes dial-fill { to { stroke-dashoffset: 0; } }
+.dial.is-hot { --tone: var(--signal); } .dial.is-warm { --tone: var(--model); } .dial.is-calm { --tone: var(--text-secondary); }
+.dial__num { position: absolute; left: 0; right: 0; bottom: 3%; text-align: center; font-size: min(4.4rem, 19cqw); font-weight: 420; line-height: 0.9; letter-spacing: -0.04em; color: var(--tone); font-variant-numeric: lining-nums; font-variation-settings: 'opsz' 72; }
+.dial__read { display: flex; flex-direction: column; align-items: center; gap: 0.2rem; margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid var(--border); }
+.dial__tier { font: 600 0.66rem var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-primary); }
+.dial__basetxt { font: 500 0.62rem var(--font-mono); letter-spacing: 0.06em; color: var(--text-tertiary); }
+@media (prefers-reduced-motion: reduce) { .dial__needle { animation: none; } .dial__fill { animation: none; stroke-dashoffset: 0; } }
+.dialcard__facts { display: grid; grid-template-columns: repeat(3, 1fr); margin: 1.2rem 0 0.9rem; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.dialcard__facts div { padding: 0.65rem 0.8rem; display: flex; flex-direction: column; gap: 0.2rem; }
+.dialcard__facts div + div { border-left: 1px solid var(--border); }
+.dialcard__facts dt { font: 500 0.56rem var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-tertiary); }
+.dialcard__facts dd { margin: 0; font: 600 1rem var(--font-mono); color: var(--text-primary); }
+
+/* ── lean ── */
+.leancard { display: flex; flex-direction: column; }
+.leancard__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; }
+.leancard__head .card-title { margin: 0; }
+.tag { font: 600 0.56rem var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; padding: 0.16rem 0.45rem; border-radius: 3px; border: 1px solid var(--border-strong); color: var(--text-secondary); white-space: nowrap; }
+.tag--exp { border-style: dashed; color: var(--text-tertiary); }
+.leancard__call { display: flex; align-items: baseline; gap: 0.8rem; flex-wrap: wrap; }
+.leancard__call b { font-size: 2.3rem; font-weight: 440; letter-spacing: -0.025em; line-height: 1; color: var(--text-secondary); }
+.leancard__call b.is-up { color: var(--up); } .leancard__call b.is-down { color: var(--down); }
+.leancard__call span { font: 500 0.72rem var(--font-mono); color: var(--text-tertiary); }
+
+.rope { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.7rem; margin: 1.1rem 0 1rem; }
+.rope__end { font: 600 0.58rem var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); }
+.rope__line { position: relative; height: 22px; background: repeating-linear-gradient(90deg, var(--border-strong) 0 6px, transparent 6px 10px) center / 100% 2px no-repeat; }
+.rope__mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--text-tertiary); }
+.rope__knot { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--text-secondary); box-shadow: 0 0 0 4px var(--bg-card); }
+.rope__knot.is-up { background: var(--up); } .rope__knot.is-down { background: var(--down); }
+
+.pulls { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.42rem; }
+.pull { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) 1.6rem; align-items: center; gap: 0.7rem; font-size: 0.8rem; color: var(--text-secondary); }
+.pull__name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pull__name em { margin-left: 0.45rem; font: 500 0.54rem var(--font-mono); font-style: normal; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); border: 1px dashed var(--border-strong); padding: 0.05rem 0.3rem; border-radius: 3px; }
+.pull__bar { position: relative; height: 8px; background: linear-gradient(90deg, transparent calc(50% - 0.5px), var(--border-strong) calc(50% - 0.5px), var(--border-strong) calc(50% + 0.5px), transparent calc(50% + 0.5px)); }
+.pull__bar i { position: absolute; top: 0; bottom: 0; background: var(--text-muted); }
+.pull.is-up .pull__bar i { background: var(--up); border-radius: 0 2px 2px 0; }
+.pull.is-down .pull__bar i { background: var(--down); border-radius: 2px 0 0 2px; }
+.pull.is-unproven .pull__bar i { background-image: repeating-linear-gradient(135deg, rgba(12, 11, 10, 0.55) 0 2px, transparent 2px 5px); }
+.pull__val { font: 500 0.64rem var(--font-mono); color: var(--text-tertiary); text-align: right; }
+.pull.is-up .pull__val { color: var(--up); } .pull.is-down .pull__val { color: var(--down); }
+.pull.is-missing { opacity: 0.45; } .pull.is-missing .pull__val { font-size: 0.5rem; white-space: nowrap; }
+.leancard__truth { margin: auto 0 0; padding-top: 0.95rem; font-size: 0.76rem; line-height: 1.5; color: var(--text-tertiary); border-top: 1px solid var(--border); margin-top: 1rem; }
+.leancard__truth a { color: var(--signal); text-decoration: none; white-space: nowrap; }
+
+/* ── arena mini ── */
+.arena-mini__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.9rem; }
+.arena-mini__head .card-title { margin: 0; }
+.arena-mini__go { display: inline-flex; align-items: center; gap: 0.35rem; font: 500 0.68rem var(--font-mono); letter-spacing: 0.06em; color: var(--text-tertiary); text-decoration: none; transition: color 0.2s, gap 0.2s var(--ease); }
+.arena-mini__go:hover { color: var(--signal); gap: 0.6rem; }
+.arena-mini__none { margin: 0; font-family: var(--font-display); font-style: italic; font-size: 1.05rem; }
+.arena-mini__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border-top: 1px solid var(--border); border-left: 1px solid var(--border); margin-bottom: 0.8rem; }
+.arena-mini__cell { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.75rem 0.9rem; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.arena-mini__cell span { font: 500 0.6rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arena-mini__cell b { font-size: 1.9rem; font-weight: 440; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: lining-nums; }
+.arena-mini__cell i { font: 500 0.64rem var(--font-mono); font-style: normal; color: var(--text-muted); }
+.arena-mini__cell i.is-up { color: var(--up); } .arena-mini__cell i.is-down { color: var(--down); }
+.arena-mini__cell em { font-style: normal; color: var(--text-primary); }
+
+.dossier__more { border-top: 1px solid var(--border-strong); padding-top: 0.8rem; }
+.dossier__more summary { cursor: pointer; font-family: var(--font-display); font-size: 1.15rem; color: var(--text-secondary); padding: 0.2rem 0 0.8rem; }
+.dossier__more summary:hover { color: var(--text-primary); }

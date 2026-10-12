@@ -1,0 +1,108 @@
+/*
+ * Night Edition — the side desks (Pulse, the paper book, ticker detail panels).
+ *
+ * These screens were built in an earlier "mission control" look: LCD scanlines, neon
+ * text-shadows, navy gradients. Their layout is fine; their surface was not. This file
+ * brings them onto the shared system — matte surfaces, hairlines, colour only where it
+ * means something — without rewriting a thousand lines of working layout. It loads
+ * after index.css, so plain selectors win on order; !important appears only where the
+ * old rule was itself inline or more specific.
+ */
+
+/* one surface */
+.mc-page { max-width: none; padding: 0; gap: 1.5rem; }
+.mc-panel, .pulse-gauge, .pulse-signal, .pulse-hi-card, .ptr, .mc-board, .mc-tape-wrap, .stm-wrap {
+  background: var(--bg-card); box-shadow: none; backdrop-filter: none; border-radius: var(--radius-md);
+}
+.mc-panel { border: 1px solid var(--border); padding: 1.3rem 1.4rem; }
+.mc-panel__title { font: 600 0.64rem var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 1.1rem; padding-bottom: 0.8rem; border-bottom: 1px solid var(--border); }
+.mc-panel__title svg { color: var(--signal); }
+.mc-panel__sub { font-weight: 500; letter-spacing: 0.04em; text-transform: none; color: var(--text-tertiary); }
+.mc-empty { font-family: var(--font-display); font-size: 1.1rem; font-style: italic; color: var(--text-secondary); }
+
+/* no neon anywhere on these screens (treemap labels keep their legibility shadow) */
+[class^='mc-'], [class*=' mc-'], [class^='pulse-'], [class*=' pulse-'], [class^='sim-'], [class*=' sim-'],
+[class^='tdp-'], [class*=' tdp-'], [class^='tdm-'], [class*=' tdm-'], [class^='ptr'], [class*=' ptr'] { text-shadow: none !important; }
+.mc-board__lcd-bg, .pulse-port__lcd::before, .pulse-hi-card__lcd::before, .pulse-gauge__bar { display: none; }
+.mc-board--active, .mc-board--leader, .mc-board--active::before { box-shadow: none; }
+
+/* status line under the page head */
+.pulse-status { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 1.2rem; font-size: 0.8rem; color: var(--text-tertiary); }
+.pulse-status__live { display: inline-flex; align-items: center; gap: 0.45rem; font: 600 0.62rem var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--signal); }
+.pulse-status__live i { width: 6px; height: 6px; border-radius: 50%; background: var(--signal); animation: desk-blink 1.6s ease-in-out infinite; }
+@keyframes desk-blink { 50% { opacity: 0.25; } }
+.pulse-status .mono { color: var(--text-secondary); font-size: 0.74rem; }
+.pulse-disclaimer { display: block; max-width: none; margin: 0; padding: 0; background: none; border: 0; border-radius: 0; font-size: 0.8rem; color: var(--text-tertiary); }
+.pulse-disclaimer a { color: var(--signal); }
+
+.pulse-notif { border-radius: var(--radius-sm); border-color: var(--border); background: transparent; color: var(--text-secondary); padding: 0.6rem 0.9rem; }
+.pulse-notif--on { color: var(--text-secondary); border-color: var(--border); background: transparent; }
+.pulse-notif--on svg, .pulse-notif--on b { color: var(--up); }
+.pulse-notif code { color: var(--signal); }
+
+/* gauges read like the figures in every other page head */
+.pulse-gauges { gap: 0; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-card); }
+.pulse-gauge { border: 0; border-radius: 0; background: none; padding: 1rem 1.2rem; }
+.pulse-gauge + .pulse-gauge { border-left: 1px solid var(--border); }
+.pulse-gauge__label { font: 600 0.58rem var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-tertiary); }
+.pulse-gauge__value { font-family: var(--font-display) !important; font-size: 2rem; font-weight: 420; letter-spacing: -0.03em; font-variant-numeric: lining-nums tabular-nums; font-variation-settings: 'opsz' 72; }
+.pulse-gauge__sub { font-size: 0.72rem; color: var(--text-tertiary); }
+
+.pulse-signal, .pulse-hi-card { border-width: 1px; }
+.ptr { border: 1px solid var(--border); }
+.ptrd__insight { background: none; border: 0; border-top: 1px solid var(--border); border-radius: 0; }
+
+/* detail overlays */
+.tdm-overlay, .tdp-scrim { backdrop-filter: none; background: rgba(8, 7, 6, 0.82); }
+.tdm-modal, .tdp-panel { background: var(--bg-1); border-color: var(--border-strong); border-radius: var(--radius-md); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
+.tdp-panel { border-radius: 0; }
+.tdp-card--signal { background: var(--bg-card); border-width: 1px; }
+.treemap-hovercard { backdrop-filter: none; background: var(--bg-2); border-color: var(--border-strong); border-radius: var(--radius-sm); }
+.sector-tab--active { box-shadow: none; color: var(--text-primary); }
+.mc-status__dot { box-shadow: none; }
+
+@media (max-width: 900px) {
+  .pulse-gauge:nth-child(n) { border-left: 0; border-top: 1px solid var(--border); }
+  .pulse-gauge:nth-child(-n + 3) { border-top: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .pulse-status__live i { animation: none; } }
+
+/* ── the paper book (pages/SimulatorPage.tsx) ── */
+.sim-page { padding: 0; max-width: none; gap: 1.5rem; }
+.sim-bg, .sim-equity__rings { display: none; }
+.sim-strategy-line { margin: 0; font-size: 0.82rem; line-height: 1.55; color: var(--text-tertiary); max-width: 96ch; }
+.sim-tape-bar { border-radius: var(--radius-sm); background: var(--bg-card); border-color: var(--border); box-shadow: none; }
+.sim-hero { padding: 1.7rem 1.9rem; border-radius: var(--radius-md); background: var(--bg-card); box-shadow: none; }
+.sim-eyebrow, .sim-market-badge { padding: 0; border: 0; border-radius: 0; background: none !important; font: 600 0.62rem var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; }
+.sim-eyebrow { color: var(--signal); }
+.sim-market-badge { color: var(--text-tertiary); }
+.sim-equity__label { font: 600 0.6rem var(--font-mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-tertiary); }
+.sim-equity__value, .sim-equity__value--down {
+  font-family: var(--font-display); font-weight: 420; font-size: clamp(2.8rem, 6vw, 4.8rem); letter-spacing: -0.045em;
+  font-variant-numeric: lining-nums tabular-nums; font-variation-settings: 'opsz' 72;
+  background: none; -webkit-text-fill-color: currentColor; color: var(--text-primary); filter: none;
+}
+.sim-equity__value--down { color: var(--down); }
+.sim-hero__meta { background: none; border: 0; border-left: 1px solid var(--border); border-radius: 0; padding: 0 0 0 1.4rem; }
+.sim-hero__metalbl { font: 500 0.58rem var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; }
+
+.sim-btn { padding: 0.5rem 0.9rem; border-radius: var(--radius-sm); border-color: var(--border-strong); font-size: 0.8rem; }
+.sim-btn:hover:not(:disabled) { transform: none; border-color: var(--text-tertiary); background: var(--bg-2); }
+.sim-btn--primary { background: var(--signal); color: var(--signal-ink); border: 1px solid var(--signal); box-shadow: none; }
+.sim-btn--primary:hover:not(:disabled) { transform: none; box-shadow: none; background: #ffc65e; border-color: #ffc65e; }
+.sim-btn--ghost { background: var(--bg-card); }
+.sim-btn--ghost-on { background: transparent; border-color: var(--up); color: var(--up); }
+
+.sim-kpi, .sim-card, .sim-meta-cell { background: var(--bg-card); border-radius: var(--radius-md); box-shadow: none; }
+.sim-kpi:hover { transform: none; }
+.sim-kpi::before { display: none; }
+.sim-kpi__icon { width: auto; height: auto; background: none !important; color: var(--text-tertiary) !important; }
+.sim-kpi__label, .sim-meta-cell__l { font: 600 0.58rem var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-tertiary); }
+.sim-kpi__value { font-family: var(--font-display); font-size: 1.8rem; font-weight: 420; letter-spacing: -0.03em; font-variant-numeric: lining-nums tabular-nums; }
+.sim-card__kicker { font: 600 0.6rem var(--font-mono); letter-spacing: 0.14em; color: var(--text-tertiary); }
+.sim-card__kicker svg { color: var(--signal); }
+.sim-card__title { font-family: var(--font-display); font-size: 1.45rem; font-weight: 430; letter-spacing: -0.02em; }
+.sim-meta-grid { gap: 0; border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+.sim-meta-cell { border: 0; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 0; background: none; }
+.sim-meta-cell__v { font: 500 0.82rem var(--font-mono); }
+@media (max-width: 900px) { .sim-hero__meta { border-left: 0; padding-left: 0; } }

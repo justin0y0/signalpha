@@ -139,6 +139,8 @@ type SimConfig = {
   base_position_pct: number
   max_position_pct: number
   portfolio_leverage_cap: number
+  holding_sessions?: number
+  stops_active?: boolean
   stop_loss_pct: number
   take_profit_pct: number
   holding_days: number
@@ -375,15 +377,15 @@ function EquityCurve({ data, initial }: { data: SimDashboard['equity_curve']; in
         <AreaChart data={chartData} margin={{ top: 8, right: 12, left: 8, bottom: 8 }}>
           <defs>
             <linearGradient id="equityGradGreen" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgba(52, 211, 153, 0.45)" />
-              <stop offset="100%" stopColor="rgba(52, 211, 153, 0)" />
+              <stop offset="0%" stopColor="rgba(99, 230, 168, 0.45)" />
+              <stop offset="100%" stopColor="rgba(99, 230, 168, 0)" />
             </linearGradient>
             <linearGradient id="equityGradRed" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgba(248, 113, 113, 0.4)" />
-              <stop offset="100%" stopColor="rgba(248, 113, 113, 0)" />
+              <stop offset="0%" stopColor="rgba(255, 125, 107, 0.4)" />
+              <stop offset="100%" stopColor="rgba(255, 125, 107, 0)" />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke="rgba(148,163,214,0.06)" strokeDasharray="3 3" />
+          <CartesianGrid stroke="rgba(236, 226, 205,0.06)" strokeDasharray="3 3" />
           <XAxis dataKey="label" tick={{ fill: 'var(--text-tertiary)', fontSize: 11 }}
             stroke="var(--border)" interval="preserveStartEnd" minTickGap={56} />
           <YAxis
@@ -395,7 +397,7 @@ function EquityCurve({ data, initial }: { data: SimDashboard['equity_curve']; in
           />
           <ReferenceLine
             y={initial}
-            stroke="rgba(148,163,214,0.4)"
+            stroke="rgba(236, 226, 205,0.4)"
             strokeDasharray="4 4"
             label={{
               value: `start ${fmtUSD(initial)}`,
@@ -405,14 +407,14 @@ function EquityCurve({ data, initial }: { data: SimDashboard['equity_curve']; in
             }}
           />
           <ReTooltip
-            contentStyle={{ background: 'rgba(10,14,26,0.92)', border: '1px solid var(--border-strong)', borderRadius: 10, fontSize: 12 }}
+            contentStyle={{ background: 'rgba(19, 18, 16,0.92)', border: '1px solid var(--border-strong)', borderRadius: 10, fontSize: 12 }}
             labelStyle={{ color: 'var(--text-tertiary)', fontSize: 11 }}
             formatter={(v: number) => [fmtUSD(v), 'Equity']}
           />
           <Area
             type="monotone"
             dataKey="equity"
-            stroke={inProfit ? 'var(--accent-emerald)' : '#f87171'}
+            stroke={inProfit ? 'var(--accent-emerald)' : '#ff7d6b'}
             strokeWidth={2}
             fill={inProfit ? 'url(#equityGradGreen)' : 'url(#equityGradRed)'}
             isAnimationActive
@@ -712,7 +714,7 @@ export function SimulatorPage() {
           label="Leverage used"
           value={`${state.leverage_used.toFixed(2)}×`}
           tint={state.leverage_used > 2 ? 'amber' : 'emerald'}
-          sub={`cap ${config.portfolio_leverage_cap}× · margin discipline`}
+          sub={t('sim.p.leverage.v')}
         />
         <Kpi
           icon={Target}
@@ -1002,10 +1004,11 @@ export function SimulatorPage() {
           <MetaCell label={t('sim.rule.label')} value={t('sim.rule.value')} />
           <MetaCell label="Base position" value={`${(config.base_position_pct * 100).toFixed(1)}% of equity`} />
           <MetaCell label="Max position" value={`${(config.max_position_pct * 100).toFixed(1)}% of equity`} />
-          <MetaCell label="Leverage cap" value={`${config.portfolio_leverage_cap}× portfolio`} />
-          <MetaCell label="Stop loss" value={`-${(config.stop_loss_pct * 100).toFixed(1)}%`} />
-          <MetaCell label="Take profit" value={`+${(config.take_profit_pct * 100).toFixed(1)}%`} />
-          <MetaCell label="Holding period" value={`T+${config.holding_days} days`} />
+          <MetaCell label={t('sim.p.leverage')} value={t('sim.p.leverage.v')} />
+          <MetaCell label={t('sim.p.stops')} value={config.stops_active
+            ? `-${(config.stop_loss_pct * 100).toFixed(0)}% / +${(config.take_profit_pct * 100).toFixed(0)}%`
+            : t('sim.p.stops.none')} />
+          <MetaCell label={t('sim.p.hold')} value={t('sim.p.hold.v', { n: config.holding_sessions ?? 20 })} />
           <MetaCell label="Slippage" value={`${config.slippage_bps} bps each side`} />
           <MetaCell label={t('sim.entry.label')} value={t('sim.entry.value')} />
           <MetaCell label="Mark prices" value="24h yfinance · 30-min freshness gate" />

@@ -162,10 +162,10 @@ export function BlastField({ events }: Props) {
         ctx!.beginPath()
         ctx!.arc(px, py, size, 0, 6.283)
         ctx!.fillStyle = p.hue >= 0.6
-          ? `rgba(56, 189, 248, ${alpha})`
+          ? `rgba(245, 181, 68, ${alpha})`
           : p.hue >= 0.45
-            ? `rgba(167, 139, 250, ${alpha})`
-            : `rgba(251, 191, 36, ${alpha * 0.9})`
+            ? `rgba(143, 199, 255, ${alpha})`
+            : `rgba(245, 181, 68, ${alpha * 0.9})`
         ctx!.fill()
       }
 

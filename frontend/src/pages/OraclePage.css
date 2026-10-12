@@ -7,7 +7,7 @@
 
 .orc2-hero{position:relative; display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin-bottom:44px; flex-wrap:wrap}
 .orc2-orb{position:absolute; top:-30px; left:-44px; width:200px; height:200px; border-radius:50%;
-  background:radial-gradient(circle at 36% 30%, #bfe6ff 0%, var(--accent-cyan) 30%, var(--accent-purple) 62%, #15173a 88%);
+  background:radial-gradient(circle at 36% 30%, #ffe6b8 0%, var(--accent-cyan) 30%, var(--accent-purple) 62%, #15173a 88%);
   filter:blur(2px); opacity:.42; z-index:-1; box-shadow:0 0 80px 20px var(--accent-cyan-glow); animation:orcOrb 9s ease-in-out infinite}
 @keyframes orcOrb{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(14px) scale(1.05)}}
 .orc2-title{font-family:var(--font-sans); font-weight:700; font-size:clamp(50px,7vw,88px); line-height:.95; letter-spacing:-2px; margin:0 0 8px;
@@ -20,7 +20,7 @@
 .orc2-stat span{font-size:11px; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:.8px}
 .orc2-scan{display:inline-flex; align-items:center; gap:9px; cursor:pointer; font-family:var(--font-mono); font-size:13px; font-weight:500; color:var(--text-primary);
   padding:12px 20px; border-radius:var(--radius-md); border:1px solid var(--border-accent);
-  background:linear-gradient(180deg,rgba(56,189,248,.16),rgba(56,189,248,.04)); transition:.2s; white-space:nowrap}
+  background:linear-gradient(180deg,rgba(245, 181, 68,.16),rgba(245, 181, 68,.04)); transition:.2s; white-space:nowrap}
 .orc2-scan:hover{box-shadow:var(--shadow-glow-cyan); transform:translateY(-1px)}
 .orc2-scan:disabled{opacity:.7; cursor:default}
 .orc2-scan-dot{width:8px; height:8px; border-radius:50%; background:var(--accent-cyan); box-shadow:0 0 10px var(--accent-cyan)}
@@ -28,7 +28,7 @@
 @keyframes orcBlink{50%{opacity:.2}}
 
 .orc2-roster{display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr)); gap:12px; margin-bottom:52px}
-.orc2-fig{--a1:#6b7280; --a2:#374151; --d:0s; display:flex; align-items:center; gap:13px; text-align:left; cursor:pointer;
+.orc2-fig{--a1:#7d7568; --a2:#575147; --d:0s; display:flex; align-items:center; gap:13px; text-align:left; cursor:pointer;
   padding:14px 15px; border-radius:var(--radius-lg); border:1px solid var(--border); background:var(--bg-card); transition:.22s ease;
   position:relative; overflow:hidden; color:inherit; animation:orcUp .5s both; animation-delay:var(--d)}
 .orc2-fig::after{content:''; position:absolute; inset:0; border-radius:var(--radius-lg); pointer-events:none;
@@ -58,7 +58,7 @@
 .orc2-fchip.is-active{background:var(--bg-3); color:var(--text-primary); box-shadow:inset 0 0 0 1px var(--border)}
 
 .orc2-empty{display:flex; align-items:center; gap:12px; color:var(--text-tertiary); font-size:14px; padding:40px 4px}
-.orc2-empty-orb{width:14px; height:14px; border-radius:50%; background:radial-gradient(circle at 36% 30%,#bfe6ff,var(--accent-cyan),var(--accent-purple)); box-shadow:0 0 14px var(--accent-cyan); animation:orcOrb 4s ease-in-out infinite}
+.orc2-empty-orb{width:14px; height:14px; border-radius:50%; background:radial-gradient(circle at 36% 30%,#ffe6b8,var(--accent-cyan),var(--accent-purple)); box-shadow:0 0 14px var(--accent-cyan); animation:orcOrb 4s ease-in-out infinite}
 
 .orc2-siglist{display:flex; flex-direction:column; gap:11px}
 .orc2-sig{--d:0s; position:relative; display:flex; align-items:center; gap:18px; padding:18px 22px 18px 24px; border-radius:var(--radius-lg);
@@ -81,7 +81,7 @@
 .orc2-sig-foot{display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--text-tertiary)}
 .orc2-byline{display:inline-flex; align-items:center; gap:8px; color:var(--text-primary); font-weight:500}
 .orc2-mini{width:24px; height:24px; border-radius:7px; display:grid; place-items:center; font-family:var(--font-sans); font-weight:700; font-size:10px; color:#fff; overflow:hidden;
-  background:linear-gradient(140deg,var(--a1,#6b7280),var(--a2,#374151))}
+  background:linear-gradient(140deg,var(--a1,#7d7568),var(--a2,#575147))}
 .orc2-mini img{width:100%; height:100%; object-fit:cover}
 .orc2-pulse-tag{font-family:var(--font-mono); font-size:11px; padding:2px 8px; border-radius:var(--radius-sm); background:var(--bg-3); border:1px solid var(--border)}
 .orc2-size{font-family:var(--font-mono); font-size:11px; color:var(--text-muted)}
@@ -89,7 +89,7 @@
 .orc2-src:hover{text-decoration:underline}
 
 .orc2-conf{--p:0; --accent:var(--up); flex:0 0 auto; width:52px; height:52px; border-radius:50%; display:grid; place-items:center; position:relative;
-  background:conic-gradient(var(--accent) calc(var(--p)*1%), rgba(148,163,214,.12) 0)}
+  background:conic-gradient(var(--accent) calc(var(--p)*1%), rgba(236, 226, 205,.12) 0)}
 .orc2-conf::before{content:''; position:absolute; inset:4px; border-radius:50%; background:var(--bg-2)}
 .orc2-conf span{position:relative; font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--text-primary)}
 
@@ -108,7 +108,7 @@
 .orc2-chartwrap{width:100%; margin-top:14px; border-top:1px solid var(--border); padding-top:14px}
 .orc2-chart{width:100%; height:240px; display:block}
 .orc2-chart-msg{width:100%; margin-top:12px; font-family:var(--font-mono); font-size:11px; color:var(--text-muted)}
-.orc2-grid{stroke:rgba(148,163,214,.07)}
+.orc2-grid{stroke:rgba(236, 226, 205,.07)}
 .orc2-axis{fill:var(--text-muted); font-family:var(--font-mono); font-size:9px}
 .orc2-entry{stroke:var(--accent-amber); stroke-dasharray:4 3; opacity:.85}
 .orc2-entry-lbl{fill:var(--accent-amber); font-family:var(--font-mono); font-size:9px}
@@ -130,10 +130,10 @@
 .orc2-lbcard{display:grid; grid-template-columns:auto auto 1fr auto; gap:13px; align-items:center; text-align:left; cursor:pointer; position:relative; overflow:hidden; padding:12px 15px; border-radius:var(--radius-lg); border:1px solid var(--border); background:var(--bg-card); transition:.18s; color:inherit}
 .orc2-lbcard:hover{transform:translateY(-2px); border-color:var(--border-strong); background:var(--bg-card-hover)}
 .orc2-lbcard.is-active{border-color:var(--border-accent); box-shadow:var(--shadow-glow-cyan)}
-.orc2-lbcard.is-top::before{content:''; position:absolute; inset:0; pointer-events:none; background:radial-gradient(140px 60px at 8% 0%, rgba(245,196,81,.10), transparent 70%)}
+.orc2-lbcard.is-top::before{content:''; position:absolute; inset:0; pointer-events:none; background:radial-gradient(140px 60px at 8% 0%, rgba(245, 181, 68,.10), transparent 70%)}
 .orc2-lb-rank{font-family:var(--font-mono); font-size:13px; color:var(--text-muted); width:18px; text-align:center}
 .orc2-lbcard.is-top .orc2-lb-rank{color:var(--accent-amber)}
-.orc2-lb-av{width:40px; height:40px; border-radius:var(--radius-md); display:grid; place-items:center; font-size:19px; background:linear-gradient(140deg,var(--a1,#6b7280),var(--a2,#374151)); box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
+.orc2-lb-av{width:40px; height:40px; border-radius:var(--radius-md); display:grid; place-items:center; font-size:19px; background:linear-gradient(140deg,var(--a1,#7d7568),var(--a2,#575147)); box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
 .orc2-lb-meta{min-width:0; display:flex; flex-direction:column; gap:2px}
 .orc2-lb-name{font-weight:600; font-size:14px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .orc2-lb-calls{font-family:var(--font-mono); font-size:10.5px; color:var(--text-tertiary)}
@@ -144,3 +144,25 @@
 .orc2-fig-state.is-news_only{color:var(--accent-amber)}
 .orc2-fig-state.is-news_only .orc2-pulse{background:var(--accent-amber); box-shadow:none; animation:none}
 .orc2-fig-state.is-quiet .orc2-pulse{background:var(--text-muted); box-shadow:none; animation:none}
+
+/* ── Night Edition: Oracle on the shared system ──
+   The page keeps its layout; the orb, gradient tiles and glow shadows are gone. A
+   person is a monogram, a state is a dot, and the only colour is up, down or signal. */
+.orc2 { min-height: 0; padding: 0; display: flex; flex-direction: column; gap: 1.5rem; }
+.orc2 > section { margin: 0; }
+.orc2-lb-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.5rem 1rem; padding-bottom: 0.8rem; margin-bottom: 0.9rem; border-bottom: 1px solid var(--border-strong); }
+.orc2-lb-head h2 { margin: 0; font-family: var(--font-display); font-size: 1.6rem; font-weight: 430; letter-spacing: -0.02em; }
+.orc2-lb-sub { font: 500 0.62rem var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-tertiary); }
+.orc2-scan { margin-left: auto; display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.42rem 0.85rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg-card); color: var(--text-primary); font: 600 0.64rem var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.orc2-scan:hover { box-shadow: none; transform: none; border-color: var(--signal); }
+.orc2-scan-dot { width: 6px; height: 6px; background: var(--signal); box-shadow: none; }
+.orc2-lbcard, .orc2-fig, .orc2-sig { background: var(--bg-card); border-radius: var(--radius-md); box-shadow: none; }
+.orc2-lbcard.is-active, .orc2-sig.is-open { box-shadow: none; border-color: var(--signal); }
+.orc2-lbcard.is-top::before, .orc2-fig::before { display: none; }
+.orc2-lb-av, .orc2-avatar, .orc2-sig-av { background: var(--bg-2) !important; box-shadow: none !important; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text-primary); font-family: var(--font-display); font-size: 0.95rem; font-weight: 500; letter-spacing: 0; }
+.orc2-lb-rank { font: 600 0.62rem var(--font-mono); color: var(--signal); }
+.orc2-lb-ret { font-family: var(--font-display); font-size: 1.3rem; font-weight: 440; letter-spacing: -0.02em; font-variant-numeric: lining-nums tabular-nums; }
+.orc2-fig.is-on .orc2-pulse { background: var(--up); box-shadow: none; animation: none; }
+.orc2-sig.is-bull .orc2-sig-edge { background: var(--up); box-shadow: none; }
+.orc2-sig.is-bear .orc2-sig-edge { background: var(--down); box-shadow: none; }
+.orc2-empty-orb { background: var(--signal); box-shadow: none; }

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import './OraclePage.css'
+import { PageHead } from '../components/PageHead'
+import { Num } from '../components/ui/Num'
 import { OhlcChart } from './OhlcChart'
 import { useT } from '../i18n'
 
@@ -20,11 +22,11 @@ type LbRow = {
 }
 
 const CAT: Record<string, [string, string]> = {
-  policy: ['#f5c451', '#d9881f'], tech_ceo: ['#34d399', '#0e9488'], x_trader: ['#34d3e0', '#2b7fb3'],
-  x_mover: ['#a78bfa', '#7c5cf0'], fund: ['#5b9dff', '#3a64f0'], activist: ['#fb7aa8', '#dd4f86'],
-  congress: ['#2dd4bf', '#0d8c80'], value: ['#bfd66a', '#7fae3c'], contrarian: ['#ef4444', '#a51d1d'],
+  policy: ['#f5c451', '#d9881f'], tech_ceo: ['#63e6a8', '#0e9488'], x_trader: ['#34d3e0', '#2b7fb3'],
+  x_mover: ['#8fc7ff', '#7c5cf0'], fund: ['#5b9dff', '#3a64f0'], activist: ['#fb7aa8', '#dd4f86'],
+  congress: ['#63e6a8', '#0d8c80'], value: ['#bfd66a', '#7fae3c'], contrarian: ['#ff7d6b', '#a51d1d'],
 }
-const DEF: [string, string] = ['#6b7280', '#374151']
+const DEF: [string, string] = ['#7d7568', '#575147']
 const AVATARS: Record<string,string> = {trump:'/avatars/trump.svg',huang:'/avatars/huang.svg',serenity:'/avatars/serenity.svg',musk:'/avatars/musk.svg',su:'/avatars/su.svg',wood:'/avatars/wood.svg',ackman:'/avatars/ackman.svg',pelosi:'/avatars/pelosi.svg',buffett:'/avatars/buffett.svg',burry:'/avatars/burry.svg'}
 const grad = (t?: string): [string, string] => CAT[t || ''] || DEF
 
@@ -133,21 +135,18 @@ export function OraclePage() {
 
   return (
     <div className="orc2">
-      <header className="orc2-hero">
-        <div className="orc2-orb" aria-hidden />
-        <div className="orc2-hero-main">
-          <h1 className="orc2-title">{t('oracle.title')}</h1>
-          <p className="orc2-sub">{t('oracle.sub')}</p>
-          <div className="orc2-stats">
-            <div className="orc2-stat"><b>{todayCount}</b><span>{t('oracle.stat.signals')}</span></div>
-            <div className="orc2-stat"><b>{activeCount}</b><span>{t('oracle.stat.tracking')}</span></div>
-            <div className="orc2-stat"><b className={avgCall >= 0 ? 'pos' : 'neg'}>{avgCall >= 0 ? '+' : ''}{avgCall.toFixed(1)}%</b><span>{t('oracle.stat.avg')}</span></div>
-          </div>
+      <PageHead
+        kicker={t('pulse.kicker')}
+        title={<>{t('oracle.h.a')} <em>{t('oracle.h.b')}</em></>}
+        lede={t('oracle.sub')}
+        spike={0.5}
+      >
+        <div className="figs">
+          <div className="is-signal"><b><Num value={todayCount} /></b><span>{t('oracle.stat.signals')}</span></div>
+          <div><b><Num value={activeCount} /></b><span>{t('oracle.stat.tracking')}</span></div>
+          <div className={avgCall >= 0 ? 'is-up' : 'is-down'}><b>{avgCall >= 0 ? '+' : ''}{avgCall.toFixed(1)}%</b><span>{t('oracle.stat.avg')}</span></div>
         </div>
-        <button className={'orc2-scan' + (scanning ? ' is-scanning' : '')} onClick={scan} disabled={scanning}>
-          <span className="orc2-scan-dot" />{scanning ? 'Scanning…' : 'Scan now'}
-        </button>
-      </header>
+      </PageHead>
 
       {board.length > 0 && (
         <section className="orc2-lb-wrap">
@@ -155,6 +154,9 @@ export function OraclePage() {
             <h2>{t('oracle.whoMoves')}</h2>
             <span className="orc2-lb-sub">{t('oracle.lb.sub')}</span>
             {figFilter && <button className="orc2-lb-clear" onClick={() => setFigFilter(null)}>{t('oracle.lb.clear')} ✕</button>}
+            <button className={'orc2-scan' + (scanning ? ' is-scanning' : '')} onClick={scan} disabled={scanning}>
+              <span className="orc2-scan-dot" />{scanning ? t('oracle.scanning') : t('oracle.scan')}
+            </button>
           </div>
           <div className="orc2-lb">
             {board.map((b, i) => {
@@ -165,7 +167,7 @@ export function OraclePage() {
                   className={'orc2-lbcard' + (figFilter === b.figure ? ' is-active' : '') + (i === 0 ? ' is-top' : '')}
                   onClick={() => setFigFilter(figFilter === b.figure ? null : b.figure)}>
                   <span className="orc2-lb-rank">{i + 1}</span>
-                  <span className="orc2-lb-av" style={{ ['--a1' as any]: a1, ['--a2' as any]: a2 }}>{b.emoji}</span>
+                  <span className="orc2-lb-av" style={{ ['--a1' as any]: a1, ['--a2' as any]: a2 }}>{initials(b.figure_name)}</span>
                   <span className="orc2-lb-meta">
                     <span className="orc2-lb-name">{b.figure_name}</span>
                     <span className="orc2-lb-calls">{b.calls} calls · {b.hit_rate}% hit</span>
@@ -188,7 +190,6 @@ export function OraclePage() {
               onClick={() => toggle(f)}>
               <span className="orc2-avatar" style={{ ['--a1' as any]: a1, ['--a2' as any]: a2 }}>
                 {f.avatarUrl ? <img src={f.avatarUrl} alt="" /> : initials(f.name)}
-                <span className="emoji">{f.emoji}</span>
               </span>
               <span className="orc2-fig-body">
                 <span className="orc2-fig-name">{f.name}</span>

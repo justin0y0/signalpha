@@ -153,7 +153,7 @@ def collect_options_data() -> None:
         written = 0
         for event in event_list:
             try:
-                snapshot = collector.collect_event_snapshot(event.ticker, event.earnings_date, event.sector)
+                snapshot = collector.collect_event_snapshot(event.ticker, event.earnings_date, event.sector, event.report_time)
                 raw = snapshot["raw"]
                 engineered = snapshot["engineered"]
                 _upsert(
@@ -314,6 +314,12 @@ def run_predictions() -> None:
                 session.rollback()
                 logger.exception("Prediction generation failed for %s on %s: %s", event.ticker, event.earnings_date, exc)
     logger.info("Finished prediction generation: %s/%s events written", written, len(events))
+    # Direction lean for every upcoming report (experimental; see direction_lean.py).
+    try:
+        from data_pipeline.direction_lean import score_upcoming
+        logger.info("Direction leans written: %s", score_upcoming())
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Direction lean failed: %s", exc)
 
 
 def collect_post_earnings_results() -> None:

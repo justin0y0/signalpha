@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { Bot, Check, Clock, Copy, Sparkles } from 'lucide-react'
+import { Bot, Check, Clock, Copy } from 'lucide-react'
 import { useHeadline, pct } from '../hooks/useHeadline'
+import { PageHead } from '../components/PageHead'
+import { Num } from '../components/ui/Num'
 import { useT } from '../i18n'
+import './ProPage.css'
 
 /**
  * Pro — the paid tier, offered honestly before it can be bought.
@@ -39,6 +41,7 @@ export function PricingPage() {
   const { t } = useT()
   const headline = useHeadline()
   const b = headline?.breakout
+  const ft = headline?.follow_through
   const [annual, setAnnual] = useState(true)
   const [email, setEmail] = useState('')
   const [wants, setWants] = useState<string[]>(['straddle_check', 'alerts'])
@@ -77,23 +80,25 @@ export function PricingPage() {
   )
 
   return (
-    <div className="pro">
-      <motion.header className="pro-hero" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
-        <span className="pro-hero__kicker"><Sparkles size={12} /> SignAlpha Pro</span>
-        <h1 className="pro-hero__title">{t('pro.title')}</h1>
-        <p className="pro-hero__lede">{t('pro.lede')}</p>
-        {b && (
-          <p className="pro-hero__proof">
-            {t('pro.proof', { top: pct(b.top_decile.move_rate, 1), base: pct(b.base_rate, 1), n: b.top_decile.n.toLocaleString() })}{' '}
-            <Link to="/model">{t('pro.proof.link')}</Link>
-          </p>
-        )}
-      </motion.header>
+    <div className="page-stack pro">
+      <PageHead
+        kicker="SignAlpha Pro"
+        title={<>{t('pro.h.a')} <em>{t('pro.h.b')}</em></>}
+        lede={t('pro.lede')}
+        spike={0.7}
+      >
+        <div className="figs">
+          <div className="is-signal"><b><Num value={b ? b.top_decile.move_rate * 100 : null} format={(v) => `${v.toFixed(1)}%`} /></b><span>{t('model.fig.breakout', { base: b ? (b.base_rate * 100).toFixed(0) : '—' })}</span></div>
+          <div className="is-up"><b><Num value={ft ? ft.hit * 100 : null} format={(v) => `${v.toFixed(1)}%`} /></b><span>{t('model.fig.follow', { base: ft ? (ft.baseline_hit * 100).toFixed(0) : '—' })}</span></div>
+        </div>
+      </PageHead>
 
-      <div className="pro-toggle" role="group" aria-label={t('pro.billing')}>
-        <button type="button" className={!annual ? 'is-on' : ''} onClick={() => setAnnual(false)}>{t('pro.monthly')}</button>
-        <button type="button" className={annual ? 'is-on' : ''} onClick={() => setAnnual(true)}>{t('pro.annual')} <i>{t('pro.annualSave')}</i></button>
-      </div>
+      {b && (
+        <p className="page-note">
+          {t('pro.proof', { top: pct(b.top_decile.move_rate, 1), base: pct(b.base_rate, 1), n: b.top_decile.n.toLocaleString() })}{' '}
+          <Link to="/model" className="tlink">{t('pro.proof.link')}</Link>
+        </p>
+      )}
 
       <div className="pro-plans">
         <section className="pro-plan">
@@ -105,9 +110,15 @@ export function PricingPage() {
           </ul>
         </section>
 
-        <section className="pro-plan pro-plan--pro">
+        <section className="pro-plan pro-plan--pro paper">
           <span className="pro-plan__flag">{t('pro.founding')}</span>
-          <h2>Pro</h2>
+          <div className="pro-plan__top">
+            <h2>Pro</h2>
+            <div className="seg seg--paper" role="group" aria-label={t('pro.billing')}>
+              <button type="button" className={!annual ? 'is-on' : ''} onClick={() => setAnnual(false)}>{t('pro.monthly')}</button>
+              <button type="button" className={annual ? 'is-on' : ''} onClick={() => setAnnual(true)}>{t('pro.annual')} <i>{t('pro.annualSave')}</i></button>
+            </div>
+          </div>
           <div className="pro-price">
             <b>{annual ? '$190' : '$19'}</b><span>{annual ? t('pro.perYear') : t('pro.perMonth')}</span>
             <s>{annual ? '$290' : '$29'}</s>

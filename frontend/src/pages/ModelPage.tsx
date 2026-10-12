@@ -2,32 +2,30 @@ import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Gauge, ListChecks } from 'lucide-react'
 import { SubNav } from '../components/ui/SubNav'
+import { PageHead } from '../components/PageHead'
+import { Num } from '../components/ui/Num'
+import { useHeadline } from '../hooks/useHeadline'
 import { PerformanceTrackerPage } from './PerformanceTrackerPage'
 import { TrackRecordPage } from './TrackRecordPage'
 import { useT } from '../i18n'
 
 /**
- * "Model" — everything about how good the model is, in one place.
+ * 05 · Model — the proof, including the parts that do not flatter.
  *
- * Performance and Track Record were separate top-level tabs that answered the same
- * question from two angles and duplicated roughly two thirds of their content (both
- * rendered a confusion matrix, an accuracy headline, a best-sector callout and a
- * sample count). Splitting one weak result across two tabs made the site look like it
- * had twice as much evidence as it does.
- *
- * The section is kept in the URL (?view=) so a link to either half still works.
+ * Last step of the loop: every claim made on the other pages, checked out of sample.
+ * The three figures in the header are the three calls the site makes, each beside the
+ * number it has to beat — breakout risk (works), follow-through (works), pre-report
+ * direction (does not; shown anyway).
  */
-
-
 export function ModelPage() {
   const { t } = useT()
+  const h = useHeadline()
   const ITEMS = [
-  { key: 'quality', label: t('model.tab.quality'), icon: <Gauge size={13} /> },
-  { key: 'record', label: t('model.tab.record'), icon: <ListChecks size={13} /> },
+    { key: 'quality', label: t('model.tab.quality'), icon: <Gauge size={15} /> },
+    { key: 'record', label: t('model.tab.record'), icon: <ListChecks size={15} /> },
   ]
   const [params, setParams] = useSearchParams()
-  const initial = params.get('view') === 'record' ? 'record' : 'quality'
-  const [view, setView] = useState(initial)
+  const [view, setView] = useState(params.get('view') === 'record' ? 'record' : 'quality')
 
   const change = (key: string) => {
     setView(key)
@@ -35,9 +33,22 @@ export function ModelPage() {
     next.set('view', key)
     setParams(next, { replace: true })
   }
+  const pct1 = (v: number) => `${v.toFixed(1)}%`
 
   return (
-    <div>
+    <div className="page-stack">
+      <PageHead
+        kicker={t('nav.model')}
+        title={<>{t('model.h.a')} <em>{t('model.h.b')}</em></>}
+        lede={t('model.h.lede', { features: h?.universe.features ?? '—', events: h?.universe.scored_events?.toLocaleString() ?? '—' })}
+        spike={0.82}
+      >
+        <div className="figs">
+          <div className="is-signal"><b><Num value={h?.breakout ? h.breakout.top_decile.move_rate * 100 : null} format={pct1} /></b><span>{t('model.fig.breakout', { base: h?.breakout ? (h.breakout.base_rate * 100).toFixed(0) : '—' })}</span></div>
+          <div className="is-up"><b><Num value={h?.follow_through ? h.follow_through.hit * 100 : null} format={pct1} /></b><span>{t('model.fig.follow', { base: h?.follow_through ? (h.follow_through.baseline_hit * 100).toFixed(0) : '—' })}</span></div>
+          <div><b><Num value={h?.lean ? h.lean.accuracy * 100 : null} format={pct1} /></b><span>{t('model.fig.lean')}</span></div>
+        </div>
+      </PageHead>
       <SubNav items={ITEMS} active={view} onChange={change} />
       {view === 'quality' ? <PerformanceTrackerPage /> : <TrackRecordPage />}
     </div>

@@ -81,20 +81,31 @@ class YFinanceClient:
             "low_52w": low_52w,
         }
 
-    def options_snapshot(self, ticker: str) -> dict[str, Any]:
+    def options_snapshot(self, ticker: str, on_or_after=None) -> dict[str, Any]:
+        """ATM straddle, IV, skew and put/call volume from the first expiry that
+        actually spans the report.
+
+        `on_or_after` is the session that will trade the report. This used to take the
+        nearest expiry unconditionally; when a weekly expired before the report, the
+        "implied move" was the price of a few ordinary days with no earnings in it
+        (GS three sessions out read 0.2%). It also priced the straddle off last trades,
+        counted strikes for the put/call "ratio", and labelled the two ATM vols as a
+        25-delta skew. Now: mid quotes where both sides are quoted, volume for the
+        ratio, and a real skew from the strikes ~5% either side of spot.
+        """
+        empty = {"atm_iv": None, "put_call_ratio": None, "straddle_price": None, "iv_25d_put": None,
+                 "iv_25d_call": None, "iv_52w_low": None, "iv_52w_high": None, "options_expiry": None}
         stock = self.yf.Ticker(ticker)
-        expiries = getattr(stock, "options", [])
+        expiries = list(getattr(stock, "options", []) or [])
         if not expiries:
-            return {
-                "atm_iv": None,
-                "put_call_ratio": None,
-                "straddle_price": None,
-                "iv_25d_put": None,
-                "iv_25d_call": None,
-                "iv_52w_low": None,
-                "iv_52w_high": None,
-            }
+            return empty
         expiry = expiries[0]
+        if on_or_after is not None:
+            floor = pd.Timestamp(on_or_after).strftime("%Y-%m-%d")
+            later = [e for e in expiries if e >= floor]
+            if not later:
+                return empty  # nothing listed spans the report yet
+            expiry = later[0]
         chain = stock.option_chain(expiry)
         calls = chain.calls.copy()
         puts = chain.puts.copy()
@@ -105,29 +116,37 @@ class YFinanceClient:
             if not hist.empty:
                 spot = float(hist["Close"].iloc[-1])
         if spot is None or calls.empty or puts.empty:
-            return {
-                "atm_iv": None,
-                "put_call_ratio": None,
-                "straddle_price": None,
-                "iv_25d_put": None,
-                "iv_25d_call": None,
-                "iv_52w_low": None,
-                "iv_52w_high": None,
-            }
-        calls["distance"] = (calls["strike"] - spot).abs()
-        puts["distance"] = (puts["strike"] - spot).abs()
-        atm_call = calls.sort_values("distance").iloc[0]
-        atm_put = puts.sort_values("distance").iloc[0]
+            return empty
+
+        def px(row) -> float:
+            bid, ask = row.get("bid") or 0.0, row.get("ask") or 0.0
+            if bid > 0 and ask > 0 and ask >= bid:
+                return float((bid + ask) / 2)
+            return float(row.get("lastPrice") or 0.0)
+
+        def near(frame, target):
+            return frame.iloc[(frame["strike"] - target).abs().argsort().iloc[0]]
+
+        def iv(row) -> float | None:
+            v = row.get("impliedVolatility")
+            return float(v) if pd.notna(v) and 0.01 < float(v) < 5 else None
+
+        atm_call, atm_put = near(calls, spot), near(puts, spot)
+        straddle = px(atm_call) + px(atm_put)
+        atm_ivs = [x for x in (iv(atm_call), iv(atm_put)) if x is not None]
         all_iv = pd.concat([calls["impliedVolatility"], puts["impliedVolatility"]]).replace([np.inf, -np.inf], np.nan).dropna()
+        all_iv = all_iv[(all_iv > 0.01) & (all_iv < 5)]
+        cv, pv = float(calls["volume"].fillna(0).sum()), float(puts["volume"].fillna(0).sum())
         return {
             "stock_price": float(spot),
-            "atm_iv": float(np.nanmean([atm_call.get("impliedVolatility"), atm_put.get("impliedVolatility")])),
-            "put_call_ratio": float(len(puts) / max(len(calls), 1)),
-            "straddle_price": float((atm_call.get("lastPrice") or 0.0) + (atm_put.get("lastPrice") or 0.0)),
-            "iv_25d_put": float(atm_put.get("impliedVolatility")) if pd.notna(atm_put.get("impliedVolatility")) else None,
-            "iv_25d_call": float(atm_call.get("impliedVolatility")) if pd.notna(atm_call.get("impliedVolatility")) else None,
+            "atm_iv": float(np.mean(atm_ivs)) if atm_ivs else None,
+            "put_call_ratio": pv / cv if cv > 0 and pv > 0 else None,
+            "straddle_price": float(straddle) if straddle > 0 else None,
+            "iv_25d_put": iv(near(puts, spot * 0.95)),
+            "iv_25d_call": iv(near(calls, spot * 1.05)),
             "iv_52w_low": float(all_iv.min()) if not all_iv.empty else None,
             "iv_52w_high": float(all_iv.max()) if not all_iv.empty else None,
+            "options_expiry": expiry,
         }
 
     def outcome_snapshot(self, history: pd.DataFrame, earnings_date: datetime,

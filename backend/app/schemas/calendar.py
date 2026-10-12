@@ -34,6 +34,9 @@ class CalendarEvent(BaseModel):
     expected_move_pct: float | None = None
     # ATM straddle / spot from the latest options snapshot: what the market is pricing.
     implied_move_pct: float | None = None
+    # Direction lean, P(up): an experimental scorecard whose backtest is at coin-flip
+    # accuracy (data_pipeline/direction_lean.py). Shown with that caveat everywhere.
+    lean_up: float | None = None
     has_prediction: bool = False
 
 

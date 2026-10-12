@@ -1,620 +1,227 @@
-import { motion } from 'framer-motion'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { NavLink } from 'react-router-dom'
-import {
-  Activity,
-  ArrowRight,
-  BarChart3,
-  Brain,
-  Calendar,
-  ChartLine,
-  CandlestickChart,
-  CircuitBoard,
-  Cpu,
-  Database,
-  Eye,
-  GitBranch,
-  LineChart,
-  Network,
-  Sparkles,
-  Target,
-  TrendingUp,
-  ClipboardList,
-  Trophy,
-  Swords,
-} from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowUpRight } from 'lucide-react'
+import { PageHead } from '../components/PageHead'
+import { Num } from '../components/ui/Num'
+import { useHeadline } from '../hooks/useHeadline'
+import { JOURNEY, DESKS } from '../lib/journey'
 import { useT } from '../i18n'
-import { useHeadline, pct } from '../hooks/useHeadline'
+import './AboutPage.css'
 
-// ============================================================
-//  Signalpha — About Page
-//  Bloomberg-terminal aesthetic, Apple-grade motion design.
-// ============================================================
+/**
+ * About — what the site claims, checked against itself.
+ *
+ * The page used to be a brochure: a gradient headline, a benchmark chart with our own
+ * accuracy typed in by hand, a roadmap of things that had already shipped or been
+ * dropped. Every one of those went stale without anyone noticing.
+ *
+ * It is now three things that cannot go stale quietly: a ledger of the four claims the
+ * site makes, each read live from /model/headline beside the number it has to beat and
+ * stamped with whether it holds; the loop, in order; and the corrections column — every
+ * time a number on this site turned out to be wrong, dated, with what was done about it.
+ */
 
-// Filled from /model/headline at render time — these four used to be typed in and
-// drifted (199 tickers, 102 features) while the data underneath changed.
-const STAT_ROW: { labelKey: string; key: 'tickers' | 'events' | 'features' | 'auc'; tint: 'cyan' | 'purple' | 'emerald' | 'amber' }[] = [
-  { labelKey: 'about.stat.equities', key: 'tickers', tint: 'cyan' },
-  { labelKey: 'about.stat.events', key: 'events', tint: 'purple' },
-  { labelKey: 'about.stat.features', key: 'features', tint: 'emerald' },
-  { labelKey: 'about.stat.auc', key: 'auc', tint: 'amber' },
-]
+type Verdict = 'holds' | 'fails' | 'coin' | 'wait'
 
-const PIPELINE = [
-  { icon: Database, k: 'about.pl.ingest', tint: 'cyan' },
-  { icon: CircuitBoard, k: 'about.pl.feat', tint: 'purple' },
-  { icon: Brain, k: 'about.pl.nlp', tint: 'emerald' },
-  { icon: Network, k: 'about.pl.ens', tint: 'amber' },
-  { icon: Eye, k: 'about.pl.shap', tint: 'cyan' },
-] as const
-
-const TAB_GUIDE = [
-  { name: 'Calendar', to: '/', icon: Calendar, tag: 'Live', k: 'about.tab.cal' , nav: 'nav.calendar', tagK: 'about.tag.cal' },
-  { name: 'Brief', to: '/brief', icon: ClipboardList, tag: 'Daily', k: 'about.tab.brief' , nav: 'nav.brief', tagK: 'about.tag.brief' },
-  { name: 'Arena', to: '/arena', icon: Swords, tag: 'Sealed', k: 'about.tab.arena' , nav: 'nav.arena', tagK: 'about.tag.arena' },
-  { name: 'Model', to: '/model', icon: BarChart3, tag: 'Diagnostic', k: 'about.tab.model' , nav: 'nav.model', tagK: 'about.tag.model' },
-  { name: 'Strategy', to: '/strategy', icon: ChartLine, tag: 'Research', k: 'about.tab.strategy' , nav: 'nav.strategy', tagK: 'about.tag.strategy' },
-  { name: 'Pulse', to: '/pulse', icon: Activity, tag: 'Real-time', k: 'about.tab.pulse' , nav: 'nav.pulse', tagK: 'about.tag.pulse' },
-  { name: 'Oracle', to: '/oracle', icon: Trophy, tag: 'Signals', k: 'about.tab.oracle' , nav: 'nav.oracle', tagK: 'about.tag.oracle' },
-  { name: 'Pro', to: '/pro', icon: Sparkles, tag: 'Founding', k: 'about.tab.pro' , nav: 'nav.pro', tagK: 'about.tag.pro' },
-  { name: 'Contact', to: '/contact', icon: CandlestickChart, tag: 'Reach out', k: 'about.tab.contact' , nav: 'nav.contact', tagK: 'about.tag.contact' },
-] as const
-
-// What the models actually train on: data dated strictly before the report.
+// What the models train on, and what the site collects and shows but keeps out of
+// training because the source only ever returns today's value (see models/features.py).
 const FEATURE_GROUPS = [
   { k: 'about.fg.price', used: true, items: ['Returns 1/5/10/20/60d', 'RSI', 'MACD', 'Bollinger position', 'Dist 52w high/low', 'Volume anomaly'] },
   { k: 'about.fg.macro', used: true, items: ['VIX / VIX9D / VIX3M', 'Yield curve slope', '2y / 10y yield', 'CPI / PCE YoY', 'HYG-LQD spread', 'SPY / QQQ returns'] },
   { k: 'about.fg.sector', used: true, items: ['Sector ETF 20d return', 'Relative strength vs SPY', 'Market regime'] },
-  { k: 'about.fg.band', used: true, items: ['Own median reaction', 'Momentum vs own band'] },
-  // Collected and displayed, but kept out of training: these sources return today's
-  // value whenever they are called, so for any backfilled event they describe a later
-  // moment — sometimes including the report itself. See models/features.py.
-  { k: 'about.fg.options', used: false, items: ['IV rank', 'ATM straddle / spot', 'Put/call ratio & skew'] },
-  { k: 'about.fg.funda', used: false, items: ['EPS surprise', 'Forward estimates', 'Analyst targets', 'Margins / ROE / leverage'] },
+  { k: 'about.fg.band', used: true, items: ['Own median reaction', 'Momentum vs own band', 'Residual vs market + sector'] },
+  { k: 'about.fg.options', used: false, items: ['ATM straddle / spot', 'Put/call volume', 'Skew'] },
+  { k: 'about.fg.funda', used: false, items: ['EPS surprise', 'Forward estimates', 'Analyst targets', 'Margins / leverage'] },
   { k: 'about.fg.pos', used: false, items: ['Short interest', 'Institutional ownership'] },
   { k: 'about.fg.sent', used: false, items: ['FinBERT news sentiment', '10-Q MD&A tone'] },
 ] as const
 
-// Author-year citations stay in the original regardless of locale — translating
-// "Zuckerman (2019)" would make the source harder to look up, not easier.
-const CITATIONS: Record<string, string> = {
-  'about.bm.rentec': 'Zuckerman, The Man Who Solved the Market (2019)',
-  'about.bm.pead': 'Kaczmarek & Zaremba (2025); Cohen-Malloy-Nguyen, Lazy Prices (JoF 2020)',
-  'about.bm.gpt': 'Kim, Muhn & Nikolaev, arXiv 2407.17866 (2024)',
-}
+const STEPS = ['collect', 'freeze', 'walk', 'seal', 'grade'] as const
 
-const BENCHMARKS = [
-  { k: 'about.bm.random', value: 33.3, sourceLink: null, tint: 'muted' },
-  // The always-FLAT bar is computed from the same 5,477 held-out events the model is
-  // scored on, using each stock's own band. It read 50.0% with a "~±2%" note while the
-  // paragraph above it said 60.6% — two numbers for one quantity, on one page.
-  { k: 'about.bm.flat', value: 60.7, sourceLink: null, tint: 'muted' },
-  {
-    k: 'about.bm.rentec',
-    value: 50.75,
-    sourceLink: 'https://novelinvestor.com/notes/the-man-who-solved-the-market-by-gregory-zuckerman/',
-    tint: 'amber',
-  },
-  { k: 'about.bm.self', value: 59.9, sourceLink: null, tint: 'cyan' },
-  {
-    k: 'about.bm.pead',
-    value: 56.0,
-    sourceLink: 'https://onlinelibrary.wiley.com/doi/abs/10.1111/jofi.12885',
-    tint: 'emerald',
-  },
-  {
-    k: 'about.bm.gpt',
-    value: 60.4,
-    sourceLink: 'https://arxiv.org/abs/2407.17866',
-    tint: 'purple',
-  },
-]
+// Newest first. Dates are when the fix shipped; the text says what was wrong.
+const ERRATA = ['1011', '1010', '1005', '0722', '0720'] as const
 
-const ROADMAP = [
-  {
-    k: 'about.rm.now',
-    state: 'shipped',
-    items: [
-      'Purged walk-forward CV, 81 folds across 9 sector models',
-      'Manual class upsampling vs FLAT-bias',
-      'FinBERT 10-Q MD&A sentiment',
-      'SHAP per-prediction attribution',
-    ],
-  },
-  {
-    k: 'about.rm.next',
-    state: 'in-progress',
-    items: [
-      'Combinatorial Purged CV (L\u00F3pez de Prado)',
-      'Deflated Sharpe Ratio reporting',
-      'Conformal prediction intervals',
-      'Polygon.io options-flow integration',
-    ],
-  },
-  {
-    k: 'about.rm.research',
-    state: 'planned',
-    items: [
-      'Lazy-Prices YoY transcript similarity',
-      'Form 4 opportunistic-insider classifier',
-      'Multi-modal late fusion (text + tabular)',
-      'Meta-labeling per AFML Ch. 3',
-    ],
-  },
+const STACK = [
+  ['about.stack.models', 'XGBoost · scikit-learn · walk-forward, purged'],
+  ['about.stack.data', 'yfinance · SEC EDGAR · FRED · Groq'],
+  ['about.stack.serve', 'FastAPI · PostgreSQL 16 · Redis · APScheduler'],
+  ['about.stack.front', 'React 18 · TypeScript · Vite · framer-motion'],
+  ['about.stack.proof', 'SHA-256 · OpenTimestamps · Bitcoin'],
+  ['about.stack.infra', 'Docker Compose · Oracle Cloud ARM · MCP'],
 ] as const
 
-// ============================================================
-//  Decorative SVG: animated wave grid behind the hero
-// ============================================================
-
-function HeroBackdrop() {
-  // Two <path> elements previously shared one ref. React assigns in order, so the
-  // second overwrote the first and only the faint 0.6px/40%-opacity echo ever
-  // received a `d` attribute — the main 1.6px wave was never drawn at all.
-  const pathRef = useRef<SVGPathElement>(null)
-  const echoRef = useRef<SVGPathElement>(null)
-  useEffect(() => {
-    const path = pathRef.current
-    if (!path) return
-    let raf = 0
-    let t = 0
-    const loop = () => {
-      t += 0.015
-      const w = 1200
-      const h = 320
-      const segs: string[] = []
-      const points = 24
-      for (let i = 0; i <= points; i++) {
-        const x = (i / points) * w
-        const y = h / 2 + Math.sin(t + i * 0.4) * 30 + Math.cos(t * 0.6 + i * 0.21) * 18
-        segs.push(`${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`)
-      }
-      const d = segs.join(' ')
-      path.setAttribute('d', d)
-      echoRef.current?.setAttribute('d', d)
-      raf = requestAnimationFrame(loop)
-    }
-    loop()
-    return () => cancelAnimationFrame(raf)
-  }, [])
-  return (
-    <svg
-      className="hero-backdrop"
-      viewBox="0 0 1200 320"
-      preserveAspectRatio="none"
-      aria-hidden
-    >
-      <defs>
-        <linearGradient id="waveGrad" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="rgba(56,189,248,0)" />
-          <stop offset="35%" stopColor="rgba(56,189,248,0.55)" />
-          <stop offset="65%" stopColor="rgba(167,139,250,0.55)" />
-          <stop offset="100%" stopColor="rgba(167,139,250,0)" />
-        </linearGradient>
-        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(148,163,214,0.06)" strokeWidth="1" />
-        </pattern>
-      </defs>
-      <rect width="1200" height="320" fill="url(#grid)" />
-      <path ref={pathRef} stroke="url(#waveGrad)" strokeWidth="1.6" fill="none" />
-      <path ref={echoRef} stroke="url(#waveGrad)" strokeWidth="0.6" fill="none" opacity="0.4" />
-    </svg>
-  )
-}
-
-// ============================================================
-//  Animated counter for benchmark bar
-// ============================================================
-
-function Counter({ value, decimals = 1 }: { value: number; decimals?: number }) {
-  const [n, setN] = useState(0)
-  useEffect(() => {
-    let raf = 0
-    const start = performance.now()
-    const dur = 1100
-    const tick = (now: number) => {
-      const e = Math.min(1, (now - start) / dur)
-      const ease = 1 - Math.pow(1 - e, 3)
-      setN(value * ease)
-      if (e < 1) raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [value])
-  return <>{n.toFixed(decimals)}</>
-}
-
-// ============================================================
-//  Main Page
-// ============================================================
+const pct1 = (v: number | null | undefined) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
 
 export function AboutPage() {
   const { t } = useT()
   const h = useHeadline()
-  const statValue = (key: (typeof STAT_ROW)[number]['key']) => {
-    if (!h) return '—'
-    if (key === 'tickers') return h.universe.tickers.toLocaleString()
-    if (key === 'events') return h.universe.events.toLocaleString()
-    if (key === 'features') return String(h.universe.features ?? '—')
-    return h.breakout ? h.breakout.auc.toFixed(3) : '—'
-  }
-  const live = {
-    acc: pct(h?.three_class.accuracy, 1),
-    base: pct(h?.three_class.flat_baseline, 1),
-    n: h ? h.three_class.n.toLocaleString() : '—',
-    top: pct(h?.breakout?.top_decile.move_rate),
-    mbase: pct(h?.breakout?.base_rate),
-    mn: h?.breakout ? h.breakout.n.toLocaleString() : '—',
-    auc: h?.breakout ? h.breakout.auc.toFixed(3) : '—',
-    features: String(h?.universe.features ?? '—'),
-  }
-  const sectionVariants = useMemo(
-    () => ({
-      hidden: { opacity: 0, y: 18 },
-      visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' as const } },
-    }),
-    [],
-  )
+  const b = h?.breakout
+  const f = h?.follow_through
+  const l = h?.lean
+  const c = h?.three_class
+
+  const rows: { key: string; ours: string; bar: string; n: string; stat: string; verdict: Verdict; to: string }[] = [
+    {
+      key: 'breakout', ours: pct1(b?.top_decile.move_rate), bar: pct1(b?.base_rate),
+      n: b ? b.top_decile.n.toLocaleString() : '—', stat: b ? `z ${b.top_decile.z.toFixed(1)}` : '—',
+      verdict: !b ? 'wait' : b.top_decile.z >= 2 ? 'holds' : 'fails', to: '/model',
+    },
+    {
+      key: 'follow', ours: pct1(f?.hit), bar: pct1(f?.baseline_hit),
+      n: f ? f.n.toLocaleString() : '—', stat: f ? `t ${f.t.toFixed(1)}` : '—',
+      verdict: !f ? 'wait' : f.t >= 2 ? 'holds' : 'fails', to: '/strategy',
+    },
+    {
+      key: 'three', ours: pct1(c?.accuracy), bar: pct1(c?.flat_baseline),
+      n: c ? c.n.toLocaleString() : '—', stat: c?.accuracy != null && c.flat_baseline != null ? `${((c.accuracy - c.flat_baseline) * 100).toFixed(1)} pts` : '—',
+      verdict: c?.accuracy == null || c.flat_baseline == null ? 'wait' : c.accuracy > c.flat_baseline ? 'holds' : 'fails', to: '/model',
+    },
+    {
+      key: 'lean', ours: pct1(l?.accuracy), bar: '50.0%',
+      n: l ? l.n.toLocaleString() : '—', stat: l ? `z ${l.z.toFixed(1)}` : '—',
+      verdict: !l ? 'wait' : l.verdict === 'edge' ? 'holds' : 'coin', to: '/arena',
+    },
+  ]
 
   return (
-    <div className="about-page">
-      {/* ============= HERO ============= */}
-      <section className="about-hero">
-        <HeroBackdrop />
-        <motion.div
-          className="about-hero__inner"
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: 'easeOut' }}
-        >
-          <div className="about-hero__eyebrow">
-            <Sparkles size={14} />
-            <span>About this project</span>
+    <div className="page-stack about">
+      <PageHead
+        kicker={t('nav.about')}
+        title={<>{t('about.h.a')} <em>{t('about.h.b')}</em></>}
+        lede={t('about.h.lede', { tickers: h?.universe.tickers ?? '—' })}
+        spike={0.74}
+      >
+        <div className="figs">
+          <div><b><Num value={h?.universe.tickers ?? null} /></b><span>{t('about.stat.equities')}</span></div>
+          <div><b><Num value={h?.universe.events ?? null} /></b><span>{t('about.stat.events')}</span></div>
+          <div className="is-signal"><b><Num value={h?.universe.features ?? null} /></b><span>{t('about.stat.features')}</span></div>
+        </div>
+      </PageHead>
+
+      {/* ── the ledger ── */}
+      <section className="paper ledger">
+        <header className="ledger__head">
+          <div>
+            <span className="ledger__kicker">{t('about.ledger.kicker')}</span>
+            <h2 className="serif">{t('about.ledger.title')}</h2>
           </div>
-          <h1 className="about-hero__title">
-            {t('about.hero.line1')}
-            <br />
-            <span className="about-hero__title-grad">{t('about.hero.line2')}</span>
-          </h1>
-          <p className="about-hero__lede">{t('about.hero.lede', live)}</p>
-          <div className="about-hero__stats">
-            {STAT_ROW.map((s) => (
-              <div key={s.labelKey} className={`about-stat about-stat--${s.tint}`}>
-                <div className="about-stat__value">{statValue(s.key)}</div>
-                <div className="about-stat__label">{t(s.labelKey as never)}</div>
-              </div>
-            ))}
-          </div>
-        </motion.div>
+          <p>{t('about.ledger.sub')}</p>
+        </header>
+        <div className="ledger__cols" aria-hidden="true">
+          <span>{t('about.ledger.c.claim')}</span><span>{t('about.ledger.c.ours')}</span><span>{t('about.ledger.c.bar')}</span>
+          <span>{t('about.ledger.c.n')}</span><span>{t('about.ledger.c.stat')}</span><span />
+        </div>
+        {rows.map((r, i) => (
+          <Link key={r.key} to={r.to} className={`ledger__row is-${r.verdict}`} style={{ animationDelay: `${0.12 + i * 0.09}s` }}>
+            <div className="ledger__claim">
+              <b className="serif">{t(`about.ledger.${r.key}` as 'about.ledger.breakout')}</b>
+              <span>{t(`about.ledger.${r.key}.d` as 'about.ledger.follow.d', { k: f?.k ?? 2, hold: f?.hold ?? 20 })}</span>
+            </div>
+            <span className="ledger__num ledger__num--ours" data-l={t('about.ledger.c.ours')}>{r.ours}</span>
+            <span className="ledger__num" data-l={t('about.ledger.c.bar')}>{r.bar}</span>
+            <span className="ledger__num ledger__num--sm" data-l={t('about.ledger.c.n')}>{r.n}</span>
+            <span className="ledger__num ledger__num--sm" data-l={t('about.ledger.c.stat')}>{r.stat}</span>
+            <span className="ledger__stamp" style={{ animationDelay: `${0.5 + i * 0.14}s` }}>{t(`about.verdict.${r.verdict}` as 'about.verdict.holds')}</span>
+          </Link>
+        ))}
+        <p className="ledger__foot">{t('about.ledger.foot')} <code>GET /api/v1/model/headline</code></p>
       </section>
 
-      {/* ============= TAB GUIDE ============= */}
-      <motion.section
-        className="about-section"
-        variants={sectionVariants}
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, margin: '-80px' }}
-      >
-        <div className="about-section__header">
-          <div className="about-section__kicker">
-            <Activity size={12} />
-            <span>{t('about.nav.kicker')}</span>
-          </div>
-          <h2 className="about-section__title">{t('about.nav.title')}</h2>
-          <p className="about-section__sub">{t('about.nav.sub')}</p>
-        </div>
+      {/* ── the loop ── */}
+      <section className="about-block">
+        <header className="about-block__head">
+          <span className="eyebrow">{t('about.loop.kicker')}</span>
+          <h2 className="serif">{t('about.loop.title')}</h2>
+        </header>
+        <ol className="about-loop">
+          {JOURNEY.map((j) => (
+            <li key={j.key}>
+              <Link to={j.to}>
+                <span className="about-loop__n">{j.step}</span>
+                <span className="about-loop__phase">{t(j.phase as 'journey.before')}</span>
+                <b className="serif">{t(j.nav as 'nav.calendar')}</b>
+                <p>{t(`about.loop.${j.key}` as 'about.loop.calendar')}</p>
+                <ArrowUpRight size={15} />
+              </Link>
+            </li>
+          ))}
+        </ol>
+        <p className="page-note">
+          {t('about.loop.desks')}{' '}
+          {DESKS.map((d, i) => (
+            <span key={d.to}>{i > 0 && ' · '}<Link to={d.to} className="tlink">{t(d.nav as 'nav.pulse')}</Link></span>
+          ))}
+        </p>
+      </section>
 
-        <div className="about-tabs">
-          {/* The map variable used to be named `t`, which shadowed the i18n `t` inside
-              this entire block — the reason these seven cards stayed English while the
-              rest of the page translated. */}
-          {TAB_GUIDE.map((tab, i) => {
-            const Icon = tab.icon
-            return (
-              <motion.div
-                key={tab.name}
-                className="about-tab-card"
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.45, delay: i * 0.08 }}
-                whileHover={{ y: -4 }}
-              >
-                <div className="about-tab-card__head">
-                  <div className="about-tab-card__iconwrap">
-                    <Icon size={20} />
+      {/* ── how a number gets made ── */}
+      <section className="about-block">
+        <header className="about-block__head">
+          <span className="eyebrow">{t('about.make.kicker')}</span>
+          <h2 className="serif">{t('about.make.title')}</h2>
+        </header>
+        <ol className="about-make">
+          {STEPS.map((s, i) => (
+            <li key={s}>
+              <span className="about-make__n">{String.fromCharCode(65 + i)}</span>
+              <b>{t(`about.make.${s}` as 'about.make.collect')}</b>
+              <p>{t(`about.make.${s}.d` as 'about.make.collect.d')}</p>
+            </li>
+          ))}
+        </ol>
+
+        <div className="about-feats">
+          {[true, false].map((used) => (
+            <div key={String(used)} className={used ? 'is-used' : 'is-shown'}>
+              <h3>{used ? t('about.feats.used', { n: h?.universe.features ?? '—' }) : t('about.feats.shown')}</h3>
+              <p>{used ? t('about.feats.used.d') : t('about.feats.shown.d')}</p>
+              <dl>
+                {FEATURE_GROUPS.filter((g) => g.used === used).map((g) => (
+                  <div key={g.k}>
+                    <dt>{t(g.k as 'about.fg.price')}</dt>
+                    <dd>{g.items.join(' · ')}</dd>
                   </div>
-                  <div className="about-tab-card__tag">{t(tab.tagK as never)}</div>
-                </div>
-                <div className="about-tab-card__name">{t(tab.nav as never)}</div>
-                <p className="about-tab-card__blurb">{t(`${tab.k}.blurb` as never, live)}</p>
-                <ul className="about-tab-card__actions">
-                  {[0, 1, 2].map((ai) => (
-                    <li key={ai}>
-                      <span className="about-tab-card__bullet" />
-                      {t(`${tab.k}.a${ai}` as never, live)}
-                    </li>
-                  ))}
-                </ul>
-                <NavLink to={tab.to} className="about-tab-card__cta">
-                  {t('about.tab.open', { name: t(tab.nav as never) })}
-                  <ArrowRight size={14} />
-                </NavLink>
-              </motion.div>
-            )
-          })}
-        </div>
-      </motion.section>
-
-      {/* ============= PIPELINE ============= */}
-      <motion.section
-        className="about-section"
-        variants={sectionVariants}
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, margin: '-80px' }}
-      >
-        <div className="about-section__header">
-          <div className="about-section__kicker">
-            <Cpu size={12} />
-            <span>{t('about.pipeline.kicker')}</span>
-          </div>
-          <h2 className="about-section__title">{t('about.pipeline.title')}</h2>
-        </div>
-
-        <div className="about-pipeline">
-          {PIPELINE.map((step, i) => {
-            const Icon = step.icon
-            return (
-              <div key={step.k} className="about-pipeline__step">
-                <motion.div
-                  className={`about-pipeline__node about-pipeline__node--${step.tint}`}
-                  initial={{ opacity: 0, scale: 0.7 }}
-                  whileInView={{ opacity: 1, scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.4, delay: i * 0.12 }}
-                >
-                  <Icon size={22} />
-                </motion.div>
-                <motion.div
-                  className="about-pipeline__meta"
-                  initial={{ opacity: 0, y: 6 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.4, delay: 0.15 + i * 0.12 }}
-                >
-                  <div className="about-pipeline__name">{t(step.k as never)}</div>
-                  <div className="about-pipeline__detail">{t(`${step.k}.d` as never)}</div>
-                </motion.div>
-                {i < PIPELINE.length - 1 && (
-                  <motion.div
-                    className="about-pipeline__connector"
-                    initial={{ scaleX: 0 }}
-                    whileInView={{ scaleX: 1 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.5, delay: 0.25 + i * 0.12 }}
-                  />
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </motion.section>
-
-      {/* ============= FEATURE TAXONOMY ============= */}
-      <motion.section
-        className="about-section"
-        variants={sectionVariants}
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, margin: '-80px' }}
-      >
-        <div className="about-section__header">
-          <div className="about-section__kicker">
-            <GitBranch size={12} />
-            <span>{t('about.tax.kicker')}</span>
-          </div>
-          <h2 className="about-section__title">{t('about.tax.title', live)}</h2>
-          <p className="about-section__sub">{t('about.tax.sub')}</p>
-        </div>
-
-        <div className="about-features">
-          {FEATURE_GROUPS.map((g, i) => (
-            <motion.div
-              key={g.k}
-              className={`about-feature-group${g.used ? '' : ' about-feature-group--excluded'}`}
-              initial={{ opacity: 0, y: 14 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.4, delay: i * 0.06 }}
-            >
-              <div className="about-feature-group__title">
-                {t(g.k as never)}
-                <span className={`about-feature-group__tag${g.used ? '' : ' is-off'}`}>
-                  {g.used ? t('about.fg.inUse') : t('about.fg.excluded')}
-                </span>
-              </div>
-              <div className="about-feature-group__list">
-                {g.items.map((it) => (
-                  <span key={it} className="about-feature-chip">
-                    {it}
-                  </span>
                 ))}
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </motion.section>
-
-      {/* ============= SIGNIFICANCE ============= */}
-      <motion.section
-        className="about-section about-section--accent"
-        variants={sectionVariants}
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, margin: '-80px' }}
-      >
-        <div className="about-section__header">
-          <div className="about-section__kicker">
-            <Target size={12} />
-            <span>{t('about.lit.kicker')}</span>
-          </div>
-          <h2 className="about-section__title">{t('about.finding.title')}</h2>
-          <p className="about-section__sub">{t('about.finding.body', live)}</p>
-        </div>
-
-        <div className="benchmark-stack">
-          {BENCHMARKS.map((b0, i) => {
-            // This project's bar and the always-FLAT bar come from the live evaluation.
-            const liveValue = b0.k === 'about.bm.self' ? h?.three_class.accuracy
-              : b0.k === 'about.bm.flat' ? h?.three_class.flat_baseline : null
-            const b = liveValue != null ? { ...b0, value: +(liveValue * 100).toFixed(1) } : b0
-            return (
-            <motion.div
-              key={b.k}
-              className={`benchmark-row benchmark-row--${b.tint}`}
-              initial={{ opacity: 0, x: -20 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: i * 0.1 }}
-            >
-              <div className="benchmark-row__head">
-                <div className="benchmark-row__label">{t(b.k as never)}</div>
-                <div className="benchmark-row__value">
-                  <Counter value={b.value} />
-                  <span className="benchmark-row__pct">%</span>
-                </div>
-              </div>
-              <div className="benchmark-row__bar">
-                <motion.div
-                  className="benchmark-row__bar-fill"
-                  initial={{ width: 0 }}
-                  whileInView={{ width: `${b.value}%` }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 1.1, delay: 0.2 + i * 0.1, ease: 'easeOut' }}
-                />
-              </div>
-              <div className="benchmark-row__foot">
-                <span className="benchmark-row__detail">{t(`${b.k}.d` as never)}</span>
-                <span className="benchmark-row__source">
-                  {b.sourceLink ? (
-                    <a href={b.sourceLink} target="_blank" rel="noreferrer noopener">
-                      {CITATIONS[b.k]}
-                    </a>
-                  ) : (
-                    t(`${b.k}.s` as never, live)
-                  )}
-                </span>
-              </div>
-            </motion.div>
-          )})}
-        </div>
-
-        <div className="about-callout">
-          <div className="about-callout__icon">
-            <TrendingUp size={18} />
-          </div>
-          <div className="about-callout__body">
-            <div className="about-callout__title">{t('about.rentec.title')}</div>
-            <p>{t('about.rentec.body')}</p>
-          </div>
-        </div>
-      </motion.section>
-
-      {/* ============= ROADMAP ============= */}
-      <motion.section
-        className="about-section"
-        variants={sectionVariants}
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, margin: '-80px' }}
-      >
-        <div className="about-section__header">
-          <div className="about-section__kicker">
-            <LineChart size={12} />
-            <span>{t('about.roadmap.kicker')}</span>
-          </div>
-          <h2 className="about-section__title">{t('about.roadmap.title')}</h2>
-        </div>
-
-        <div className="about-roadmap">
-          {ROADMAP.map((r, i) => (
-            <motion.div
-              key={r.k}
-              className={`about-roadmap__col about-roadmap__col--${r.state}`}
-              initial={{ opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.45, delay: i * 0.1 }}
-            >
-              <div className="about-roadmap__phase">
-                <span className="about-roadmap__dot" />
-                {t(r.k as never)}
-              </div>
-              <ul className="about-roadmap__list">
-                {r.items.map((it) => (
-                  <li key={it}>{it}</li>
-                ))}
-              </ul>
-            </motion.div>
-          ))}
-        </div>
-      </motion.section>
-
-      {/* ============= STACK ============= */}
-      <motion.section
-        className="about-section"
-        variants={sectionVariants}
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, margin: '-80px' }}
-      >
-        <div className="about-section__header">
-          <div className="about-section__kicker">
-            <CircuitBoard size={12} />
-            <span>{t('about.stack.kicker')}</span>
-          </div>
-          <h2 className="about-section__title">{t('about.stack.title')}</h2>
-        </div>
-
-        <div className="about-stack-grid">
-          {[
-            { l: 'Backend', v: 'FastAPI · SQLAlchemy 2 · PostgreSQL 16' },
-            { l: 'Models', v: 'XGBoost · LightGBM · scikit-learn · SHAP' },
-            { l: 'NLP', v: 'FinBERT (ProsusAI) · transformers · torch' },
-            { l: 'Frontend', v: 'React 18 · TypeScript · Vite · framer-motion · recharts' },
-            { l: 'Data', v: 'yfinance · SEC EDGAR · FRED · Financial Modeling Prep' },
-            { l: 'Infra', v: 'Docker Compose · Redis · APScheduler' },
-          ].map((s) => (
-            <div key={s.l} className="about-stack-cell">
-              <div className="about-stack-cell__l">{s.l}</div>
-              <div className="about-stack-cell__v">{s.v}</div>
+              </dl>
             </div>
           ))}
         </div>
-      </motion.section>
+      </section>
 
-      {/* ============= CTA ============= */}
-      <motion.section
-        className="about-cta"
-        initial={{ opacity: 0, y: 24 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.5 }}
-      >
-        <div className="about-cta__title">{t('about.cta.title')}</div>
-        <p className="about-cta__sub">{t('about.cta.sub')}</p>
-        <div className="about-cta__actions">
-          <NavLink to="/" className="about-cta__primary">
-            {t('about.cta.primary')}
-            <ArrowRight size={14} />
-          </NavLink>
-          <NavLink to="/contact" className="about-cta__secondary">
-            {t('about.cta.secondary')}
-          </NavLink>
+      {/* ── corrections ── */}
+      <section className="about-block">
+        <header className="about-block__head">
+          <span className="eyebrow">{t('about.errata.kicker')}</span>
+          <h2 className="serif">{t('about.errata.title')}</h2>
+          <p>{t('about.errata.sub')}</p>
+        </header>
+        <ol className="errata">
+          {ERRATA.map((e) => (
+            <li key={e}>
+              <time>{t(`about.errata.${e}.when` as 'about.errata.1011.when')}</time>
+              <div>
+                <b className="serif">{t(`about.errata.${e}` as 'about.errata.1011')}</b>
+                <p>{t(`about.errata.${e}.d` as 'about.errata.1011.d')}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      {/* ── colophon ── */}
+      <section className="about-colophon">
+        <dl>
+          {STACK.map(([k, v]) => (
+            <div key={k}><dt>{t(k as 'about.stack.models')}</dt><dd>{v}</dd></div>
+          ))}
+        </dl>
+        <div className="about-colophon__cta">
+          <p className="serif">{t('about.cta.wrong')}</p>
+          <div>
+            <Link to="/contact" className="btn btn-primary">{t('about.cta.secondary')}</Link>
+            <Link to="/model" className="btn">{t('about.cta.evidence')}</Link>
+          </div>
         </div>
-      </motion.section>
+      </section>
     </div>
   )
 }

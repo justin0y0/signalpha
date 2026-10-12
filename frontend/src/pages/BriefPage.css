@@ -1,0 +1,57 @@
+/* 02 · Brief — the sheet */
+.brief { display: flex; flex-direction: column; gap: 0.5rem; }
+.sheet { max-width: 1060px; margin: 0 auto; width: 100%; padding: clamp(1.4rem, 4vw, 3rem); transform: rotate(-0.25deg); transition: transform 0.5s var(--ease); }
+.sheet:hover { transform: rotate(0deg); }
+.sheet a { color: inherit; text-decoration: none; }
+.sheet__mast { display: flex; justify-content: space-between; align-items: flex-end; gap: 1.5rem; flex-wrap: wrap; padding-bottom: 1rem; border-bottom: 3px double var(--paper-ink); }
+.sheet__kicker { font: 600 0.62rem var(--font-mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--paper-ink-2); }
+.sheet__mast h2 { margin: 0.3rem 0 0; font-size: clamp(2rem, 5vw, 3.4rem); font-weight: 500; letter-spacing: -0.03em; line-height: 0.95; color: var(--paper-ink); font-variation-settings: 'opsz' 72; }
+.sheet__meta { display: flex; flex-direction: column; align-items: flex-end; gap: 0.15rem; font: 500 0.66rem var(--font-mono); letter-spacing: 0.06em; color: var(--paper-ink-2); text-align: right; }
+
+.sheet__sec { padding: 1.5rem 0 0.4rem; }
+.sheet__sec h3 { display: flex; align-items: center; gap: 0.6rem; margin: 0 0 0.9rem; font-family: var(--font-display); font-size: 1.35rem; font-weight: 520; color: var(--paper-ink); }
+.sheet__sec h3 i { display: grid; place-items: center; width: 1.45rem; height: 1.45rem; border-radius: 50%; background: var(--paper-ink); color: var(--paper); font: 700 0.66rem var(--font-mono); font-style: normal; }
+.sheet__none { margin: 0; font-family: var(--font-display); font-style: italic; font-size: 1.05rem; color: var(--paper-ink-2); }
+.sheet__note { margin: 0.9rem 0 0; font-size: 0.78rem; line-height: 1.5; color: var(--paper-ink-2); max-width: 80ch; }
+.sheet__note a { border-bottom: 1px solid var(--paper-ink-2); white-space: nowrap; }
+
+.sheet__flags { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0.9rem; }
+.sheet-flag { position: relative; display: flex; flex-direction: column; gap: 0.35rem; padding: 0.95rem 1rem 0.9rem; border: 1px solid var(--paper-ink); border-radius: 2px; background: rgba(255, 255, 255, 0.28); transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease), background 0.2s; overflow: hidden; }
+.sheet-flag:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--paper-ink); background: rgba(255, 255, 255, 0.5); }
+.sheet-flag__top { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.sheet-flag__top b { font: 700 1.15rem var(--font-mono); letter-spacing: 0.01em; }
+.sheet-flag__top span { font: 500 0.62rem var(--font-mono); letter-spacing: 0.05em; color: var(--paper-ink-2); }
+.sheet-flag__co { font-size: 0.78rem; color: var(--paper-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheet-flag__num { display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.2rem; }
+.sheet-flag__num strong { font-family: var(--font-display); font-size: 2.8rem; font-weight: 440; line-height: 0.9; letter-spacing: -0.03em; font-variant-numeric: lining-nums; }
+.sheet-flag__num span { font: 500 0.58rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--paper-ink-2); }
+.sheet-flag dl { margin: 0.5rem 0 0; display: grid; gap: 0.2rem; padding-top: 0.5rem; border-top: 1px solid var(--paper-line); }
+.sheet-flag dl div { display: flex; justify-content: space-between; align-items: baseline; gap: 0.6rem; }
+.sheet-flag dt { font: 500 0.58rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--paper-ink-2); }
+.sheet-flag dd { margin: 0; font: 600 0.78rem var(--font-mono); }
+.sheet-flag dd i { font-style: normal; font-weight: 500; color: var(--paper-ink-2); }
+.sheet-flag__stamp { position: absolute; top: 2.6rem; right: -0.4rem; transform: rotate(8deg); font: 700 0.54rem var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; padding: 0.18rem 0.5rem; border: 1.5px solid currentColor; border-radius: 2px; opacity: 0.85; }
+.sheet-flag.is-breakout .sheet-flag__stamp { color: #a8480f; }
+.sheet-flag.is-elevated .sheet-flag__stamp { color: #1f5d94; }
+/* the gauge is drawn for dark ground; re-ink it for paper */
+.sheet .lean { color: var(--paper-ink-2); }
+.sheet .lean__gauge { border-color: var(--paper-ink-2); background: linear-gradient(90deg, transparent calc(50% - 0.5px), var(--paper-ink-2) calc(50% - 0.5px), var(--paper-ink-2) calc(50% + 0.5px), transparent calc(50% + 0.5px)); }
+.sheet .lean__gauge::before { background: var(--paper-line); }
+.sheet .lean.is-up i { background: #177245; } .sheet .lean.is-up .lean__txt { color: #177245; }
+.sheet .lean.is-down i { background: #b33a26; } .sheet .lean.is-down .lean__txt { color: #b33a26; }
+
+.sheet__table { width: 100%; border-collapse: collapse; font: 500 0.78rem var(--font-mono); font-variant-numeric: tabular-nums; }
+.sheet__table th { text-align: left; padding: 0.35rem 0.6rem 0.35rem 0; font-size: 0.56rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--paper-ink-2); border-bottom: 1px solid var(--paper-ink); }
+.sheet__table td { padding: 0.5rem 0.6rem 0.5rem 0; border-bottom: 1px solid var(--paper-line); }
+.sheet__table th.r, .sheet__table td.r { text-align: right; padding-right: 0; padding-left: 0.6rem; }
+.sheet__table tr:hover td { background: rgba(27, 23, 17, 0.045); }
+.sheet__co { font-family: var(--font-sans); color: var(--paper-ink-2); max-width: 28ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheet__table .is-up { color: #177245; } .sheet__table .is-dn { color: #b33a26; }
+.sheet__call { font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--paper-ink-2); }
+.sheet__call.is-long { color: #fff; background: #177245; padding: 0.14rem 0.45rem; border-radius: 2px; font-weight: 700; }
+
+.sheet__foot { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-top: 1.6rem; padding-top: 0.8rem; border-top: 1px solid var(--paper-ink); font: 500 0.62rem var(--font-mono); letter-spacing: 0.04em; color: var(--paper-ink-2); }
+.sheet__sig { font-family: var(--font-display); font-style: italic; font-size: 1.1rem; color: var(--paper-ink); letter-spacing: -0.01em; }
+@media (max-width: 720px) { .sheet { transform: none; } .sheet__meta { align-items: flex-start; text-align: left; } .sheet__table { font-size: 0.7rem; } .sheet__co { display: none; } }
+.sheet__table th:last-child:not(.r), .sheet__table td:last-child:not(.r) { padding-left: 1.2rem; white-space: nowrap; }
+.sheet__scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }

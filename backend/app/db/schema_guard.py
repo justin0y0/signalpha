@@ -122,6 +122,9 @@ DDL_STATEMENTS: list[str] = [
 
 DDL_STATEMENTS += [
     "ALTER TABLE outcomes ADD COLUMN IF NOT EXISTS reaction_date DATE",
+    "ALTER TABLE predictions ADD COLUMN IF NOT EXISTS lean_up REAL",
+    "ALTER TABLE predictions ADD COLUMN IF NOT EXISTS lean_factors JSONB",
+    "ALTER TABLE arena_forecasts ADD COLUMN IF NOT EXISTS lean_hit BOOLEAN",
     """
     CREATE TABLE IF NOT EXISTS earnings_surprises (
         ticker        TEXT NOT NULL,

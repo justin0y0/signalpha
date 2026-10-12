@@ -11,21 +11,21 @@ interface Props { tickers: Ticker[]; onSelect: (t: string) => void; selectedSect
 
 const SECTOR_ORDER = ['Technology','Communication','Consumer','Healthcare','Financial','Industrials','Staples','Energy','Utilities','Materials','Real Estate']
 const SECTOR_COLOR: Record<string,string> = {
-  Technology:'#38bdf8', Communication:'#a78bfa', Consumer:'#fb923c',
-  Healthcare:'#4ade80', Financial:'#fbbf24', Industrials:'#94a3b8',
-  Staples:'#ec4899', Energy:'#f87171', Utilities:'#06b6d4',
+  Technology:'#f5b544', Communication:'#8fc7ff', Consumer:'#f08c3a',
+  Healthcare:'#63e6a8', Financial:'#f5b544', Industrials:'#b5ac9c',
+  Staples:'#ff7d6b', Energy:'#ff7d6b', Utilities:'#e09a2b',
   Materials:'#84cc16', 'Real Estate':'#c084fc'
 }
 
 function cellGradient(score: number): string {
   if (Math.abs(score) < 0.05) {
-    return 'linear-gradient(135deg, rgba(38,58,86,0.55), rgba(22,38,60,0.7))'
+    return 'linear-gradient(135deg, rgba(58, 52, 44,0.55), rgba(35, 32, 28,0.7))'
   }
   const a = Math.min(0.85, Math.abs(score) * 0.95 + 0.25)
   const b = Math.max(0.20, Math.abs(score) * 0.55 + 0.18)
   return score > 0
-    ? `linear-gradient(135deg, rgba(74,222,128,${a}), rgba(22,163,74,${b}))`
-    : `linear-gradient(135deg, rgba(248,113,113,${a}), rgba(185,28,28,${b}))`
+    ? `linear-gradient(135deg, rgba(99, 230, 168,${a}), rgba(63, 207, 142,${b}))`
+    : `linear-gradient(135deg, rgba(255, 125, 107,${a}), rgba(232, 90, 71,${b}))`
 }
 
 export function SectorTreemap({ tickers, onSelect, selectedSector, onHover }: Props) {
@@ -81,11 +81,11 @@ export function SectorTreemap({ tickers, onSelect, selectedSector, onHover }: Pr
       <svg width={size.w} height={size.h} className="stm-svg">
         {sectors.map((sec: any) => {
           const w = sec.x1 - sec.x0, h = sec.y1 - sec.y0
-          const color = SECTOR_COLOR[sec.data.name] || '#94a3b8'
+          const color = SECTOR_COLOR[sec.data.name] || '#b5ac9c'
           return (
             <g key={sec.data.name}>
               <rect x={sec.x0} y={sec.y0} width={w} height={h}
-                fill="rgba(6,14,28,0.85)"
+                fill="rgba(12, 11, 10,0.85)"
                 stroke={color} strokeOpacity={0.65} strokeWidth={1}
                 rx={8} />
               {w > 60 && (

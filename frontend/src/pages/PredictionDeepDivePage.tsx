@@ -1,25 +1,32 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { Activity, ArrowLeft, Compass, Flame, Gauge, Layers, Target } from 'lucide-react'
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { ArrowLeft } from 'lucide-react'
+import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '../api/client'
 import type { PredictionResponse } from '../types'
-import { DirectionBadge } from '../components/ui/DirectionBadge'
-import { Badge } from '../components/ui/Badge'
-import { StatCard } from '../components/ui/StatCard'
 import { PriceTicker } from '../components/ui/PriceTicker'
 import { daysUntil, formatDate } from '../utils/date'
-import { CrushChamber } from '../components/CrushChamber'
 import { StraddleCheck } from '../components/StraddleCheck'
+import { BreakoutDial } from '../components/BreakoutDial'
+import { LeanCard } from '../components/LeanCard'
+import { ArenaForReport } from '../components/ArenaForReport'
 import { useT } from '../i18n'
+import './DossierPage.css'
 
-function formatPct(v: number | null | undefined, signed = false) {
-  if (v == null) return '—'
-  const n = (v * 100).toFixed(2)
-  return signed && v > 0 ? `+${n}%` : `${n}%`
-}
+/**
+ * The dossier — one report, everything the site knows about it.
+ *
+ * Where the loop meets a single stock: how likely this report is to move it more than
+ * usual (the dial), which way the experimental scorecard leans and why (the rope),
+ * whether options already price the move (straddle check), what the Arena sealed, and
+ * what the stock did the last eight times.
+ *
+ * It used to lead with the three-class direction bars, a 20-day "convergence zone" and
+ * SHAP drivers of the direction model. All three were views of a model that scores at
+ * chance on clean data, so they are gone rather than restyled.
+ */
 
+const pctSigned = (v: number | null | undefined) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(2)}%`)
 
 export function PredictionDeepDivePage() {
   const { t } = useT()
@@ -31,386 +38,132 @@ export function PredictionDeepDivePage() {
 
   useEffect(() => {
     if (!ticker) return
-    const load = async () => {
-      try {
-        const r = await api.getPrediction(ticker, earningsDate)
-        setData(r)
-        setError(null)
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : 'failed')
-      }
-    }
-    load()
+    let alive = true
+    setData(null)
+    api.getPrediction(ticker, earningsDate)
+      .then((r) => { if (alive) { setData(r); setError(null) } })
+      .catch((e: unknown) => { if (alive) setError(e instanceof Error ? e.message : 'failed') })
+    return () => { alive = false }
   }, [ticker, earningsDate])
 
-  const convergenceData = useMemo(() => {
-    if (!data?.convergence_band) return []
-    const { lower, upper, current_price, horizon_days } = data.convergence_band
-    if (lower == null || upper == null) return []
-    const current = current_price ?? (lower + upper) / 2
-    const days = horizon_days || 20
-    const arr = []
-    for (let i = 1; i <= days; i++) {
-      const t = i / days
-      arr.push({
-        day: `T+${i}`,
-        lower: current + (lower - current) * t,
-        upper: current + (upper - current) * t,
-      })
-    }
-    return arr
-  }, [data])
-
-  const probData = useMemo(() => {
-    if (!data) return []
-    return [
-      { label: 'UP', value: data.direction_probabilities.up, color: 'var(--up)' },
-      { label: 'FLAT', value: data.direction_probabilities.flat, color: 'var(--flat)' },
-      { label: 'DOWN', value: data.direction_probabilities.down, color: 'var(--down)' },
-    ]
-  }, [data])
-
-  const historicalData = useMemo(() => {
+  const history = useMemo(() => {
     if (!data?.historical_reactions) return []
-    return data.historical_reactions.slice(-8).map((r) => ({
-      date: r.earnings_date?.slice(5) ?? '—',
-      reaction: r.reaction_pct != null ? r.reaction_pct * 100 : 0,
-      beat: r.beat_miss ?? 'n/a',
-    }))
+    return [...data.historical_reactions]
+      .filter((r) => r.reaction_pct != null)
+      .sort((a, b) => a.earnings_date.localeCompare(b.earnings_date))
+      .slice(-8)
+      .map((r) => ({ date: r.earnings_date.slice(2, 7), reaction: +((r.reaction_pct as number) * 100).toFixed(2) }))
   }, [data])
 
   if (error) {
     return (
       <div className="empty-state">
-        <p>{error}</p>
-        <Link to="/" className="btn" style={{ marginTop: '1rem' }}><ArrowLeft size={14} /> Back to Calendar</Link>
+        <p>{t('dd.notFound', { ticker: ticker.toUpperCase() })}</p>
+        <Link to="/" className="btn" style={{ marginTop: '1rem', fontStyle: 'normal', fontFamily: 'var(--font-sans)' }}><ArrowLeft size={14} /> {t('nav.calendar')}</Link>
       </div>
     )
   }
-
   if (!data) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div className="shimmer" style={{ height: 140 }} />
-        <div className="grid grid-4">
-          <div className="shimmer" style={{ height: 110 }} />
-          <div className="shimmer" style={{ height: 110 }} />
-          <div className="shimmer" style={{ height: 110 }} />
-          <div className="shimmer" style={{ height: 110 }} />
-        </div>
-        <div className="shimmer" style={{ height: 400 }} />
+      <div className="dossier">
+        <div className="shimmer" style={{ height: 150 }} />
+        <div className="grid grid-2"><div className="shimmer" style={{ height: 320 }} /><div className="shimmer" style={{ height: 320 }} /></div>
+        <div className="shimmer" style={{ height: 300 }} />
       </div>
     )
   }
 
   const du = daysUntil(data.earnings_date)
-  const duLabel = du === 0 ? 'Today' : du > 0 ? `in ${du} days` : `${-du} days ago`
+  const when = du === 0 ? t('cal.today') : du === 1 ? t('cal.tomorrow') : du > 0 ? t('cal.inDays', { n: du }) : t('cal.daysAgo', { n: -du })
+  const band = data.flat_band
+  const implied = data.implied_move_pct
+  const ratio = implied != null && band ? implied / band : null
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <Link to="/" className="btn" style={{ alignSelf: 'flex-start' }}>
-        <ArrowLeft size={14} /> Calendar
-      </Link>
+    <div className="dossier">
+      <Link to="/" className="dossier__back"><ArrowLeft size={13} /> {t('nav.calendar')}</Link>
 
-      {/* === Hero Banner === */}
-      <motion.div
-        className="ticker-banner"
-        initial={{ opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        <div style={{ flex: '1 1 320px', position: 'relative', zIndex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.35rem' }}>
-            <h1 className="ticker-symbol">{data.ticker}</h1>
-            {data.prob_move != null ? (
-              <span className={`tier-chip tier-chip--${data.move_tier ?? 'normal'}`}>
-                <Flame size={11} /> {t(`move.${data.move_tier ?? 'normal'}`)} · {(data.prob_move * 100).toFixed(0)}%
-              </span>
-            ) : (
-              <DirectionBadge direction={data.predicted_direction} confidence={data.confidence_score} />
-            )}
+      <header className="dossier__head">
+        <div>
+          <div className="dossier__kicker">
+            {data.sector && <span>{data.sector}</span>}
+            <span>{formatDate(data.earnings_date)}</span>
+            {data.report_time && <span className={`when-chip when-chip--${data.report_time.toLowerCase()}`}>{t(`when.${data.report_time.toLowerCase()}` as 'when.bmo')}</span>}
+            <span className="dossier__when">{when}</span>
           </div>
+          <h1 className="ticker-symbol">{data.ticker}</h1>
           <p className="ticker-name">{data.company_name ?? '—'}</p>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {data.sector && <Badge variant="accent">{data.sector}</Badge>}
-            <span className="countdown-chip">
-              📅 {formatDate(data.earnings_date)} · {duLabel}
-            </span>
-            {data.report_time && <Badge variant="default">{data.report_time}</Badge>}
-          </div>
         </div>
         <PriceTicker ticker={data.ticker} />
-      </motion.div>
+      </header>
 
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
-        <CrushChamber
-          daysUntil={du}
-          expectedMove={data.implied_move_pct ?? data.flat_band ?? 0}
-          moveTier={data.move_tier}
-        />
-      </motion.div>
+      <div className="dossier__calls">
+        <section className="card dialcard">
+          <h3 className="card-title">{t('dd.dial.title')}</h3>
+          <BreakoutDial prob={data.prob_move} tier={data.move_tier} base={data.breakout_base_rate} />
+          <dl className="dialcard__facts">
+            <div><dt>{t('brief.col.usual')}</dt><dd>{band != null ? `±${(band * 100).toFixed(1)}%` : '—'}</dd></div>
+            <div><dt>{t('brief.col.implied')}</dt><dd>{implied != null ? `±${(implied * 100).toFixed(1)}%` : '—'}</dd></div>
+            <div><dt>{t('dd.dial.ratio')}</dt><dd>{ratio != null ? `${ratio.toFixed(1)}×` : '—'}</dd></div>
+          </dl>
+          <p className="page-note">{t(`dd.dial.read.${data.move_tier ?? 'none'}` as 'dd.dial.read.normal')}</p>
+        </section>
 
-      {/* === Core Prediction Stats ===
-          Led by breakout risk, the call with out-of-sample skill. The old row led with
-          the predicted direction (near chance) and the regression's size estimate,
-          which ranks moves worse than the stock's own history. */}
-      <div className="grid grid-4">
-        <StatCard
-          label={t('cal.col.moveRisk')}
-          icon={<Flame size={12} />}
-          value={data.prob_move != null ? `${(data.prob_move * 100).toFixed(0)}%` : '—'}
-          helper={data.prob_move != null
-            ? `${t(`move.${data.move_tier ?? 'normal'}`)}${data.breakout_base_rate != null ? ` · ${t('dd.baseRate', { v: (data.breakout_base_rate * 100).toFixed(0) })}` : ''}`
-            : t('move.unscored')}
-          accent={data.move_tier === 'breakout' ? 'amber' : data.move_tier === 'elevated' ? 'purple' : 'cyan'}
-          delay={0.05}
-        />
-        <StatCard
-          label={t('brief.col.usual')}
-          icon={<Activity size={12} />}
-          value={data.flat_band != null ? <>±{(data.flat_band * 100).toFixed(1)}%</> : '—'}
-          helper={data.implied_move_pct != null
-            ? t('band.pop.expected', { v: (data.implied_move_pct * 100).toFixed(1) })
-            : t('dd.usualHelper')}
-          accent="cyan"
-          delay={0.1}
-        />
-        <StatCard
-          label={t('dd.stat.direction')}
-          icon={<Compass size={12} />}
-          value={data.predicted_direction}
-          helper={t('dd.directionHelper', { p: (data.confidence_score * 100).toFixed(0) })}
-          accent="default"
-          delay={0.15}
-        />
-        <StatCard
-          label={t('dd.stat.completeness')}
-          icon={<Gauge size={12} />}
-          value={`${(data.data_completeness * 100).toFixed(1)}%`}
-          helper={`${data.warnings.length} warning${data.warnings.length === 1 ? '' : 's'}`}
-          accent="emerald"
-          delay={0.2}
-        />
+        <LeanCard p={data.lean_up} factors={data.lean_factors ?? []} metrics={data.lean_metrics} />
       </div>
 
       <StraddleCheck ticker={data.ticker} />
 
-      {/* === {t('dd.probs')} + Model Metadata === */}
-      <div className="grid grid-2" style={{ gridTemplateColumns: '1.5fr 1fr' }}>
-        <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
-          <div className="card-header">
-            <h3 className="card-title"><Target size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />{t('dd.dirProbs')}</h3>
-          </div>
-          {probData.map((p) => (
-            <div className="prob-row" key={p.label}>
-              <div className="prob-label" style={{ color: p.color }}>{p.label}</div>
-              <div className="prob-track">
-                <motion.div
-                  className="prob-fill"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${p.value * 100}%` }}
-                  transition={{ duration: 0.8, delay: 0.4, ease: 'easeOut' }}
-                  style={{ background: `linear-gradient(90deg, ${p.color}, ${p.color})` }}
-                />
-              </div>
-              <div className="prob-value">{(p.value * 100).toFixed(1)}%</div>
-            </div>
-          ))}
-        </motion.div>
+      <ArenaForReport ticker={data.ticker} date={data.earnings_date} />
 
-        <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-          <div className="card-header">
-            <h3 className="card-title"><Gauge size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />{t('dd.meta')}</h3>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.85rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span className="muted">{t('dd.version')}</span>
-              <span className="mono" style={{ fontSize: '0.8rem' }}>{data.model_version ?? '—'}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span className="muted">{t('dd.coverage')}</span>
-              <span className="mono">{(data.data_completeness * 100).toFixed(1)}%</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span className="muted">{t('dd.keyDrivers')}</span>
-              <span className="mono">{data.key_drivers.length}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span className="muted">{t('dd.similarCases')}</span>
-              <span className="mono">{data.similar_cases.length}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span className="muted">{t('dd.warnings')}</span>
-              <span className="mono">{data.warnings.length}</span>
-            </div>
-          </div>
-        </motion.div>
-      </div>
-
-      {/* === Convergence Zone Chart === */}
-      <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
-        <div className="card-header">
-          <h3 className="card-title"><Activity size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />Convergence Zone — {data.convergence_band.horizon_days}-day forecast</h3>
-        </div>
-        <div style={{ height: 300 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={convergenceData}>
-              <defs>
-                <linearGradient id="zoneGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.5} />
-                  <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.05} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="2 4" stroke="rgba(148,163,214,0.08)" />
-              <XAxis dataKey="day" tick={{ fill: '#6b7593', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis
-                domain={['auto', 'auto']}
-                tick={{ fill: '#6b7593', fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={(v) => v.toFixed(1)}
-              />
-              <Tooltip
-                contentStyle={{ background: '#0f1524', border: '1px solid rgba(148,163,214,0.2)', borderRadius: 10, fontSize: 12 }}
-                labelStyle={{ color: '#a8b3d1' }}
-              />
-              <Area type="monotone" dataKey="upper" stroke="#38bdf8" strokeWidth={1.5} fill="url(#zoneGrad)" />
-              <Area type="monotone" dataKey="lower" stroke="#a78bfa" strokeWidth={1.5} fill="transparent" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </motion.div>
-
-      {/* === Key Drivers === */}
-      <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '1.25rem 1.5rem 1rem' }}>
-          <h3 className="card-title"><Layers size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />{t('dd.keyDriversShap')}</h3>
-        </div>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>{t('col.feature')}</th>
-              <th style={{ textAlign: 'right' }}>{t('col.value')}</th>
-              <th>{t('col.contribution')}</th>
-              <th style={{ width: 100 }}>{t('col.direction')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.key_drivers.map((d, i) => {
-              const maxAbs = Math.max(...data.key_drivers.map((k) => Math.abs(k.contribution)))
-              const pct = (Math.abs(d.contribution) / (maxAbs || 1)) * 100
-              const isPositive = d.direction === 'positive'
-              return (
-                <motion.tr
-                  key={d.feature}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.45 + i * 0.05 }}
-                  style={{ cursor: 'default' }}
-                >
-                  <td className="mono" style={{ fontSize: '0.8rem' }}>{d.feature}</td>
-                  <td className="mono" style={{ textAlign: 'right', fontSize: '0.8rem' }}>
-                    {d.value != null ? d.value.toFixed(4) : '—'}
-                  </td>
-                  <td style={{ minWidth: 200 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ flex: 1, height: 6, background: 'var(--bg-3)', borderRadius: 999, overflow: 'hidden', position: 'relative' }}>
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${pct}%` }}
-                          transition={{ duration: 0.6, delay: 0.5 + i * 0.05 }}
-                          style={{
-                            height: '100%',
-                            background: isPositive ? 'linear-gradient(90deg, var(--up), #10b981)' : 'linear-gradient(90deg, var(--down), #e11d48)',
-                            borderRadius: 999,
-                          }}
-                        />
-                      </div>
-                      <span className="mono" style={{ fontSize: '0.75rem', width: 56, textAlign: 'right' }}>
-                        {d.contribution > 0 ? '+' : ''}{d.contribution.toFixed(4)}
-                      </span>
-                    </div>
-                  </td>
-                  <td>
-                    {isPositive ? <Badge variant="up">{t('dd.positive')}</Badge> : <Badge variant="down">{t('dd.negative')}</Badge>}
-                  </td>
-                </motion.tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </motion.div>
-
-      {/* === Historical Reactions === */}
-      {historicalData.length > 0 && (
-        <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
-          <div className="card-header">
-            <h3 className="card-title">{t('dd.histReactions')}</h3>
-          </div>
-          <div style={{ height: 220 }}>
+      {history.length > 0 && (
+        <section className="card">
+          <h3 className="card-title">{t('dd.hist.title')}</h3>
+          <div style={{ height: 230 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={historicalData}>
-                <CartesianGrid strokeDasharray="2 4" stroke="rgba(148,163,214,0.08)" />
-                <XAxis dataKey="date" tick={{ fill: '#6b7593', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#6b7593', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v.toFixed(0)}%`} />
-                <Tooltip
-                  contentStyle={{ background: '#0f1524', border: '1px solid rgba(148,163,214,0.2)', borderRadius: 10, fontSize: 12 }}
-                  formatter={(v: number) => [`${v.toFixed(2)}%`, 'Reaction']}
-                />
-                <Bar dataKey="reaction" radius={[6, 6, 0, 0]}>
-                  {historicalData.map((entry, idx) => (
-                    <Bar
-                      key={idx}
-                      dataKey="reaction"
-                      fill={entry.reaction >= 0 ? 'var(--up)' : 'var(--down)'}
-                    />
-                  ))}
+              <BarChart data={history} margin={{ top: 8, right: 8, bottom: 0, left: -14 }}>
+                <CartesianGrid strokeDasharray="2 5" stroke="rgba(236, 226, 205, 0.08)" vertical={false} />
+                <XAxis dataKey="date" tick={{ fill: 'var(--text-tertiary)', fontSize: 10, fontFamily: 'var(--font-mono)' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: 'var(--text-tertiary)', fontSize: 10, fontFamily: 'var(--font-mono)' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                <ReferenceLine y={0} stroke="var(--text-tertiary)" />
+                {band != null && <ReferenceLine y={band * 100} stroke="var(--text-muted)" strokeDasharray="4 4" />}
+                {band != null && <ReferenceLine y={-band * 100} stroke="var(--text-muted)" strokeDasharray="4 4" />}
+                <Tooltip cursor={{ fill: 'rgba(236, 226, 205, 0.05)' }}
+                  contentStyle={{ background: 'var(--bg-2)', border: '1px solid var(--border-strong)', borderRadius: 8, fontSize: 12 }}
+                  formatter={(v: number) => [`${v > 0 ? '+' : ''}${v}%`, t('dd.hist.reaction')]} />
+                <Bar dataKey="reaction" radius={[2, 2, 0, 0]} maxBarSize={46}>
+                  {history.map((h) => <Cell key={h.date} fill={h.reaction >= 0 ? 'var(--up)' : 'var(--down)'} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </motion.div>
+          <p className="page-note">{t('dd.hist.note')}</p>
+        </section>
       )}
 
-      {/* === Similar Cases === */}
       {data.similar_cases.length > 0 && (
-        <motion.div className="card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }} style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '1.25rem 1.5rem 1rem' }}>
-            <h3 className="card-title">{t('dd.similarNN')}</h3>
+        <details className="dossier__more">
+          <summary>{t('dd.similarNN')}</summary>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead><tr><th>{t('col.ticker')}</th><th>{t('col.date')}</th><th>{t('col.sector')}</th>
+                <th className="r">{t('col.similarity')}</th><th className="r">T+1</th><th className="r">T+5</th><th className="r">T+20</th></tr></thead>
+              <tbody>
+                {data.similar_cases.slice(0, 8).map((c) => (
+                  <tr key={`${c.ticker}-${c.earnings_date}`} style={{ cursor: 'default' }}>
+                    <td className="mono" style={{ fontWeight: 700 }}>{c.ticker}</td>
+                    <td className="mono">{c.earnings_date}</td>
+                    <td className="muted">{c.sector ?? '—'}</td>
+                    <td className="mono r">{(c.similarity * 100).toFixed(1)}%</td>
+                    {[c.actual_t1_return, c.actual_t5_return, c.actual_t20_return].map((v, i) => (
+                      <td key={i} className="mono r" style={{ color: (v ?? 0) >= 0 ? 'var(--up)' : 'var(--down)' }}>{pctSigned(v)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>{t('col.ticker')}</th>
-                <th>{t('col.date')}</th>
-                <th>{t('col.sector')}</th>
-                <th style={{ textAlign: 'right' }}>{t('col.similarity')}</th>
-                <th style={{ textAlign: 'right' }}>T+1</th>
-                <th style={{ textAlign: 'right' }}>T+5</th>
-                <th style={{ textAlign: 'right' }}>T+20</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.similar_cases.slice(0, 8).map((c) => (
-                <tr key={`${c.ticker}-${c.earnings_date}`} style={{ cursor: 'default' }}>
-                  <td className="mono" style={{ fontWeight: 700 }}>{c.ticker}</td>
-                  <td className="mono">{c.earnings_date}</td>
-                  <td><span className="muted">{c.sector ?? '—'}</span></td>
-                  <td className="mono" style={{ textAlign: 'right' }}>{(c.similarity * 100).toFixed(1)}%</td>
-                  <td className="mono" style={{ textAlign: 'right', color: (c.actual_t1_return ?? 0) >= 0 ? 'var(--up)' : 'var(--down)' }}>
-                    {formatPct(c.actual_t1_return, true)}
-                  </td>
-                  <td className="mono" style={{ textAlign: 'right', color: (c.actual_t5_return ?? 0) >= 0 ? 'var(--up)' : 'var(--down)' }}>
-                    {formatPct(c.actual_t5_return, true)}
-                  </td>
-                  <td className="mono" style={{ textAlign: 'right', color: (c.actual_t20_return ?? 0) >= 0 ? 'var(--up)' : 'var(--down)' }}>
-                    {formatPct(c.actual_t20_return, true)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </motion.div>
+        </details>
       )}
     </div>
   )

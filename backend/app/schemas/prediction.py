@@ -75,3 +75,8 @@ class PredictionResponse(BaseModel):
     breakout_base_rate: float | None = None
     flat_band: float | None = None
     implied_move_pct: float | None = None
+    # Direction lean: P(up), each factor's contribution in log-odds, and the
+    # scorecard's honest backtest. See data_pipeline/direction_lean.py.
+    lean_up: float | None = None
+    lean_factors: list[dict] = Field(default_factory=list)
+    lean_metrics: dict | None = None

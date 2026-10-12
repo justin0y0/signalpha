@@ -133,6 +133,30 @@ DDL = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_arena_event ON arena_forecasts (earnings_date, ticker)",
+    # Calls withdrawn before grading because the question itself was built from bad inputs.
+    # They are moved here, never deleted: the digests stay in their anchored manifests, and
+    # the board lists every one with the reason.
+    """
+    CREATE TABLE IF NOT EXISTS arena_voided (
+        id            BIGINT PRIMARY KEY,
+        season        TEXT NOT NULL,
+        forecaster    TEXT NOT NULL,
+        ticker        TEXT NOT NULL,
+        earnings_date DATE NOT NULL,
+        report_time   TEXT,
+        band          REAL NOT NULL,
+        implied_move  REAL,
+        p_breakout    REAL NOT NULL,
+        lean          TEXT,
+        rationale     TEXT,
+        payload       TEXT NOT NULL,
+        digest        TEXT NOT NULL,
+        sealed_at     TIMESTAMPTZ NOT NULL,
+        anchor_id     BIGINT,
+        voided_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        reason        TEXT NOT NULL
+    )
+    """,
     """
     CREATE TABLE IF NOT EXISTS arena_anchors (
         id          BIGSERIAL PRIMARY KEY,
@@ -331,7 +355,7 @@ def _ask_claude(model: str, facts: dict[str, Any]) -> dict[str, Any] | None:
 def _upcoming(db: Session, now_et: datetime) -> list[dict[str, Any]]:
     today = now_et.date()
     rows = db.execute(text("""
-        SELECT e.ticker, e.earnings_date, e.report_time, p.prob_move,
+        SELECT e.ticker, e.earnings_date, e.report_time, p.prob_move, p.lean_up,
                f.expected_move_pct AS implied
         FROM earnings_events e
         LEFT JOIN predictions p ON p.ticker=e.ticker AND p.earnings_date=e.earnings_date
@@ -345,7 +369,7 @@ def _upcoming(db: Session, now_et: datetime) -> list[dict[str, Any]]:
             continue
         d = dict(r)
         # NUMERIC columns come back as Decimal; everything downstream is float math.
-        for k in ("prob_move", "implied"):
+        for k in ("prob_move", "implied", "lean_up"):
             d[k] = float(d[k]) if d[k] is not None else None
         out.append(d)
     return out
@@ -361,7 +385,14 @@ def _forecast(code: str, ev: dict[str, Any], band: float, facts_fn) -> dict[str,
     f = FORECASTERS[code]
     if code == "signalpha_ml":
         p = _clamp(ev.get("prob_move"))
-        return {"p": p, "lean": None, "why": "Pooled breakout model, walk-forward trained on point-in-time features."} if p else None
+        if not p:
+            return None
+        lu = ev.get("lean_up")
+        # The model's own direction call is the experimental lean; a lean within a point
+        # and a half of even is not a call and is sealed as none.
+        lean = None if lu is None or abs(lu - 0.5) < 0.015 else ("UP" if lu > 0.5 else "DOWN")
+        return {"p": p, "lean": lean,
+                "why": "Pooled breakout model on point-in-time features; direction from the experimental lean scorecard."}
     if code == "options_market":
         p = options_probability(ev.get("implied"), band)
         if p is None:
@@ -445,6 +476,30 @@ def seal_due(db: Session, now: datetime | None = None, limit: int | None = None)
     return {"events": len(events), "sealed": len(sealed), "skipped_no_band": skipped, "anchor": anchor}
 
 
+# ───────────────────────────── voiding ─────────────────────────────
+
+_VOID_COLS = ("id, season, forecaster, ticker, earnings_date, report_time, band, implied_move, "
+              "p_breakout, lean, rationale, payload, digest, sealed_at, anchor_id")
+
+
+def void_unresolved(db: Session, earnings_date: date, sealed_before: datetime, reason: str) -> int:
+    """Withdraw ungraded calls for one report date that were sealed before `sealed_before`.
+
+    Only ever touches calls that have not been graded: once a call has an outcome it is
+    part of the record whatever was wrong with it. The rows move to arena_voided with the
+    reason, so the report can be sealed again on correct inputs and both sets stay public.
+    """
+    where = "earnings_date=:d AND sealed_at < :b AND resolved_at IS NULL"
+    args = {"d": earnings_date, "b": sealed_before, "r": reason}
+    n = db.execute(text(f"""
+        INSERT INTO arena_voided ({_VOID_COLS}, reason)
+        SELECT {_VOID_COLS}, :r FROM arena_forecasts WHERE {where}
+        ON CONFLICT (id) DO NOTHING"""), args).rowcount
+    db.execute(text(f"DELETE FROM arena_forecasts WHERE {where}"), args)
+    db.commit()
+    return n
+
+
 # ───────────────────────────── anchoring ─────────────────────────────
 
 def anchor_pending(db: Session) -> dict[str, Any] | None:
@@ -494,7 +549,7 @@ def anchor_file(db: Session, anchor_id: int, kind: str) -> tuple[bytes, str] | N
 
 def resolve_due(db: Session) -> dict[str, Any]:
     rows = db.execute(text("""
-        SELECT a.id, a.band, a.p_breakout, o.actual_t1_close_return AS r
+        SELECT a.id, a.band, a.p_breakout, a.lean, o.actual_t1_close_return AS r
         FROM arena_forecasts a
         JOIN outcomes o ON o.ticker=a.ticker AND o.earnings_date=a.earnings_date
         WHERE a.resolved_at IS NULL AND o.actual_t1_close_return IS NOT NULL""")).all()
@@ -504,9 +559,10 @@ def resolve_due(db: Session) -> dict[str, Any]:
         if not math.isfinite(move):
             continue
         y = 1.0 if abs(move) > float(r.band) else 0.0
+        hit = None if r.lean not in ("UP", "DOWN") or move == 0 else ((move > 0) == (r.lean == "UP"))
         db.execute(text("""
-            UPDATE arena_forecasts SET actual_move=:m, broke_out=:y, brier=:b, resolved_at=NOW()
-            WHERE id=:i"""), {"m": move, "y": bool(y), "b": (float(r.p_breakout) - y) ** 2, "i": r.id})
+            UPDATE arena_forecasts SET actual_move=:m, broke_out=:y, brier=:b, lean_hit=:h, resolved_at=NOW()
+            WHERE id=:i"""), {"m": move, "y": bool(y), "b": (float(r.p_breakout) - y) ** 2, "h": hit, "i": r.id})
         n += 1
     db.commit()
     return {"resolved": n}
@@ -530,6 +586,14 @@ def _leaderboard(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         briers = [b for _, b in mine]
         paired = [v["base_rate"] - v[code] for k, v in by_event.items() if code in v and "base_rate" in v]
         entry: dict[str, Any] = {"code": code, "n": len(briers), "brier": sum(briers) / len(briers)}
+        hits = [r["lean_hit"] for r in rows if r["forecaster"] == code and r.get("lean_hit") is not None]
+        if hits:
+            k, m = sum(1 for h in hits if h), len(hits)
+            # Wilson 90% interval: a direction record is only news once it excludes 50%.
+            z = 1.645
+            c = (k / m + z * z / (2 * m)) / (1 + z * z / m)
+            hw = z * math.sqrt((k / m) * (1 - k / m) / m + z * z / (4 * m * m)) / (1 + z * z / m)
+            entry.update(dir_n=m, dir_hit=k / m, dir_lo=c - hw, dir_hi=c + hw)
         if code != "base_rate" and len(paired) >= 2:
             arr = np.asarray(paired)
             mean = float(arr.mean())
@@ -559,7 +623,7 @@ def board(db: Session) -> dict[str, Any]:
     calls = [dict(r) for r in db.execute(text("""
         SELECT a.forecaster, a.ticker, a.earnings_date, a.report_time, a.band, a.implied_move,
                a.p_breakout, a.lean, a.rationale, a.payload, a.digest, a.sealed_at, a.anchor_id,
-               a.actual_move, a.broke_out, a.brier, a.resolved_at, e.company_name, e.sector
+               a.actual_move, a.broke_out, a.brier, a.lean_hit, a.resolved_at, e.company_name, e.sector
         FROM arena_forecasts a
         LEFT JOIN earnings_events e ON e.ticker=a.ticker AND e.earnings_date=a.earnings_date
         WHERE a.season=:s ORDER BY a.earnings_date, a.ticker"""), {"s": SEASON["id"]}).mappings().all()]
@@ -578,7 +642,7 @@ def board(db: Session) -> dict[str, Any]:
             "forecaster": c["forecaster"], "p": c["p_breakout"], "lean": c["lean"],
             "rationale": c["rationale"], "digest": c["digest"], "payload": c["payload"],
             "sealed_at": c["sealed_at"].isoformat() if c["sealed_at"] else None,
-            "anchor_id": c["anchor_id"], "brier": c["brier"],
+            "anchor_id": c["anchor_id"], "brier": c["brier"], "lean_hit": c["lean_hit"],
         })
 
     resolved = [e for e in events.values() if e["broke_out"] is not None]
@@ -606,10 +670,22 @@ def board(db: Session) -> dict[str, Any]:
 
     anchors = [dict(r) for r in db.execute(text("""
         SELECT id, root, calendars, created_at,
-               (SELECT count(*) FROM arena_forecasts f WHERE f.anchor_id=a.id) AS calls
+               (SELECT count(*) FROM arena_forecasts f WHERE f.anchor_id=a.id)
+               + (SELECT count(*) FROM arena_voided v WHERE v.anchor_id=a.id) AS calls
         FROM arena_anchors a ORDER BY id DESC LIMIT 20""")).mappings().all()]
     for a in anchors:
         a["created_at"] = a["created_at"].isoformat()
+
+    voided = [dict(r) for r in db.execute(text("""
+        SELECT ticker, earnings_date, count(*) AS calls, min(sealed_at) AS sealed_at,
+               max(voided_at) AS voided_at, max(band) AS band, max(implied_move) AS implied_move,
+               max(anchor_id) AS anchor_id, max(reason) AS reason
+        FROM arena_voided WHERE season=:s GROUP BY ticker, earnings_date
+        ORDER BY earnings_date, ticker"""), {"s": SEASON["id"]}).mappings().all()]
+    for v in voided:
+        v["earnings_date"] = str(v["earnings_date"])
+        v["sealed_at"] = v["sealed_at"].isoformat()
+        v["voided_at"] = v["voided_at"].isoformat()
 
     graded = [c for c in calls if c["brier"] is not None]
     active = set(active_forecasters())
@@ -627,5 +703,7 @@ def board(db: Session) -> dict[str, Any]:
         "resolved": resolved[:40],
         "queued": queued,
         "anchors": anchors,
-        "totals": {"calls": len(calls), "graded": len(graded), "events": len(events)},
+        "voided": voided,
+        "totals": {"calls": len(calls), "graded": len(graded), "events": len(events),
+                   "voided": sum(v["calls"] for v in voided)},
     }

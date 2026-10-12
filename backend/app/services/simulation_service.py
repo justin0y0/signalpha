@@ -20,6 +20,7 @@ import numpy as np
 from sqlalchemy import and_, desc, func, select
 from sqlalchemy.orm import Session
 
+from backend.app.services.playbook_service import SIGNAL_HOLD
 from backend.app.db.models import (
     EarningsEvent,
     Outcome,
@@ -163,6 +164,12 @@ def _entry_price_for_position(db: Session, ticker: str, target_date: date) -> fl
     return live[0] if live else None
 
 
+# The Playbook rule was tested as a plain hold. A stop or a target would turn the paper
+# account into a different rule with no test behind it, so both are off. The config
+# columns stay for the day a tested variant needs them.
+USE_STOPS = False
+
+
 def _exit_price_from_outcome(db: Session, ticker: str, earnings_date: date, holding_days: int) -> float | None:
     outcome = db.execute(
         select(Outcome).where(and_(Outcome.ticker == ticker, Outcome.earnings_date == earnings_date))
@@ -185,8 +192,9 @@ def _exit_price_from_outcome(db: Session, ticker: str, earnings_date: date, hold
         ret_attr = "actual_t20_return"
     ret = getattr(outcome, ret_attr, None)
     if ret is None or (isinstance(ret, float) and math.isnan(ret)):
-        ret = outcome.actual_t1_close_return
-    if ret is None:
+        # The horizon has not been reached. This used to fall back to the T+1 return,
+        # which froze a twenty-session position at its reaction-day close the morning
+        # after entry; the caller marks on the live price instead.
         return None
     return float(entry) * (1.0 + float(ret))
 
@@ -369,7 +377,6 @@ def _open_position(
     margin = notional / max(leverage, 1.0)
     cash_ref[0] -= margin
     # The Playbook rule holds SIGNAL_HOLD sessions; 7 calendar days per 5 sessions.
-    from backend.app.services.playbook_service import SIGNAL_HOLD
     target_exit = today + timedelta(days=round(SIGNAL_HOLD * 7 / 5))
     db.add(SimulationPosition(
         ticker=event.ticker, sector=event.sector, side=side, shares=shares,
@@ -442,7 +449,7 @@ def run_step(db: Session) -> dict[str, Any]:
 
     closes_done: list[dict[str, Any]] = []
     for pos in open_positions:
-        outcome_exit = _exit_price_from_outcome(db, pos.ticker, pos.earnings_date, cfg.holding_days)
+        outcome_exit = _exit_price_from_outcome(db, pos.ticker, pos.earnings_date, SIGNAL_HOLD)
         live = _fetch_live_price(pos.ticker)
         live_price = live[0] if live else None
         live_bar = live[2] if live else None
@@ -486,6 +493,9 @@ def run_step(db: Session) -> dict[str, Any]:
             # No path available — fall back to the mark, the old behaviour.
             hit_stop = ret_pct <= -stop_pct
             hit_tp = ret_pct >= tp_pct
+
+        if not USE_STOPS:
+            hit_stop = hit_tp = False
 
         exit_reason: str | None = None
         exit_price = mark
@@ -758,6 +768,8 @@ def _config_dict(cfg: SimulationConfig) -> dict[str, Any]:
         "stop_loss_pct": cfg.stop_loss_pct,
         "take_profit_pct": cfg.take_profit_pct,
         "holding_days": cfg.holding_days,
+        "holding_sessions": SIGNAL_HOLD,
+        "stops_active": USE_STOPS,
         "slippage_bps": cfg.slippage_bps,
         "last_step_at": cfg.last_step_at.isoformat() if cfg.last_step_at else None,
         "started_at": cfg.started_at.isoformat() if cfg.started_at else None,

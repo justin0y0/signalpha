@@ -101,8 +101,18 @@ def _compute(db: Session) -> dict:
         # The post-report direction signal (services/playbook_service.py): gap up beyond
         # SIGNAL_K x the usual move, long from the open, held SIGNAL_HOLD sessions.
         "follow_through": _follow_through(db),
+        "lean": lean_metrics(),
         "universe": universe,
     }
+
+
+def lean_metrics() -> dict | None:
+    """Walk-forward record of the direction lean's backtestable factors."""
+    path = Path(get_settings().model_dir) / "lean_model.json"
+    try:
+        return json.loads(path.read_text()).get("metrics")
+    except (OSError, ValueError):
+        return None
 
 
 def _follow_through(db: Session) -> dict | None:

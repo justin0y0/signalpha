@@ -67,7 +67,7 @@ export function PulseTrackRecord() {
                   <div className="mc-tt"><b>${Math.round(payload[0].value as number).toLocaleString()}</b></div>
                 ) : null} />
                 <Line type="monotone" dataKey="cum_pnl"
-                  stroke={pos ? '#4ade80' : '#f87171'} strokeWidth={2.5} dot={false} />
+                  stroke={pos ? '#63e6a8' : '#ff7d6b'} strokeWidth={2.5} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>

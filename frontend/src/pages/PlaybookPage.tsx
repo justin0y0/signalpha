@@ -104,37 +104,7 @@ export function PlaybookPage() {
 
   return (
     <div className="pb">
-      {/* ── finding ── */}
-      <motion.section className="pb-hero" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-        <div className="pb-hero__kicker">{t('pb.kicker')}</div>
-        <h1 className="pb-hero__title">{t('pb.title')}</h1>
-        <p className="pb-hero__lede">{t('pb.lede')}</p>
-        {sig && (
-          <div className="pb-hero__cells">
-            <div className="is-up">
-              <span>{t('pb.cell.rule', { k: sig.k, hold: sig.hold })}</span>
-              <b>{pc(sig.hit, 1)}</b>
-              <i>{t('pb.cell.up5', { mean: p1(sig.mean, 2), n: sig.n })}</i>
-            </div>
-            <div>
-              <span>{t('pb.cell.base', { hold: sig.hold })}</span>
-              <b>{pc(sig.baseline_hit, 1)}</b>
-              <i>{t('pb.cell.baseMean', { mean: p1(sig.baseline_mean, 2) })}</i>
-            </div>
-            <div>
-              <span>{t('pb.cell.t')}</span>
-              <b>{sig.t?.toFixed(1)}</b>
-              <i>{t('pb.cell.years', { a: sig.years_positive, b: sig.years_total })}</i>
-            </div>
-            <div>
-              <span>{t('pb.cell.short')}</span>
-              <b>{pc(sig.hit_5d, 1)}</b>
-              <i>{t('pb.cell.shortNote', { t: sig.t_5d?.toFixed(1) })}</i>
-            </div>
-          </div>
-        )}
-        <p className="pb-hero__fine">{t('pb.fine')}</p>
-      </motion.section>
+      <p className="page-note">{t('pb.fine')}{sig && <> {t('pb.note5', { hit: pc(sig.hit_5d, 1), t: sig.t_5d?.toFixed(1) })}</>}</p>
 
       {/* ── just reacted ── */}
       <section className="card pb-live">
@@ -219,11 +189,11 @@ export function PlaybookPage() {
                 <div style={{ height: 190 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={years} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.08)" vertical={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(236, 226, 205,0.08)" vertical={false} />
                       <XAxis dataKey="year" tick={{ fill: 'var(--text-tertiary)', fontSize: 10 }} axisLine={false} tickLine={false} />
                       <YAxis tickFormatter={(v) => `${v}%`} tick={{ fill: 'var(--text-tertiary)', fontSize: 10 }} axisLine={false} tickLine={false} />
-                      <ReferenceLine y={0} stroke="rgba(226,232,240,0.35)" />
-                      <Tooltip cursor={{ fill: 'rgba(148,163,184,0.06)' }}
+                      <ReferenceLine y={0} stroke="rgba(242, 236, 223,0.35)" />
+                      <Tooltip cursor={{ fill: 'rgba(236, 226, 205,0.06)' }}
                         contentStyle={{ background: 'var(--bg-2)', border: '1px solid var(--border-strong)', borderRadius: 10, fontSize: 12 }}
                         formatter={(v: number, _k, item) => [`${v}% · n=${item.payload.n} · ${(item.payload.hit * 100).toFixed(0)}% hit`, t('pb.s.excess')]} />
                       <Bar dataKey="pct" radius={[3, 3, 0, 0]}>
@@ -244,10 +214,10 @@ export function PlaybookPage() {
                           <stop offset="100%" stopColor="var(--accent-cyan)" stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.08)" vertical={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(236, 226, 205,0.08)" vertical={false} />
                       <XAxis dataKey="d" tickFormatter={(d) => String(d).slice(0, 4)} minTickGap={40} tick={{ fill: 'var(--text-tertiary)', fontSize: 10 }} axisLine={false} tickLine={false} />
                       <YAxis tickFormatter={(v) => `${v}%`} tick={{ fill: 'var(--text-tertiary)', fontSize: 10 }} axisLine={false} tickLine={false} />
-                      <ReferenceLine y={0} stroke="rgba(226,232,240,0.35)" />
+                      <ReferenceLine y={0} stroke="rgba(242, 236, 223,0.35)" />
                       <Tooltip contentStyle={{ background: 'var(--bg-2)', border: '1px solid var(--border-strong)', borderRadius: 10, fontSize: 12 }}
                         formatter={(v: number) => [`${v}%`, t('pb.chart.curveTip')]} />
                       <Area type="monotone" dataKey="v" stroke="var(--accent-cyan)" strokeWidth={1.6} fill="url(#pbfill)" />

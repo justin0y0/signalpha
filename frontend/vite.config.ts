@@ -6,7 +6,10 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://backend:8000',
+        // In the compose network the API is `backend`; a local preview points this at
+        // the live site instead (VITE_API_TARGET=https://signalpha.app).
+        target: process.env.VITE_API_TARGET ?? 'http://backend:8000',
+        secure: true,
         changeOrigin: true,
       },
     },

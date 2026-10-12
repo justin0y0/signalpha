@@ -346,6 +346,29 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 
 **教训**：(1) 同一份数据两批回填、约定不同，是最隐蔽的泄漏来源；(2) 结果好得不像真的就一定不是真的——81% 那一刻要先查泄漏而不是庆祝；(3) 选规则要在全历史上选，不能挑好看的窗口。
 
+### 6g. 2026-10-11：重训上线 + 方向倾向（lean）+ 期权到期日 bug + Night Edition 全站重设计
+
+**重训结果（10-10 23:43 UTC PROMOTED，线上 `/model/headline` 实读）**：3 分类 40.27% vs 全押 FLAT 43.74%（n=5,610）；breakout AUC 0.5847，前 10% **70.59% vs 56.91%**（z=5.09，n=340），后 10% 平静 59.12% vs 43.09%；follow-through 64.3% vs 56.8%，t=3.92，n=555。6f 表里的 69.4% 是重训前的估计，以这组为准。
+
+**方向倾向 `data_pipeline/direction_lean.py`（Justin 要财报前方向，综合特征 + Avellaneda-Lee reversion）**：透明的逻辑回归打分卡，产物 `artifacts/lean_model.json`。拟合因子：reversion（−AL s-score，`rebuild_pit_features._reversion` 算日频 AL：60 日对 SPY+板块 ETF 回归、残差 OU 拟合）、runup、past_prints、momentum、beat_streak；只有实时值、无法回测的因子（revisions / skew / put_call）给固定小权重并在 UI 上标「unproven」。**walk-forward 50.55%，n=3,393，z=0.64，AUC 0.504，verdict=`coin_flip`**。结论：财报前方向没有 edge，这个打分卡如实展示为「实验性」，并封存进 Arena 用未来财报检验（`arena_forecasts.lean_hit`，榜单 `dir_n/dir_hit` + Wilson 区间）。`predictions.lean_up / lean_factors`；`run_predictions` 末尾 `score_upcoming()`。**任何地方展示 lean 都必须带「回测 = 抛硬币」这句。**
+
+**Bug — 期权隐含波动取错到期日**：`YFinanceClient.options_snapshot` 一律取 `expiries[0]`。周期权在财报前到期时，「隐含波动」是几个普通交易日的价格（10-10 凌晨 GS 读出 0.19%、JPM 0.20%）。同一函数还有三个错：跨式用 lastPrice 而不是买卖中间价；put/call「比率」数的是行权价个数；「25-delta skew」其实是两个 ATM IV。修法：`options_snapshot(ticker, on_or_after=反应日)` 取第一个覆盖反应日的到期日（BMO/DMH = 财报日，AMC 或未知 = 次日），mid 报价，成交量比，skew 用现价 ±5% 的行权价；`collect_event_snapshot(..., report_time)` 传入。影响面：全站「Options imply」、Straddle Check、Arena 的 options_market、MCP。
+
+**⏳ 待 Justin 决定 — 作废 10-13 那批 Arena 判断**：C/GS/JNJ/JPM/UNH/WFC 共 30 条在 10-10 04:20 UTC 封存，早于当晚的反应日修复——band 是错的（JPM 0.80% vs 现 1.89%），隐含波动是上面那个 bug 的垃圾值。代码已就绪：`arena_service.void_unresolved(db, date, sealed_before, reason)` 把**未评分**的行移到 `arena_voided`（保留 digest 和 anchor，榜单 `voided` 字段 + Arena 页披露块），然后 `seal_due` 重封。服务器脚本 `~/reseal_run.sh` + `/tmp/void_reseal.py`，备份 `~/backups/arena_pre_void_20261012.sql.gz`。**没有执行**——改公开封存记录需要 Justin 明确同意；截止 10-13 09:10 ET。不作废的话这 30 条会按错误的 band 评分。
+
+**模拟盘与规则对齐**：之前声称执行 Playbook 规则（持有 20 session），实际带 −8%/+15% 止损止盈，且标价用 T+5 结果（缺失时退回 T+1，等于第二天就把持仓冻结在反应日收盘价）。现在 `USE_STOPS = False`，标价用 `SIGNAL_HOLD` 对应的结果、未到期用实时价；`_config_dict` 新增 `holding_sessions / stops_active`；参数面板不再显示 T+5 / 2.5× 杠杆。
+
+**Night Edition 设计系统（全站重做，Justin：「像 vibe code 量产出来的」）**：
+- 令牌在 `frontend/src/index.css` 顶部：暖墨底 `--bg-0:#0c0b0a`、哑光平面 + 发丝线（**不用玻璃 / blur / glow / 渐变文字**）；颜色只表达含义（`--signal` 琥珀 = 模型在喊、`--up` 薄荷、`--down` 珊瑚、`--model` 天蓝）；奶油色「纸」`.paper`（`--paper / --paper-ink`）只用于**已封存 / 已定论 / 要签字**的东西（Brief、Arena 回执、About 对账单、Pro 订单、Contact 名片）。字体 Newsreader（display 衬线，标题里 `<em>` 斜体 = 这页的关键词）/ Instrument Sans / JetBrains Mono（标签、数字）。旧令牌名保留为别名（`--accent-cyan` → signal）。
+- 每页同一个开头：`components/PageHead.tsx`（kicker + 衬线标题 + lede + 右侧 `.figs` 数字 + 琥珀波形线）。新页面必须用它，不要再写自己的 hero。
+- 闭环：`lib/journey.ts` 定义 01 Calendar → 02 Brief → 03 Arena → 04 Strategy → 05 Model（+ 研究台 Pulse / Oracle）；导航编号、PageHead、页脚 `JourneyRail`、About 的索引都读它。
+- 标志性交互：`EarningsTrace`（日历画成地震仪）、`BreakoutDial`（CSS 旋转，`transform-box: view-box`）、`LeanCard`（拔河）、Arena 回执盖章、About 对账单逐行盖章（HOLDS / FAILS / COIN FLIP，实时读 headline）、⌘K 命令面板、`Tape`、卡片光标聚光。
+- 旧的「mission control」界面（Pulse、模拟盘、ticker 详情面板）没有重写布局，由 `src/styles/desks.css` 统一压平外观（在 index.css 之后加载）。
+- About 重写为：对账单 + 闭环索引 + 方法 + **更正栏**（每次数字出错的日期和处理）；写死的基准条形图、过期路线图删除。Contact 重写（四个理由各自打开带主题的邮件草稿 + 名片）。
+- 导航按钮「Start free trial」改为「Get alerts」：Pro 并未开卖，账号实际提供的是 30 天 Telegram 提醒。
+- 手机端：`html, body { overflow-x: clip }`；抽屉导航用 transform；≤700px `.figs` 改成行；≤520px 语言切换和搜索进抽屉。375px 下 13 个路由 `scrollWidth == 375` 已验证。
+- i18n 一律走 `scripts/i18n_set.py`（`apply({key: (en, zh)})`，在 `scripts/` 目录运行）。
+
 ### 6b. 仍未解决
 
 0. **✅ 已解决 — 标签泄漏（walk-forward 重生成完成并上线）**
