@@ -74,6 +74,7 @@ export function PlaybookPage() {
   const [entry, setEntry] = useState<'open' | 'close'>('close')
   const [hold, setHold] = useState(20)
   const [surprise, setSurprise] = useState<'any' | 'beat' | 'miss'>('any')
+  const [tier, setTier] = useState<'all' | 'large' | 'mid' | 'small'>('all')
 
   useEffect(() => {
     fetch('/api/v1/playbook/live').then((r) => (r.ok ? r.json() : null)).then(setLive).catch(() => {})
@@ -84,7 +85,7 @@ export function PlaybookPage() {
     if (h !== hold) { setHold(h); return }
     let alive = true
     setBusy(true)
-    const q = new URLSearchParams({ side, k: String(k), action, entry, hold: String(h), surprise })
+    const q = new URLSearchParams({ side, k: String(k), action, entry, hold: String(h), surprise, tier })
     fetch(`/api/v1/playbook/test?${q}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (alive && d && !d.error) setRes(d) })
@@ -95,7 +96,7 @@ export function PlaybookPage() {
       .then((d) => { if (alive && d?.cells) setGrid(d.cells) })
       .catch(() => {})
     return () => { alive = false }
-  }, [side, k, action, entry, hold, surprise])
+  }, [side, k, action, entry, hold, surprise, tier])
 
   const sig = live?.signal
   const years = useMemo(() => (res?.years ?? []).map((y) => ({ ...y, pct: +(y.excess * 100).toFixed(2) })), [res])
@@ -166,6 +167,8 @@ export function PlaybookPage() {
             options={[{ v: 0, l: holdLabel(0), off: entry === 'close' }, { v: 5, l: holdLabel(5) }, { v: 20, l: holdLabel(20) }]} />
           <Seg label={t('pb.c.eps')} value={surprise} onChange={setSurprise}
             options={[{ v: 'any', l: t('pb.c.any') }, { v: 'beat', l: t('pb.c.beat') }, { v: 'miss', l: t('pb.c.miss') }]} />
+          <Seg label={t('cal.cap')} value={tier} onChange={setTier}
+            options={[{ v: 'all', l: t('cal.cap.all') }, { v: 'large', l: t('cal.cap.large') }, { v: 'mid', l: t('cal.cap.mid') }, { v: 'small', l: t('cal.cap.small') }]} />
         </div>
 
         {res && (

@@ -157,6 +157,11 @@ DDL = [
         reason        TEXT NOT NULL
     )
     """,
+    "ALTER TABLE arena_voided ADD COLUMN IF NOT EXISTS actual_move REAL",
+    "ALTER TABLE arena_voided ADD COLUMN IF NOT EXISTS broke_out BOOLEAN",
+    "ALTER TABLE arena_voided ADD COLUMN IF NOT EXISTS brier REAL",
+    "ALTER TABLE arena_voided ADD COLUMN IF NOT EXISTS lean_hit BOOLEAN",
+    "ALTER TABLE arena_voided ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ",
     """
     CREATE TABLE IF NOT EXISTS arena_anchors (
         id          BIGSERIAL PRIMARY KEY,
@@ -360,7 +365,12 @@ def _upcoming(db: Session, now_et: datetime) -> list[dict[str, Any]]:
         FROM earnings_events e
         LEFT JOIN predictions p ON p.ticker=e.ticker AND p.earnings_date=e.earnings_date
         LEFT JOIN price_features f ON f.ticker=e.ticker AND f.earnings_date=e.earnings_date
+        LEFT JOIN universe u ON u.ticker=e.ticker
         WHERE e.earnings_date BETWEEN :a AND :b
+          -- The Arena covers the large caps: the original names plus everything over $10B.
+          -- Every call costs two LLM requests, and a few thousand small caps a season
+          -- would exhaust the free tiers inside a week.
+          AND (u.tier IS NULL OR u.tier IN ('core', 'large'))
         ORDER BY e.earnings_date, e.ticker"""),
         {"a": today, "b": today + timedelta(days=SEAL_DAYS_AHEAD)}).mappings().all()
     out = []
@@ -480,20 +490,27 @@ def seal_due(db: Session, now: datetime | None = None, limit: int | None = None)
 
 _VOID_COLS = ("id, season, forecaster, ticker, earnings_date, report_time, band, implied_move, "
               "p_breakout, lean, rationale, payload, digest, sealed_at, anchor_id")
+_GRADE_COLS = "actual_move, broke_out, brier, lean_hit, resolved_at"
+
+# Every call sealed before this moment was built on the mislabelled reaction days fixed
+# on 2026-10-10 (wrong usual-move bands) and, for options, on an expiry that could lapse
+# before the report. The rule was written down on 2026-10-11, before the affected
+# reports were graded, and it applies to every such call whatever its score.
+PRE_FIX_CUTOFF = datetime(2026, 10, 10, 19, 15, tzinfo=timezone.utc)
 
 
-def void_unresolved(db: Session, earnings_date: date, sealed_before: datetime, reason: str) -> int:
-    """Withdraw ungraded calls for one report date that were sealed before `sealed_before`.
+def void_calls(db: Session, sealed_before: datetime, reason: str, include_graded: bool = False) -> int:
+    """Withdraw calls sealed before `sealed_before` into arena_voided, with the reason.
 
-    Only ever touches calls that have not been graded: once a call has an outcome it is
-    part of the record whatever was wrong with it. The rows move to arena_voided with the
-    reason, so the report can be sealed again on correct inputs and both sets stay public.
+    By default only ungraded calls move. `include_graded` is for a rule that was fixed
+    before the outcomes were known; graded calls then keep their scores in arena_voided,
+    so the board can show exactly what was withdrawn and how it would have scored.
     """
-    where = "earnings_date=:d AND sealed_at < :b AND resolved_at IS NULL"
-    args = {"d": earnings_date, "b": sealed_before, "r": reason}
+    where = "sealed_at < :b" + ("" if include_graded else " AND resolved_at IS NULL")
+    args = {"b": sealed_before, "r": reason}
     n = db.execute(text(f"""
-        INSERT INTO arena_voided ({_VOID_COLS}, reason)
-        SELECT {_VOID_COLS}, :r FROM arena_forecasts WHERE {where}
+        INSERT INTO arena_voided ({_VOID_COLS}, {_GRADE_COLS}, reason)
+        SELECT {_VOID_COLS}, {_GRADE_COLS}, :r FROM arena_forecasts WHERE {where}
         ON CONFLICT (id) DO NOTHING"""), args).rowcount
     db.execute(text(f"DELETE FROM arena_forecasts WHERE {where}"), args)
     db.commit()
@@ -654,7 +671,9 @@ def board(db: Session) -> dict[str, Any]:
     queued = [dict(r) for r in db.execute(text("""
         SELECT e.ticker, e.company_name AS company, e.earnings_date, e.report_time
         FROM earnings_events e
+        LEFT JOIN universe u ON u.ticker=e.ticker
         WHERE e.earnings_date > :a AND e.earnings_date <= :b
+          AND (u.tier IS NULL OR u.tier IN ('core', 'large'))
           AND NOT EXISTS (SELECT 1 FROM arena_forecasts a
                           WHERE a.ticker=e.ticker AND a.earnings_date=e.earnings_date)
         ORDER BY e.earnings_date, e.ticker LIMIT 40"""),
@@ -679,7 +698,10 @@ def board(db: Session) -> dict[str, Any]:
     voided = [dict(r) for r in db.execute(text("""
         SELECT ticker, earnings_date, count(*) AS calls, min(sealed_at) AS sealed_at,
                max(voided_at) AS voided_at, max(band) AS band, max(implied_move) AS implied_move,
-               max(anchor_id) AS anchor_id, max(reason) AS reason
+               max(anchor_id) AS anchor_id, max(reason) AS reason,
+               max(actual_move) AS actual_move, bool_or(broke_out) AS broke_out,
+               avg(brier) FILTER (WHERE forecaster='signalpha_ml') AS ml_brier,
+               avg(brier) FILTER (WHERE forecaster='base_rate') AS base_brier
         FROM arena_voided WHERE season=:s GROUP BY ticker, earnings_date
         ORDER BY earnings_date, ticker"""), {"s": SEASON["id"]}).mappings().all()]
     for v in voided:

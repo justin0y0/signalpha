@@ -23,6 +23,7 @@ type Pt = { e: CalendarEvent; x: number; tip: number; day: number }
 const H = 250
 const BASE = 196
 const TOP = 34
+const MAX_PER_DAY = 16
 
 export function EarningsTrace({ events, baseRate, days = 21 }: Props) {
   const { t } = useT()
@@ -60,8 +61,9 @@ export function EarningsTrace({ events, baseRate, days = 21 }: Props) {
     const pad = 18
     const cw = (w - pad * 2) / cols.length
     const pts: Pt[] = []
-    byDay.forEach((list, day) => {
-      list.sort((a, b) => (b.prob_move ?? 0) - (a.prob_move ?? 0))
+    byDay.forEach((full, day) => {
+      // A peak day can hold hundreds of reports; the trace draws the loudest of them.
+      const list = full.sort((a, b) => (b.prob_move ?? 0) - (a.prob_move ?? 0)).slice(0, MAX_PER_DAY)
       list.forEach((e, k) => {
         const x = pad + day * cw + ((k + 0.5) / list.length) * cw
         const p = Math.min(1, Math.max(0, e.prob_move as number))

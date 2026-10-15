@@ -62,11 +62,13 @@ def _frame(db: Session) -> pd.DataFrame:
         return _cache["frame"]
     df = pd.read_sql(text("""
         SELECT o.ticker, o.earnings_date, o.reaction_date, e.report_time, e.sector, e.company_name,
+               CASE WHEN u.tier IS NULL OR u.tier IN ('core', 'large') THEN 'large' ELSE u.tier END AS tier,
                o.actual_t1_gap_pct AS gap, o.actual_t1_close_return AS t1,
                o.actual_t5_return AS t5, o.actual_t20_return AS t20, o.flat_band AS band,
                s.surprise_pct AS surprise
         FROM outcomes o
         JOIN earnings_events e ON e.ticker=o.ticker AND e.earnings_date=o.earnings_date
+        LEFT JOIN universe u ON u.ticker=o.ticker
         LEFT JOIN LATERAL (
             SELECT surprise_pct FROM earnings_surprises s
             WHERE s.ticker=o.ticker AND s.report_date BETWEEN o.earnings_date - 3 AND o.earnings_date + 3
@@ -99,13 +101,18 @@ def _stats(x: np.ndarray) -> dict[str, Any]:
 
 def test(db: Session, side: str = "up", k: float = SIGNAL_K, action: str = "follow",
          entry: str = SIGNAL_ENTRY, hold: int = SIGNAL_HOLD, surprise: str = "any",
-         cost_bps: float = 10.0) -> dict[str, Any]:
-    """Every report that matched the rule, traded the same way, against the baseline."""
+         cost_bps: float = 10.0, tier: str = "all") -> dict[str, Any]:
+    """Every report that matched the rule, traded the same way, against the baseline.
+
+    `tier` limits both the rule and its baseline to one market-cap band (large = the
+    original names plus everything over $10B, mid, small)."""
     leg = LEGS.get((entry, hold))
     if leg is None:
         return {"error": "unsupported entry/hold combination", "supported": [list(k_) for k_ in LEGS]}
     k = max(0.0, min(float(k), 6.0))
     df = _frame(db)
+    if tier in ("large", "mid", "small"):
+        df = df[df.tier == tier]
     df = df[np.isfinite(df[leg])]
     base_long = float(df[leg].mean())
     base_hit = float((df[leg] > 0).mean())
@@ -158,7 +165,7 @@ def test(db: Session, side: str = "up", k: float = SIGNAL_K, action: str = "foll
     } for r in d.sort_values("earnings_date", ascending=False).head(14).itertuples()]
     return {
         "rule": {"side": side, "k": k, "action": action, "entry": entry, "hold": hold,
-                 "surprise": surprise, "cost_bps": cost_bps},
+                 "surprise": surprise, "cost_bps": cost_bps, "tier": tier},
         "stats": raw, "excess": exc, "verdict": verdict,
         "baseline": {"n": int(len(df)), "mean_long": base_long, "hit_long": base_hit},
         "years": years, "curve": curve, "recent": recent,
@@ -195,6 +202,13 @@ def signal_summary(db: Session) -> dict[str, Any]:
         # The shorter hold, shown so nobody has to take the 20-session choice on trust.
         "mean_5d": short["stats"]["mean"], "hit_5d": short["stats"]["hit"], "t_5d": short["excess"]["t"],
         "span": r["span"],
+        # Same rule inside each market-cap band, against that band's own baseline.
+        "by_tier": {tier: {"n": x["stats"]["n"], "hit": x["stats"]["hit"], "mean": x["stats"]["mean"],
+                           "excess": x["excess"]["mean"], "t": x["excess"]["t"], "verdict": x["verdict"],
+                           "baseline_hit": x["baseline"]["hit_long"]}
+                    for tier in ("large", "mid", "small")
+                    for x in [test(db, side="up", k=SIGNAL_K, entry=SIGNAL_ENTRY, hold=SIGNAL_HOLD, tier=tier)]
+                    if x["stats"]["n"]},
     }
 
 

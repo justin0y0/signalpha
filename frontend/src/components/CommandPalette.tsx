@@ -12,6 +12,7 @@ import { useT } from '../i18n'
  * was to find its row in the calendar. Typing a symbol that is not on the calendar
  * still opens its page: the deep dive works for any tracked name.
  */
+type SearchHit = { ticker: string; name: string | null; tier: string; next_report: string | null; has_history: boolean }
 type Item = { key: string; label: string; hint: string; code?: string; to: string; group: 'tickers' | 'pages' }
 
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -20,6 +21,21 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const upcoming = useUpcoming()
   const [q, setQ] = useState('')
   const [at, setAt] = useState(0)
+  const [remote, setRemote] = useState<SearchHit[]>([])
+
+  // Every US listing, not just the ones reporting soon.
+  useEffect(() => {
+    const query = q.trim()
+    if (!query) { setRemote([]); return }
+    const ctl = new AbortController()
+    const id = setTimeout(() => {
+      fetch(`/api/v1/search?q=${encodeURIComponent(query)}&limit=10`, { signal: ctl.signal })
+        .then((r) => (r.ok ? r.json() : { results: [] }))
+        .then((d) => setRemote(d.results ?? []))
+        .catch(() => {})
+    }, 160)
+    return () => { clearTimeout(id); ctl.abort() }
+  }, [q])
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => { if (open) { setQ(''); setAt(0); setTimeout(() => inputRef.current?.focus(), 30) } }, [open])
@@ -40,6 +56,15 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       })
       if (tickers.length >= (query ? 8 : 5)) break
     }
+    for (const r of remote) {
+      if (seen.has(r.ticker) || tickers.length >= 10) continue
+      seen.add(r.ticker)
+      tickers.push({
+        key: `s-${r.ticker}`, code: r.ticker, label: r.name ?? r.ticker,
+        hint: r.next_report ? r.next_report.slice(5) : t(r.has_history ? 'cmdk.noDate' : 'cmdk.onDemand'),
+        to: r.next_report ? `/predict/${r.ticker}?earnings_date=${r.next_report}` : `/predict/${r.ticker}`, group: 'tickers',
+      })
+    }
     if (query && /^[A-Z.]{1,6}$/.test(query) && !seen.has(query)) {
       tickers.push({ key: `t-raw-${query}`, code: query, label: t('cmdk.openTicker'), hint: '↵', to: `/predict/${query}`, group: 'tickers' })
     }
@@ -47,7 +72,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       .map((p) => ({ key: `p-${p.to}`, label: t(p.nav as 'nav.calendar'), hint: p.to, to: p.to, group: 'pages' as const }))
       .filter((p) => !query || p.label.toUpperCase().includes(query))
     return [...tickers, ...pages]
-  }, [q, upcoming, t])
+  }, [q, upcoming, remote, t])
 
   useEffect(() => { setAt(0) }, [q])
 

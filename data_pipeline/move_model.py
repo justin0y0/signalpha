@@ -38,7 +38,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
-from sqlalchemy import select
+from sqlalchemy import select, text
 from xgboost import XGBClassifier
 
 from backend.app.core.config import get_settings
@@ -122,6 +122,28 @@ def run(dry_run: bool = False) -> dict:
 
     oos = walk_forward(frame, cols)
     metrics = evaluate(frame["move_target"].to_numpy(), oos)
+    # The universe grew from 180 large caps to every US listing over $300M (2026-10-14).
+    # One pooled model serves all of them, so the skill is reported per market-cap tier,
+    # with the top decile cut at the pooled threshold -- the one live scores are read by.
+    with SessionLocal() as s:
+        tiers = dict(s.execute(text("SELECT ticker, tier FROM universe")).all()) if _has_universe(s) else {}
+    tier = frame["ticker"].map(lambda t: "large" if tiers.get(t, "core") in ("core", "large") else tiers.get(t)).to_numpy()
+    y_all = frame["move_target"].to_numpy()
+    cut = metrics["threshold_top_decile"]
+    by_tier = {}
+    for name in ("large", "mid", "small"):
+        m = (tier == name) & ~np.isnan(oos)
+        if m.sum() < 200:
+            continue
+        y, p = y_all[m], oos[m]
+        top = p >= cut
+        base = float(y.mean())
+        se = np.sqrt(base * (1 - base) / max(1, top.sum()))
+        by_tier[name] = {"n": int(m.sum()), "auc": round(float(roc_auc_score(y, p)), 4), "base_rate": round(base, 4),
+                         "top_n": int(top.sum()),
+                         "top_move_rate": round(float(y[top].mean()), 4) if top.any() else None,
+                         "top_z": round(float((y[top].mean() - base) / se), 2) if top.any() else None}
+    metrics["by_tier"] = by_tier
     metrics.update(features=len(cols), fitted_at=datetime.now(timezone.utc).isoformat(),
                    first_oos_date=str(frame["earnings_date"].iloc[int(len(frame) * FIRST_TEST_FRACTION)].date()))
     print(json.dumps({k: v for k, v in metrics.items() if k != "deciles"}, indent=1))
@@ -133,10 +155,19 @@ def run(dry_run: bool = False) -> dict:
     written = 0
     with SessionLocal() as s:
         preds = {(p.ticker, p.earnings_date): p for p in s.execute(select(Prediction)).scalars()}
-        for (tk, d), prob in zip(zip(frame["ticker"], frame["earnings_date"].dt.date), oos):
-            row = preds.get((tk, d))
-            if row is None or d >= datetime.now(timezone.utc).date():
+        today = datetime.now(timezone.utc).date()
+        for (tk, d, sec), prob in zip(zip(frame["ticker"], frame["earnings_date"].dt.date, frame["sector"]), oos):
+            if d >= today:
                 continue
+            row = preds.get((tk, d))
+            if row is None:
+                # A report added with the universe has no three-class prediction; the
+                # breakout score still belongs in the record.
+                if np.isnan(prob):
+                    continue
+                row = Prediction(ticker=tk, earnings_date=d, sector=sec if isinstance(sec, str) else None, model_version="move-pooled",
+                                 is_out_of_sample=True)
+                s.add(row)
             row.prob_move = None if np.isnan(prob) else float(prob)
             written += 1
         s.commit()
@@ -150,6 +181,10 @@ def run(dry_run: bool = False) -> dict:
     (d / "move_metrics.json").write_text(json.dumps(metrics))
     log.info("move model saved: AUC %.4f, %s OOS rows written", metrics["auc"], written)
     return metrics
+
+
+def _has_universe(s) -> bool:
+    return bool(s.execute(text("SELECT to_regclass('public.universe') IS NOT NULL")).scalar())
 
 
 def load_live() -> dict | None:

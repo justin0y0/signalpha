@@ -85,3 +85,5 @@
   .docket__name { flex-direction: column; gap: 0.1rem; }
   .docket__search input { width: 120px; }
 }
+.docket__more { display: block; width: 100%; padding: 0.6rem 0.9rem; text-align: left; font: 600 0.62rem var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-tertiary); border-top: 1px dashed var(--border); }
+.docket__more:hover { color: var(--signal); }

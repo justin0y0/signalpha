@@ -41,7 +41,8 @@ type Board = {
   anchors: { id: number; root: string; calendars: string; created_at: string; calls: number }[]
   totals: { calls: number; graded: number; events: number; voided?: number }
   voided?: { ticker: string; earnings_date: string; calls: number; sealed_at: string; voided_at: string
-    band: number; implied_move: number | null; anchor_id: number | null; reason: string }[]
+    band: number; implied_move: number | null; anchor_id: number | null; reason: string
+    actual_move: number | null; broke_out: boolean | null; ml_brier: number | null; base_brier: number | null }[]
 }
 type MyCall = { p: number; lean: 'UP' | 'DOWN' | null; at: string }
 
@@ -523,6 +524,14 @@ export function ArenaPage() {
                 <b className="mono">{v.ticker}</b>
                 <span>{v.earnings_date}</span>
                 <span>{t('arena.voided.row', { n: v.calls, band: (v.band * 100).toFixed(1), implied: v.implied_move != null ? (v.implied_move * 100).toFixed(1) : '—' })}</span>
+                {v.actual_move != null && (
+                  <span>{t('arena.voided.graded', {
+                    move: `${v.actual_move >= 0 ? '+' : ''}${(v.actual_move * 100).toFixed(1)}`,
+                    out: v.broke_out ? t('arena.graded.broke') : t('arena.graded.held'),
+                    ml: v.ml_brier != null ? v.ml_brier.toFixed(3) : '—',
+                    base: v.base_brier != null ? v.base_brier.toFixed(3) : '—',
+                  })}</span>
+                )}
                 {v.anchor_id != null && <a href={`/api/v1/arena/anchors/${v.anchor_id}/manifest.txt`}>manifest #{v.anchor_id}</a>}
               </div>
             ))}

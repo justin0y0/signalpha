@@ -369,6 +369,27 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 - 手机端：`html, body { overflow-x: clip }`；抽屉导航用 transform；≤700px `.figs` 改成行；≤520px 语言切换和搜索进抽屉。375px 下 13 个路由 `scrollWidth == 375` 已验证。
 - i18n 一律走 `scripts/i18n_set.py`（`apply({key: (en, zh)})`，在 `scripts/` 目录运行）。
 
+### 6h. 2026-10-14：全美股股票池 + 兑现记录 + 今日简报 + 按需打分
+
+**股票池（`data_pipeline/universe.py`，表 `universe`，DDL 在 `schema_guard.UNIVERSE_DDL`）**：NASDAQ screener 一次拉全美上市股（5,881 只，去掉优先股/权证/单位；ADR 保留；同一公司多类股只留一个，其余 tier=`dup`）。tier：`core`（原 180 只）、`large` ≥$10B、`mid` $2–10B、`small` $0.3–2B（这三档入库完整历史并参与训练）、`micro` <$300M（只能搜索，`/lookup` 按需打分）。
+- `python -m data_pipeline.universe refresh | build [--limit N] | status`；build 可断点续跑（`history_at`），按市值从大到小；每只：Yahoo 财报日期（`earnings_timing.fetch`，2008 起）→ 行情 → 正确反应日的 outcome → 反应日之前的 PIT 特征（`features_asof`，FRED 慢变量取最近一条已有事件的值，`SlowMacro`）。单只约 5 秒。
+- 服务器脚本：`~/universe_run.sh`（log `~/universe_build.log`，结束写 `UNIVERSE_DONE`）→ `~/universe_train.sh` 自动接力（log `~/universe_train.log`）：备份 artifacts 和 predictions → move_model 重训（新增 `by_tier` 分层评估，并为新事件建 Prediction 行）→ direction_lean.fit → run_predictions。备份：`~/backups/full_pre_universe_20261014.sql.gz`、`artifacts_pre_universe_20261015`。
+- 每日 `sync_universe_calendar`（06:50/15:50 ET）从 NASDAQ 财报日历补未来 45 天日期，给新事件建空 `price_features` 行，run_predictions 负责填特征（`rebuild_pit_features` 遇到无 FRED 字段的行会用 `SlowMacro` 补）。
+- **有意的范围限制**：Arena 只封存 core + large（每条要 2 次 LLM 调用，几千只小盘会打爆免费额度）；`collect_options_data` 仍按 21 天窗口跑全部，注意耗时。
+- 幸存者偏差：股票池是今天还在上市的公司，退市/被收购的不在历史里，小盘更严重——分层结果必须带这句。
+
+**兑现记录（`services/receipts_service.py`，表 `call_log`，`/api/v1/receipts`，Model 页默认子页）**：只收结果出来之前就挂在站上的判断，`LIVE_SINCE=2026-10-12`。
+- 财报后跟进信号：按最新收盘价逐日标价（已过 n/20 个交易日、收益、同期 SPY、每笔 $10k 盈亏），满 20 个交易日按第 20 天收盘平仓。行情用 `yf.download` 批量拉、缓存 10 分钟（不复权，与 outcomes 一致）。
+- 财报前判断：`freeze_due` 在每份财报开盘铃后把当时的 prob_move / 档位 / band / lean 冻结进 `call_log`（之后重训覆盖 predictions 也不影响），`grade_due` 等 outcome 出来后评分。任务 `freeze_and_grade_receipts` 每小时 :05/:35。10-12～10-14 的 7 条是 10-15 补录的（从赛前写下的 predictions 复制），页面有披露（`late_frozen`）。
+
+**今日简报（`services/today_service.py`，`/api/v1/today`，Brief 页默认「今日」，「本周」是原来的纸面简报）**：指数和 11 个板块 ETF 的涨跌、今天及下一个开盘前发财报的公司、最新交易日的反应（相对平时波动的倍数、是否被标记、是否触发跟进）、持仓信号。首段文字由同页数字拼出，不用 LLM。
+
+**搜索与按需打分（`services/lookup_service.py`）**：`/api/v1/search?q=` 查 universe（代码前缀 + 公司名）；⌘K 面板接入。`/api/v1/lookup/{ticker}`：没有入库历史的股票现场拉 Yahoo 财报日期和行情、测历史反应、取中位数作平时波动、用线上 breakout 模型给下一次财报打分（缓存 6 小时，约 5–10 秒）；个股页 404 时自动回退到 `OnDemandDossier`，微盘股明确写「超出训练范围，分数属于外推」。
+
+**Bug（存在已久）— 新财报结果没有平时波动带**：`outcomes.flat_band` 只由手动脚本 `compute_flat_bands` 写，小时级的结果采集从不写 → 10 月以来所有新反应 band 为 NULL → Playbook 实时页、兑现、今日简报里的跟进信号**永远不会触发**（Telegram 提醒用的是 `load_flat_bands` 最新值，不受影响）。修法：`compute(missing_only=True)`，结果采集写入后自动调用。同时结果采集改为只处理「还没结果」或「T+20 未填且今天没更新过」的事件，否则全市场下每小时要重拉上千只。
+
+**Arena 作废（待 Justin 明确同意）**：10-13 那 30 条判断在截止前没能重封，已经按错误的 band 评完分。代码 `void_calls(include_graded=True)` + `PRE_FIX_CUTOFF` 已部署，`arena_voided` 加了评分列，页面会连得分一起公开。**执行被 auto-mode 拦下：作废已评分的公开记录与 Justin 当初同意的「赛前作废重封」不是同一件事，需要他单独点头。**
+
 ### 6b. 仍未解决
 
 0. **✅ 已解决 — 标签泄漏（walk-forward 重生成完成并上线）**

@@ -65,15 +65,20 @@ def _median(xs: list[float]) -> float:
     return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2
 
 
-def compute(dry_run: bool = False) -> dict:
+def compute(dry_run: bool = False, missing_only: bool = False) -> dict:
+    """Write every outcome's band. `missing_only` touches just the tickers that have an
+    outcome without one — what the hourly outcome job needs after a new reaction lands.
+    Until 2026-10-14 nothing did that, so every new reaction had a NULL band and the
+    follow-through rule, which compares the gap with the band, could never trigger live."""
     db = SessionLocal()
     try:
-        rows = db.execute(
-            select(Outcome.id, Outcome.ticker, Outcome.earnings_date,
-                   Outcome.actual_t1_close_return)
-            .where(Outcome.actual_t1_close_return.is_not(None))
-            .order_by(Outcome.ticker, Outcome.earnings_date)
-        ).all()
+        q = (select(Outcome.id, Outcome.ticker, Outcome.earnings_date, Outcome.actual_t1_close_return)
+             .where(Outcome.actual_t1_close_return.is_not(None)))
+        if missing_only:
+            todo = select(Outcome.ticker).where(Outcome.flat_band.is_(None),
+                                                Outcome.actual_t1_close_return.is_not(None)).distinct()
+            q = q.where(Outcome.ticker.in_(todo))
+        rows = db.execute(q.order_by(Outcome.ticker, Outcome.earnings_date)).all()
 
         by_ticker: dict[str, list] = defaultdict(list)
         for r in rows:

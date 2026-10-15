@@ -10,6 +10,7 @@ from backend.app.api.routes.logos import router as logos_router
 from backend.app.api.routes.telegram_webhook import router as tg_webhook_router
 from backend.app.api.routes.backtest import router as backtest_router
 from backend.app.api.routes.calendar import router as calendar_router
+from backend.app.api.routes.receipts import router as receipts_router
 from backend.app.api.routes.features import router as features_router
 from backend.app.api.routes.health import router as health_router
 from backend.app.api.routes.performance import router as performance_router
@@ -97,6 +98,7 @@ app.include_router(arena_router, prefix=settings.api_v1_prefix)
 app.include_router(waitlist_router, prefix=settings.api_v1_prefix)
 app.include_router(moves_router, prefix=settings.api_v1_prefix)
 app.include_router(playbook_router, prefix=settings.api_v1_prefix)
+app.include_router(receipts_router, prefix=settings.api_v1_prefix)
 
 # SignAlpha as an MCP server for AI agents (backend/app/mcp_server.py). Registered as an
 # exact route rather than a Mount: a Mount on /api would swallow FastAPI's trailing-slash

@@ -25,6 +25,17 @@ import './CalendarPage.css'
 
 const SECTORS = ['All', 'Technology', 'Financial Services', 'Healthcare', 'Consumer Cyclical', 'Consumer Defensive', 'Industrials', 'Energy', 'Communication Services']
 type Scope = 'upcoming' | 'flagged' | 'past'
+type Cap = 'all' | 'large' | 'mid' | 'small'
+// Market-cap bands match the universe tiers (data_pipeline/universe.py).
+const CAP_OK: Record<Cap, (c: number | null | undefined) => boolean> = {
+  all: () => true,
+  large: (c) => c == null || c >= 10e9,
+  mid: (c) => c != null && c >= 2e9 && c < 10e9,
+  small: (c) => c != null && c < 2e9,
+}
+// With the whole US list a busy day holds a few hundred reports; each day opens with the
+// highest-risk ones and the rest behind a click.
+const DAY_ROWS = 25
 
 export function EarningsCalendarPage() {
   const { t } = useT()
@@ -37,6 +48,8 @@ export function EarningsCalendarPage() {
   const [query, setQuery] = useState('')
   const [sector, setSector] = useState('All')
   const [scope, setScope] = useState<Scope>('upcoming')
+  const [cap, setCap] = useState<Cap>('all')
+  const [openDays, setOpenDays] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const load = async () => {
@@ -70,6 +83,7 @@ export function EarningsCalendarPage() {
       if (scope === 'past' ? du >= 0 : du < 0) return false
       if (scope === 'flagged' && e.move_tier !== 'breakout' && e.move_tier !== 'elevated') return false
       if (sector !== 'All' && e.sector !== sector) return false
+      if (!CAP_OK[cap](e.market_cap)) return false
       if (q && !(e.ticker.toLowerCase().includes(q) || (e.company_name ?? '').toLowerCase().includes(q))) return false
       return true
     })
@@ -82,7 +96,7 @@ export function EarningsCalendarPage() {
       else out.push({ date: r.earnings_date, rows: [r] })
     }
     return out
-  }, [events, query, sector, scope])
+  }, [events, query, sector, scope, cap])
   const shown = groups.reduce((n, g) => n + g.rows.length, 0)
 
   const open = (e: CalendarEvent) => navigate(`/predict/${e.ticker}?earnings_date=${e.earnings_date}`)
@@ -131,6 +145,11 @@ export function EarningsCalendarPage() {
             <Search size={14} />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('cal.search.placeholder')} aria-label={t('cal.search')} />
           </div>
+          <div className="seg" role="group" aria-label={t('cal.cap')}>
+            {(['all', 'large', 'mid', 'small'] as const).map((c) => (
+              <button key={c} type="button" className={cap === c ? 'is-on' : ''} onClick={() => setCap(c)}>{t(`cal.cap.${c}` as 'cal.cap.all')}</button>
+            ))}
+          </div>
           <select className="docket__select" value={sector} onChange={(e) => setSector(e.target.value)} aria-label={t('cal.sector')}>
             {SECTORS.map((s) => <option key={s} value={s}>{s === 'All' ? t('cal.sector.all') : s}</option>)}
           </select>
@@ -158,7 +177,7 @@ export function EarningsCalendarPage() {
                     <i>{dayLabel(g.date)}</i>
                     <em>{t('cal.nReports', { n: g.rows.length })}</em>
                   </div>
-                  {g.rows.map((e) => (
+                  {(openDays.has(g.date) || query ? g.rows : g.rows.slice(0, DAY_ROWS)).map((e) => (
                     <button key={e.ticker} type="button" className={`docket__row is-${e.move_tier ?? 'none'}`} onClick={() => open(e)}>
                       <span className="docket__name">
                         <b>{e.ticker}</b>
@@ -176,6 +195,11 @@ export function EarningsCalendarPage() {
                       <span className="docket__go"><ArrowUpRight size={15} /></span>
                     </button>
                   ))}
+                  {!query && !openDays.has(g.date) && g.rows.length > DAY_ROWS && (
+                    <button type="button" className="docket__more" onClick={() => setOpenDays((o) => new Set(o).add(g.date))}>
+                      {t('cal.more', { n: g.rows.length - DAY_ROWS })}
+                    </button>
+                  )}
                 </div>
               )
             })}

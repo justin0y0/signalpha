@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Gauge, ListChecks } from 'lucide-react'
+import { Gauge, ListChecks, Receipt } from 'lucide-react'
 import { SubNav } from '../components/ui/SubNav'
 import { PageHead } from '../components/PageHead'
 import { Num } from '../components/ui/Num'
 import { useHeadline } from '../hooks/useHeadline'
 import { PerformanceTrackerPage } from './PerformanceTrackerPage'
 import { TrackRecordPage } from './TrackRecordPage'
+import { ReceiptsPage } from './ReceiptsPage'
 import { useT } from '../i18n'
 
 /**
@@ -21,11 +22,13 @@ export function ModelPage() {
   const { t } = useT()
   const h = useHeadline()
   const ITEMS = [
+    { key: 'receipts', label: t('model.tab.receipts'), icon: <Receipt size={15} /> },
     { key: 'quality', label: t('model.tab.quality'), icon: <Gauge size={15} /> },
     { key: 'record', label: t('model.tab.record'), icon: <ListChecks size={15} /> },
   ]
   const [params, setParams] = useSearchParams()
-  const [view, setView] = useState(params.get('view') === 'record' ? 'record' : 'quality')
+  const v0 = params.get('view')
+  const [view, setView] = useState(v0 === 'record' || v0 === 'quality' ? v0 : 'receipts')
 
   const change = (key: string) => {
     setView(key)
@@ -50,7 +53,7 @@ export function ModelPage() {
         </div>
       </PageHead>
       <SubNav items={ITEMS} active={view} onChange={change} />
-      {view === 'quality' ? <PerformanceTrackerPage /> : <TrackRecordPage />}
+      {view === 'receipts' ? <ReceiptsPage /> : view === 'quality' ? <PerformanceTrackerPage /> : <TrackRecordPage />}
     </div>
   )
 }

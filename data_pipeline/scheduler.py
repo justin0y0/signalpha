@@ -11,6 +11,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 from backend.app.core.config import get_settings
 from backend.app.core.logging import configure_logging, get_logger
 from data_pipeline.jobs import (
+    freeze_and_grade_receipts,
+    sync_universe_calendar,
     run_pulse_scan,
     run_simulator_step,
     collect_earnings_calendar,
@@ -90,6 +92,14 @@ scheduler.add_job(seal_arena_forecasts, CronTrigger(minute=20, hour="*/2", timez
                   id="seal_arena_forecasts", max_instances=1, coalesce=True)
 scheduler.add_job(resolve_arena_forecasts, CronTrigger(minute=25, timezone=TZ),
                   id="resolve_arena_forecasts", max_instances=1, coalesce=True)
+
+# Receipts: freeze each report's standing call once its bell rings (before any retrain
+# can overwrite predictions), grade it once the outcome lands.
+scheduler.add_job(freeze_and_grade_receipts, CronTrigger(minute="5,35", timezone=TZ),
+                  id="freeze_and_grade_receipts", max_instances=1, coalesce=True)
+# The whole US universe's report dates: before the morning and evening prediction runs.
+scheduler.add_job(sync_universe_calendar, CronTrigger(hour="6,15", minute=50, timezone=TZ),
+                  id="sync_universe_calendar", max_instances=1, coalesce=True)
 
 scheduler.add_job(
     run_pulse_scan,

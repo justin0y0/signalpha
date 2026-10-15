@@ -18,9 +18,10 @@ def test_rule(
     hold: int = Query(20),
     surprise: str = Query("any", pattern="^(any|beat|miss)$"),
     cost_bps: float = Query(10.0, ge=0, le=200),
+    tier: str = Query("all", pattern="^(all|large|mid|small)$"),
     db: Session = Depends(get_db),
 ):
-    return playbook_service.test(db, side, k, action, entry, hold, surprise, cost_bps)
+    return playbook_service.test(db, side, k, action, entry, hold, surprise, cost_bps, tier)
 
 
 @router.get("/grid")

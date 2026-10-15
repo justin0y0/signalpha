@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
-import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '../api/client'
 import type { PredictionResponse } from '../types'
 import { PriceTicker } from '../components/ui/PriceTicker'
@@ -10,6 +9,8 @@ import { StraddleCheck } from '../components/StraddleCheck'
 import { BreakoutDial } from '../components/BreakoutDial'
 import { LeanCard } from '../components/LeanCard'
 import { ArenaForReport } from '../components/ArenaForReport'
+import { OnDemandDossier } from '../components/OnDemandDossier'
+import { ReactionHistory } from '../components/ReactionHistory'
 import { useT } from '../i18n'
 import './DossierPage.css'
 
@@ -56,12 +57,7 @@ export function PredictionDeepDivePage() {
   }, [data])
 
   if (error) {
-    return (
-      <div className="empty-state">
-        <p>{t('dd.notFound', { ticker: ticker.toUpperCase() })}</p>
-        <Link to="/" className="btn" style={{ marginTop: '1rem', fontStyle: 'normal', fontFamily: 'var(--font-sans)' }}><ArrowLeft size={14} /> {t('nav.calendar')}</Link>
-      </div>
-    )
+    return <OnDemandDossier ticker={ticker.toUpperCase()} />
   }
   if (!data) {
     return (
@@ -116,30 +112,7 @@ export function PredictionDeepDivePage() {
 
       <ArenaForReport ticker={data.ticker} date={data.earnings_date} />
 
-      {history.length > 0 && (
-        <section className="card">
-          <h3 className="card-title">{t('dd.hist.title')}</h3>
-          <div style={{ height: 230 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={history} margin={{ top: 8, right: 8, bottom: 0, left: -14 }}>
-                <CartesianGrid strokeDasharray="2 5" stroke="rgba(236, 226, 205, 0.08)" vertical={false} />
-                <XAxis dataKey="date" tick={{ fill: 'var(--text-tertiary)', fontSize: 10, fontFamily: 'var(--font-mono)' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: 'var(--text-tertiary)', fontSize: 10, fontFamily: 'var(--font-mono)' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
-                <ReferenceLine y={0} stroke="var(--text-tertiary)" />
-                {band != null && <ReferenceLine y={band * 100} stroke="var(--text-muted)" strokeDasharray="4 4" />}
-                {band != null && <ReferenceLine y={-band * 100} stroke="var(--text-muted)" strokeDasharray="4 4" />}
-                <Tooltip cursor={{ fill: 'rgba(236, 226, 205, 0.05)' }}
-                  contentStyle={{ background: 'var(--bg-2)', border: '1px solid var(--border-strong)', borderRadius: 8, fontSize: 12 }}
-                  formatter={(v: number) => [`${v > 0 ? '+' : ''}${v}%`, t('dd.hist.reaction')]} />
-                <Bar dataKey="reaction" radius={[2, 2, 0, 0]} maxBarSize={46}>
-                  {history.map((h) => <Cell key={h.date} fill={h.reaction >= 0 ? 'var(--up)' : 'var(--down)'} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <p className="page-note">{t('dd.hist.note')}</p>
-        </section>
-      )}
+      <ReactionHistory history={history} band={band} />
 
       {data.similar_cases.length > 0 && (
         <details className="dossier__more">
@@ -168,3 +141,4 @@ export function PredictionDeepDivePage() {
     </div>
   )
 }
+

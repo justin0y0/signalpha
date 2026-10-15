@@ -215,6 +215,7 @@ def run(upcoming_only: bool = False) -> dict:
     for sym in (*MARKET, *SECTOR_ETF_MAP.values()):
         bars.get(sym)
     done = skipped = 0
+    macro = None
     with SessionLocal() as s:
         for n, e in enumerate(events, 1):
             if e.reaction_date is not None:
@@ -232,6 +233,12 @@ def run(upcoming_only: bool = False) -> dict:
             if isinstance(payload, str):
                 payload = json.loads(payload)
             payload.update(fresh)
+            if payload.get("yield_10y") is None:
+                # A row created by the universe calendar has no FRED fields yet.
+                if macro is None:
+                    from data_pipeline.universe import SlowMacro
+                    macro = SlowMacro()
+                payload = {**macro.asof(cutoff), **payload}
             s.execute(text("UPDATE price_features SET feature_payload = CAST(:p AS jsonb) WHERE id=:i"),
                       {"p": json.dumps(payload, default=str), "i": e.id})
             done += 1

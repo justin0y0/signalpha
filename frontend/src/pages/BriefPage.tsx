@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { PageHead } from '../components/PageHead'
 import { LeanChip } from '../components/ui/LeanChip'
+import { TodaySheet } from '../components/TodaySheet'
 import { Num } from '../components/ui/Num'
 import { parseLocalDate } from '../utils/date'
 import { pct } from '../hooks/useHeadline'
@@ -62,6 +63,9 @@ export function BriefPage() {
   const { t } = useT()
   const [data, setData] = useState<Brief | null>(null)
   const [reacted, setReacted] = useState<Reacted[]>([])
+  const [params, setParams] = useSearchParams()
+  const mode = params.get('view') === 'week' ? 'week' : 'today'
+  const setMode = (m: 'today' | 'week') => { const n = new URLSearchParams(params); n.set('view', m); setParams(n, { replace: true }) }
   const [error, setError] = useState<string | null>(null)
   const email = (() => { try { return localStorage.getItem('sa_email') } catch { return null } })()
 
@@ -90,8 +94,8 @@ export function BriefPage() {
     <div className="brief">
       <PageHead
         kicker={t('nav.brief')}
-        title={<>{t('brief.h.a')} <em>{t('brief.h.b')}</em></>}
-        lede={t('brief.h.lede')}
+        title={<>{mode === 'today' ? t('brief.h.today') : t('brief.h.a')} <em>{t('brief.h.b')}</em></>}
+        lede={mode === 'today' ? t('brief.h.lede.today') : t('brief.h.lede')}
         spike={0.5}
       >
         <div className="figs">
@@ -101,7 +105,14 @@ export function BriefPage() {
         </div>
       </PageHead>
 
-      {!data ? <div className="shimmer" style={{ height: 520 }} /> : (
+      <div className="brief__mode">
+        <div className="seg" role="group" aria-label={t('brief.mode')}>
+          <button type="button" className={mode === 'today' ? 'is-on' : ''} onClick={() => setMode('today')}>{t('brief.mode.today')}</button>
+          <button type="button" className={mode === 'week' ? 'is-on' : ''} onClick={() => setMode('week')}>{t('brief.mode.week')}</button>
+        </div>
+      </div>
+
+      {mode === 'today' ? <TodaySheet /> : !data ? <div className="shimmer" style={{ height: 520 }} /> : (
         <article className="sheet paper">
           <header className="sheet__mast">
             <div>

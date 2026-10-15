@@ -144,6 +144,35 @@ DDL_STATEMENTS += [
 from backend.app.services.arena_service import DDL as _ARENA_DDL  # noqa: E402
 
 DDL_STATEMENTS += _ARENA_DDL
+
+# Every US listing (data_pipeline/universe.py). `tier` is core (the original 180), large,
+# mid, small (these three get full history and train the models) or micro (searchable,
+# scored on demand only).
+UNIVERSE_DDL = [
+    """
+    CREATE TABLE IF NOT EXISTS universe (
+        ticker         TEXT PRIMARY KEY,
+        name           TEXT,
+        sector         TEXT,
+        industry       TEXT,
+        market_cap     DOUBLE PRECISION,
+        country        TEXT,
+        tier           TEXT NOT NULL,
+        listed         BOOLEAN NOT NULL DEFAULT TRUE,
+        history_at     TIMESTAMPTZ,
+        history_events INTEGER,
+        history_note   TEXT,
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_universe_tier ON universe (tier, market_cap DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_universe_name ON universe (lower(name))",
+]
+DDL_STATEMENTS += UNIVERSE_DDL
+
+from backend.app.services.receipts_service import DDL as _RECEIPTS_DDL  # noqa: E402
+
+DDL_STATEMENTS += _RECEIPTS_DDL
 DDL_STATEMENTS += [
     """
     CREATE TABLE IF NOT EXISTS pro_waitlist (

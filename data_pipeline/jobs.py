@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import and_, desc, select
+from sqlalchemy import and_, desc, func, select
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
@@ -327,9 +327,15 @@ def collect_post_earnings_results() -> None:
     lower = date.today() - timedelta(days=30)
     upper = date.today() - timedelta(days=1)
     with _session() as session:
+        # With the whole US list a 30-day window holds well over a thousand reports. A
+        # report needs collecting when it has no outcome yet, or once a day while its
+        # T+20 leg is still filling in -- not every hour.
         events = session.execute(
             select(EarningsEvent)
+            .outerjoin(Outcome, and_(Outcome.ticker == EarningsEvent.ticker, Outcome.earnings_date == EarningsEvent.earnings_date))
             .where(EarningsEvent.earnings_date >= lower, EarningsEvent.earnings_date <= upper)
+            .where((Outcome.id.is_(None)) | (Outcome.actual_t1_close_return.is_(None))
+                   | ((Outcome.actual_t20_return.is_(None)) & (func.date(Outcome.updated_at) < date.today())))
             .order_by(EarningsEvent.earnings_date.desc())
         ).scalars()
         event_list = list(events)
@@ -346,6 +352,9 @@ def collect_post_earnings_results() -> None:
                 session.rollback()
                 logger.exception("Outcome collection failed for %s on %s: %s", event.ticker, event.earnings_date, exc)
     logger.info("Finished post-earnings outcome collection: %s/%s events written", written, len(event_list))
+    if written:
+        from data_pipeline.compute_flat_bands import compute as compute_bands
+        logger.info("Bands for new outcomes: %s", compute_bands(missing_only=True))
 
 
 def retrain_models() -> None:
@@ -461,6 +470,27 @@ def resolve_arena_forecasts() -> None:
         logger.error("Arena resolve failed: %s", exc)
     finally:
         db.close()
+
+
+def freeze_and_grade_receipts() -> None:
+    """Receipts: freeze the standing call of every report whose bell has rung, grade the rest."""
+    from backend.app.services.receipts_service import freeze_due, grade_due
+    db = SessionLocal()
+    try:
+        logger.info("Receipts: %s %s", freeze_due(db), grade_due(db))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Receipts failed: %s", exc)
+    finally:
+        db.close()
+
+
+def sync_universe_calendar() -> None:
+    """Upcoming reports for every trained-tier name, from the NASDAQ earnings calendar."""
+    from data_pipeline.universe import sync_calendar
+    try:
+        logger.info("Universe calendar: %s", sync_calendar())
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Universe calendar failed: %s", exc)
 
 
 def alert_follow_through() -> None:

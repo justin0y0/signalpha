@@ -22,7 +22,11 @@ export function Tape() {
 
   const items = useMemo(() => {
     const out: { key: string; to: string; node: JSX.Element }[] = []
-    for (const r of live?.reports ?? []) {
+    // The whole US list is too much tape: the hardest reactions and the loudest
+    // upcoming reports, a few dozen of each.
+    const reacted = [...(live?.reports ?? [])].filter((r) => r.gap != null)
+      .sort((a, b) => Math.abs(b.gap_x ?? 0) - Math.abs(a.gap_x ?? 0)).slice(0, 18)
+    for (const r of reacted) {
       if (r.gap == null) continue
       out.push({
         key: `r${r.ticker}`, to: `/predict/${r.ticker}`,
@@ -36,9 +40,13 @@ export function Tape() {
       })
     }
     const horizon = Date.now() + 21 * 86400_000
-    for (const e of upcoming) {
+    const soon = upcoming
+      .filter((e) => e.prob_move != null && parseLocalDate(e.earnings_date).getTime() <= horizon)
+      .sort((a, b) => (b.prob_move ?? 0) - (a.prob_move ?? 0)).slice(0, 36)
+      .sort((a, b) => a.earnings_date.localeCompare(b.earnings_date))
+    for (const e of soon) {
       const d = parseLocalDate(e.earnings_date)
-      if (d.getTime() > horizon || e.prob_move == null) continue
+      if (e.prob_move == null) continue
       const cls = e.move_tier === 'breakout' ? 'is-hot' : e.move_tier === 'elevated' ? 'is-warm' : ''
       out.push({
         key: `u${e.ticker}${e.earnings_date}`, to: `/predict/${e.ticker}?earnings_date=${e.earnings_date}`,
