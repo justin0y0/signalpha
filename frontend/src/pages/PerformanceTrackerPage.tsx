@@ -8,6 +8,7 @@ import { StatCard } from '../components/ui/StatCard'
 import { Badge } from '../components/ui/Badge'
 import { useT } from '../i18n'
 import { BreakoutPanel } from '../components/BreakoutPanel'
+import { TierTable } from '../components/TierTable'
 import { useHeadline, pct } from '../hooks/useHeadline'
 
 function accuracyColor(acc: number | null | undefined): string {
@@ -134,6 +135,8 @@ export function PerformanceTrackerPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
       <p className="page-note">{t('perf.sub')} · <span className="mono">{data.model_version ?? '—'}</span></p>
+
+      <TierTable />
 
       <div className="grid grid-4">
         <StatCard

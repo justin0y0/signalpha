@@ -1223,4 +1223,12 @@ export const en = {
   'cal.more': 'Show {n} more this day',
   'rc.pre.late': 'The first {n} rows were copied on 2026-10-15, after their reports, from predictions the site had written before each bell — the freezing job did not exist yet. Every row since is frozen at its own bell; the time is stored with it.',
   'today.lead.flagged': 'The model had flagged {f}; {fm} of them did.',
+  'tiers.title': 'By company size',
+  'tiers.b.n': 'Reports scored',
+  'tiers.b.top': 'Flagged moved',
+  'tiers.b.base': 'All moved',
+  'tiers.f.n': 'Gap-up calls',
+  'tiers.f.hit': 'Up after 20d',
+  'tiers.f.base': 'All reports',
+  'tiers.note': 'Large = over $10B plus the original 180 names; mid $2–10B; small $300M–2B. Breakout: the model’s top tenth (cut on the pooled scores) against every report in that band. Follow-through: gap up over 2× usual, bought at that close, held 20 sessions. Green = clears its own baseline with t or z ≥ 2. History is today’s listings only, so delisted companies are missing — a bias that is larger for small caps.',
 } as const
