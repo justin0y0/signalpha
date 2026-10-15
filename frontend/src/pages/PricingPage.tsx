@@ -34,7 +34,6 @@ const PRO: Feature[] = [
   { key: 'pro.f.arenaAlerts', want: 'arena_alerts', status: 'soon' },
   { key: 'pro.f.portfolio', want: 'portfolio_risk', status: 'soon' },
   { key: 'pro.f.mcp', want: 'api_mcp', status: 'beta' },
-  { key: 'pro.f.universe', want: 'full_universe', status: 'soon' },
 ]
 
 export function PricingPage() {

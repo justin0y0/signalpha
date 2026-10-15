@@ -161,14 +161,22 @@ def evaluate(df: pd.DataFrame) -> dict:
     q = np.quantile(pp, [0.2, 0.8])
     hi, lo = pp >= q[1], pp <= q[0]
     ls = np.concatenate([r[hi], -r[lo]])
+    ls_t = float(ls.mean() / ls.std() * math.sqrt(len(ls)))
+    # The bar is not 50%: always calling the more common side scores max(base, 1-base),
+    # and on 86k reports a 51.4% hit rate is "significant" against 50% while losing to
+    # "always up" at 51.5%. A lean only counts if it beats that and its long-short
+    # spread is real.
+    majority = max(float(yy.mean()), 1 - float(yy.mean()))
+    z_maj = (hit - majority) / se
+    verdict = ("edge" if z_maj >= 3 and ls_t >= 3 else "weak" if z_maj >= 2 and ls_t >= 2 else "coin_flip")
     return {
         "n": int(k.sum()), "accuracy": round(hit, 4), "z": round((hit - 0.5) / se, 2),
         "auc": round(float(roc_auc_score(yy, pp)), 4), "base_up": round(float(yy.mean()), 4),
         "top_quintile_up": round(float(yy[hi].mean()), 4), "bottom_quintile_up": round(float(yy[lo].mean()), 4),
         "long_short_mean": round(float(ls.mean()), 5),
-        "long_short_t": round(float(ls.mean() / ls.std() * math.sqrt(len(ls))), 2),
+        "long_short_t": round(ls_t, 2), "majority": round(majority, 4), "z_vs_majority": round(z_maj, 2),
         "first_oos_date": str(df.earnings_date.iloc[start]),
-        "verdict": "coin_flip" if abs((hit - 0.5) / se) < 2 else ("weak" if abs((hit - 0.5) / se) < 3 else "edge"),
+        "verdict": verdict,
     }
 
 

@@ -38,7 +38,7 @@ const FEATURE_GROUPS = [
 const STEPS = ['collect', 'freeze', 'walk', 'seal', 'grade'] as const
 
 // Newest first. Dates are when the fix shipped; the text says what was wrong.
-const ERRATA = ['1011', '1010', '1005', '0722', '0720'] as const
+const ERRATA = ['1015', '1011', '1010', '1005', '0722', '0720'] as const
 
 const STACK = [
   ['about.stack.models', 'XGBoost · scikit-learn · walk-forward, purged'],
@@ -76,8 +76,8 @@ export function AboutPage() {
       verdict: c?.accuracy == null || c.flat_baseline == null ? 'wait' : c.accuracy > c.flat_baseline ? 'holds' : 'fails', to: '/model',
     },
     {
-      key: 'lean', ours: pct1(l?.accuracy), bar: '50.0%',
-      n: l ? l.n.toLocaleString() : '—', stat: l ? `z ${l.z.toFixed(1)}` : '—',
+      key: 'lean', ours: pct1(l?.accuracy), bar: pct1(l?.majority ?? 0.5),
+      n: l ? l.n.toLocaleString() : '—', stat: l ? `z ${(l.z_vs_majority ?? l.z).toFixed(1)}` : '—',
       verdict: !l ? 'wait' : l.verdict === 'edge' ? 'holds' : 'coin', to: '/arena',
     },
   ]

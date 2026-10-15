@@ -178,4 +178,4 @@ export type PerformanceResponse = {
 }
 
 export type LeanFactor = { key: string; label: string; value: number | null; contrib: number; proven: boolean }
-export type LeanMetrics = { n: number; accuracy: number; z: number; auc: number; verdict: 'coin_flip' | 'weak' | 'edge'; top_quintile_up: number; bottom_quintile_up: number; base_up: number }
+export type LeanMetrics = { n: number; accuracy: number; z: number; majority?: number; z_vs_majority?: number; auc: number; verdict: 'coin_flip' | 'weak' | 'edge'; top_quintile_up: number; bottom_quintile_up: number; base_up: number }

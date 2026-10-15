@@ -49,7 +49,7 @@ LEGS = {
     ("close", 5): "close_t5", ("close", 20): "close_t20",
 }
 CAVEATS = [
-    "survivorship: the universe is today's large caps, which tilts history toward winners",
+    "survivorship: the universe is today's listings, so delisted and acquired companies are missing — worse for small caps",
     "entering at the open of a gap day usually costs more than the modelled round trip",
     "trying many rules guarantees some look good by chance; t above 3 is the bar",
 ]

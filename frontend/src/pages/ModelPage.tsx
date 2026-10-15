@@ -43,13 +43,13 @@ export function ModelPage() {
       <PageHead
         kicker={t('nav.model')}
         title={<>{t('model.h.a')} <em>{t('model.h.b')}</em></>}
-        lede={t('model.h.lede', { features: h?.universe.features ?? '—', events: h?.universe.scored_events?.toLocaleString() ?? '—' })}
+        lede={t('model.h.lede', { features: h?.universe.features ?? '—', events: (h?.breakout?.n ?? h?.universe.scored_events)?.toLocaleString() ?? '—' })}
         spike={0.82}
       >
         <div className="figs">
           <div className="is-signal"><b><Num value={h?.breakout ? h.breakout.top_decile.move_rate * 100 : null} format={pct1} /></b><span>{t('model.fig.breakout', { base: h?.breakout ? (h.breakout.base_rate * 100).toFixed(0) : '—' })}</span></div>
           <div className="is-up"><b><Num value={h?.follow_through ? h.follow_through.hit * 100 : null} format={pct1} /></b><span>{t('model.fig.follow', { base: h?.follow_through ? (h.follow_through.baseline_hit * 100).toFixed(0) : '—' })}</span></div>
-          <div><b><Num value={h?.lean ? h.lean.accuracy * 100 : null} format={pct1} /></b><span>{t('model.fig.lean')}</span></div>
+          <div><b><Num value={h?.lean ? h.lean.accuracy * 100 : null} format={pct1} /></b><span>{t('model.fig.lean', { base: h?.lean?.majority != null ? (h.lean.majority * 100).toFixed(1) : '50' })}</span></div>
         </div>
       </PageHead>
       <SubNav items={ITEMS} active={view} onChange={change} />

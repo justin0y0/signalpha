@@ -72,14 +72,20 @@ class PerformanceService:
         )
 
     def _confidence_tiers(self, db: Session) -> list[ConfidenceTier]:
+        # Columns, not ORM rows: since the universe grew, predictions holds ~90k rows with
+        # large JSON columns, and only the three-class ones (direction probabilities set)
+        # belong in a confidence table at all.
         rows = db.execute(
-            select(Prediction, Outcome)
+            select(Prediction.ticker, Prediction.earnings_date, Prediction.direction_prob_up,
+                   Prediction.direction_prob_flat, Prediction.direction_prob_down,
+                   Prediction.confidence_score, Outcome.actual_t1_close_return)
             .join(
                 Outcome,
                 (Outcome.ticker == Prediction.ticker)
                 & (Outcome.earnings_date == Prediction.earnings_date),
             )
             .where(Outcome.actual_t1_close_return.is_not(None))
+            .where(Prediction.direction_prob_up.is_not(None))
             .where(OUT_OF_SAMPLE_ONLY)
         ).all()
 
@@ -88,8 +94,8 @@ class PerformanceService:
 
         bands = load_event_bands(db)
         records = []
-        for p, o in rows:
-            ac = _actual_class(o.actual_t1_close_return, p.ticker, p.earnings_date, bands)
+        for p in rows:
+            ac = _actual_class(p.actual_t1_close_return, p.ticker, p.earnings_date, bands)
             if ac is None:
                 continue
             pc = _predicted_class(p.direction_prob_up, p.direction_prob_flat, p.direction_prob_down)
