@@ -10,6 +10,7 @@ import { ModelPage } from './pages/ModelPage'
 import { StrategyPage } from './pages/StrategyPage'
 import { OraclePage } from './pages/OraclePage'
 import { PulsePage } from './pages/PulsePage'
+import { MarketsPage } from './pages/MarketsPage'
 import { PredictionDeepDivePage } from './pages/PredictionDeepDivePage'
 import { AdminPage } from './pages/AdminPage'
 
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="/predict/:ticker" element={<PredictionDeepDivePage />} />
         <Route path="/model" element={<ModelPage />} />
         <Route path="/strategy" element={<StrategyPage />} />
+        <Route path="/markets" element={<MarketsPage />} />
         <Route path="/pulse" element={<PulsePage />} />
         <Route path="/oracle" element={<OraclePage />} />
         <Route path="/about" element={<AboutPage />} />

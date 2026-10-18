@@ -121,11 +121,11 @@ def grade_due(db: Session) -> dict[str, Any]:
 
 # ───────────────────────────── prices ─────────────────────────────
 
-_px: dict[tuple, tuple[float, pd.DataFrame]] = {}
+_px: dict[tuple, tuple[float, dict]] = {}
 
 
-def closes(tickers: list[str], start: date, ttl: int = 600) -> pd.DataFrame:
-    """Daily closes (unadjusted, like outcomes) indexed by date, one column per ticker."""
+def bars(tickers: list[str], start: date, ttl: int = 600) -> dict[str, pd.DataFrame]:
+    """Daily opens and closes (unadjusted, like outcomes), one column per ticker."""
     key = (tuple(sorted(set(tickers))), start)
     hit = _px.get(key)
     if hit and time.time() - hit[0] < ttl:
@@ -134,15 +134,20 @@ def closes(tickers: list[str], start: date, ttl: int = 600) -> pd.DataFrame:
 
     raw = yf.download(list(key[0]), start=start.isoformat(), auto_adjust=False, progress=False,
                       threads=True, group_by="ticker")
-    frame = pd.DataFrame()
+    out = {"Open": pd.DataFrame(), "Close": pd.DataFrame()}
     if raw is not None and not raw.empty:
-        if isinstance(raw.columns, pd.MultiIndex):
-            frame = pd.DataFrame({t: raw[t]["Close"] for t in key[0] if t in raw.columns.get_level_values(0)})
-        else:
-            frame = pd.DataFrame({key[0][0]: raw["Close"]})
-        frame.index = pd.to_datetime(frame.index).tz_localize(None).normalize()
-    _px[key] = (time.time(), frame)
-    return frame
+        for f in out:
+            if isinstance(raw.columns, pd.MultiIndex):
+                out[f] = pd.DataFrame({t: raw[t][f] for t in key[0] if t in raw.columns.get_level_values(0)})
+            else:
+                out[f] = pd.DataFrame({key[0][0]: raw[f]})
+            out[f].index = pd.to_datetime(out[f].index).tz_localize(None).normalize()
+    _px[key] = (time.time(), out)
+    return out
+
+
+def closes(tickers: list[str], start: date, ttl: int = 600) -> pd.DataFrame:
+    return bars(tickers, start, ttl)["Close"]
 
 
 # ───────────────────────────── read side ─────────────────────────────

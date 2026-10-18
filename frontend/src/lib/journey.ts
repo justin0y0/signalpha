@@ -15,6 +15,7 @@ export const JOURNEY = [
 ] as const
 
 export const DESKS = [
+  { to: '/markets', nav: 'nav.markets' },
   { to: '/pulse', nav: 'nav.pulse' },
   { to: '/oracle', nav: 'nav.oracle' },
 ] as const

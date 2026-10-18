@@ -173,6 +173,14 @@ DDL_STATEMENTS += UNIVERSE_DDL
 from backend.app.services.receipts_service import DDL as _RECEIPTS_DDL  # noqa: E402
 
 DDL_STATEMENTS += _RECEIPTS_DDL
+
+from backend.app.services.direction_service import DDL as _DIRECTION_DDL  # noqa: E402
+
+DDL_STATEMENTS += _DIRECTION_DDL
+
+from backend.app.services.markets_service import DDL as _MARKETS_DDL  # noqa: E402
+
+DDL_STATEMENTS += _MARKETS_DDL
 DDL_STATEMENTS += [
     """
     CREATE TABLE IF NOT EXISTS pro_waitlist (

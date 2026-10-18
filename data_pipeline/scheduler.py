@@ -12,6 +12,8 @@ from backend.app.core.config import get_settings
 from backend.app.core.logging import configure_logging, get_logger
 from data_pipeline.jobs import (
     freeze_and_grade_receipts,
+    issue_direction_calls,
+    refresh_market_snapshot,
     sync_universe_calendar,
     run_pulse_scan,
     run_simulator_step,
@@ -97,6 +99,16 @@ scheduler.add_job(resolve_arena_forecasts, CronTrigger(minute=25, timezone=TZ),
 # can overwrite predictions), grade it once the outcome lands.
 scheduler.add_job(freeze_and_grade_receipts, CronTrigger(minute="5,35", timezone=TZ),
                   id="freeze_and_grade_receipts", max_instances=1, coalesce=True)
+# Direction book: the gap is known a few minutes after the bell; again later for slow opens.
+scheduler.add_job(issue_direction_calls, CronTrigger(day_of_week="mon-fri", hour=9, minute="36,50", timezone=TZ),
+                  id="issue_direction_calls", max_instances=1, coalesce=True)
+scheduler.add_job(issue_direction_calls, CronTrigger(day_of_week="mon-fri", hour="10,17", minute=15, timezone=TZ),
+                  id="issue_direction_calls_late", max_instances=1, coalesce=True)
+# Markets page: every fifteen minutes (a full pass takes ~6) through the session, once after the close and pre-open.
+scheduler.add_job(refresh_market_snapshot, CronTrigger(day_of_week="mon-fri", hour="9-15", minute="*/15", timezone=TZ),
+                  id="refresh_market_snapshot", max_instances=1, coalesce=True)
+scheduler.add_job(refresh_market_snapshot, CronTrigger(day_of_week="mon-fri", hour="8,16", minute=35, timezone=TZ),
+                  id="refresh_market_snapshot_edges", max_instances=1, coalesce=True)
 # The whole US universe's report dates: before the morning and evening prediction runs.
 scheduler.add_job(sync_universe_calendar, CronTrigger(hour="6,15", minute=50, timezone=TZ),
                   id="sync_universe_calendar", max_instances=1, coalesce=True)

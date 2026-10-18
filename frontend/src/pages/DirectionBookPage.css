@@ -1,0 +1,53 @@
+/* Direction book — four calls at the open. */
+.db { display: flex; flex-direction: column; gap: 1.8rem; }
+
+.db-claim { padding: 1.4rem 0 0.2rem; }
+.db-claim p.serif { margin: 0 0 0.6rem; max-width: 34ch; font-size: clamp(1.6rem, 3.2vw, 2.6rem); font-weight: 400; line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; }
+.db-claim b { color: var(--signal); font-weight: 460; }
+.db-claim p.serif span { color: var(--text-tertiary); font-style: italic; }
+
+.db-rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.2rem; }
+.db-rule { position: relative; display: flex; flex-direction: column; gap: 0.7rem; padding: 1.3rem 1.4rem 1.1rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-card); animation: db-in 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both; transition: border-color 0.2s; }
+.db-rule:hover { border-color: var(--border-strong); }
+.db-rule::before { content: ''; position: absolute; left: -1px; top: 1.3rem; bottom: 1.3rem; width: 2px; }
+.db-rule.is-long::before { background: var(--up); } .db-rule.is-short::before { background: var(--down); }
+@keyframes db-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.db-rule header { display: flex; align-items: center; gap: 0.6rem; }
+.db-side { font: 700 0.56rem var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; padding: 0.16rem 0.45rem; border: 1px solid currentColor; border-radius: 2px; }
+.db-side.is-long { color: var(--up); } .db-side.is-short { color: var(--down); }
+.db-hold { font: 500 0.6rem var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-tertiary); }
+.db-rule h3 { margin: 0; font-size: 1.7rem; font-weight: 440; letter-spacing: -0.02em; line-height: 1.05; }
+.db-when { margin: 0; font-size: 0.84rem; line-height: 1.5; color: var(--text-secondary); min-height: 2.6em; }
+.db-num { display: flex; align-items: baseline; gap: 0.6rem; }
+.db-num b { font-size: 3.4rem; font-weight: 420; line-height: 0.9; letter-spacing: -0.04em; color: var(--signal); font-variant-numeric: lining-nums tabular-nums; font-variation-settings: 'opsz' 72; }
+.db-num > span { font: 500 0.62rem var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-tertiary); }
+.db-facts { margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.db-facts > div { padding: 0.55rem 0.6rem; display: flex; flex-direction: column; gap: 0.15rem; }
+.db-facts > div + div { border-left: 1px solid var(--border); }
+.db-facts dt { font: 500 0.52rem var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-tertiary); }
+.db-facts dd { margin: 0; font: 600 0.9rem var(--font-mono); color: var(--text-primary); }
+.db-facts dd.is-up { color: var(--up); }
+.db-curve { width: 100%; height: 74px; display: block; }
+.db-curve__zero { stroke: var(--border-strong); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.db-curve__mkt { fill: none; stroke: var(--text-tertiary); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.db-curve__area { fill: color-mix(in srgb, var(--signal) 10%, transparent); stroke: none; opacity: 0; animation: db-fade 0.6s ease 1.2s forwards; }
+@keyframes db-fade { to { opacity: 1; } }
+.db-curve__line { fill: none; stroke: var(--signal); stroke-width: 1.6; vector-effect: non-scaling-stroke; stroke-dasharray: 1; stroke-dashoffset: 1; animation: db-draw 1.4s cubic-bezier(0.2, 0.7, 0.2, 1) 0.3s forwards; }
+@keyframes db-draw { to { stroke-dashoffset: 0; } }
+.db-curvecap { display: flex; gap: 1rem; flex-wrap: wrap; font: 500 0.62rem var(--font-mono); color: var(--text-tertiary); }
+.db-curvecap i { display: inline-block; width: 12px; height: 2px; margin-right: 0.35rem; vertical-align: middle; }
+.db-curvecap i.is-v { background: var(--signal); } .db-curvecap i.is-m { border-top: 1px dashed var(--text-tertiary); }
+.db-rule footer { display: flex; flex-direction: column; gap: 0.2rem; padding-top: 0.5rem; border-top: 1px solid var(--border); font: 500 0.66rem var(--font-mono); line-height: 1.5; color: var(--text-tertiary); }
+
+.db-live { display: flex; flex-direction: column; gap: 0.9rem; }
+.db-how { padding-top: 1.2rem; border-top: 1px solid var(--border); }
+.db-how h3 { margin: 0 0 0.5rem; font-size: 1.3rem; font-weight: 440; }
+.db-how p { margin: 0; max-width: 84ch; font-size: 0.86rem; line-height: 1.65; color: var(--text-secondary); }
+
+@media (max-width: 900px) {
+  .db-rules { grid-template-columns: 1fr; }
+  .db-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .db-facts > div:nth-child(3) { border-left: 0; }
+  .db-facts > div:nth-child(n + 3) { border-top: 1px solid var(--border); }
+}
+@media (prefers-reduced-motion: reduce) { .db-rule, .db-curve__line, .db-curve__area { animation: none; stroke-dashoffset: 0; opacity: 1; } }

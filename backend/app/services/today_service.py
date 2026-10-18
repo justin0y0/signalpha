@@ -125,6 +125,40 @@ def _reacted(db: Session, day: date) -> list[dict[str, Any]]:
     return out
 
 
+def _setups(db: Session, reporting: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Trigger prices for the reports that trade next: where each direction rule fires.
+
+    The gap is measured from the last close, so every rule turns into a price the
+    stock has to open beyond. Rules only appear in the tiers where they hold."""
+    from backend.app.services.direction_service import RULES
+
+    names = [r for r in reporting if r["band"] and r["when"] in ("amc", "next_bmo")]
+    if not names:
+        return []
+    last = dict(db.execute(text("SELECT ticker, price FROM market_snapshot WHERE ticker = ANY(:t)"),
+                           {"t": [r["ticker"] for r in names]}).all())
+    out = []
+    for r in names:
+        px = _num(last.get(r["ticker"]))
+        if not px:
+            continue
+        tier = "large" if r["cap_tier"] in ("core", "large") else r["cap_tier"]
+        b = r["band"]
+        levels = []
+        if tier in RULES["fade_spike"]["tiers"]:
+            levels.append({"rule": "fade_spike", "side": "SHORT", "above": px * (1 + 3 * b)})
+        if tier in RULES["follow_gap"]["tiers"]:
+            levels.append({"rule": "follow_gap", "side": "LONG", "above": px * (1 + 2 * b)})
+        if tier in RULES["buy_flush"]["tiers"]:
+            levels.append({"rule": "buy_flush", "side": "LONG", "below": px * (1 - 2 * b)})
+        if tier in RULES["fade_miss"]["tiers"]:
+            levels.append({"rule": "fade_miss", "side": "SHORT", "above": px * (1 + b), "needs_miss": True})
+        out.append({"ticker": r["ticker"], "company": r["company"], "when": r["when"], "last": px, "band": b,
+                    "prob_move": r["prob_move"], "move_tier": r["move_tier"], "levels": levels})
+    out.sort(key=lambda x: (x["move_tier"] != "breakout", -(x["prob_move"] or 0)))
+    return out[:24]
+
+
 def today(db: Session) -> dict[str, Any]:
     if _cache["body"] is not None and time.time() - _cache["at"] < 300:
         return _cache["body"]
@@ -154,7 +188,25 @@ def today(db: Session) -> dict[str, Any]:
         "open_calls": len(open_calls),
         "open_mean": (sum(c["ret"] for c in open_calls) / len(open_calls)) if open_calls else None,
     }
+    from backend.app.services.direction_service import book, backtest
+
+    bk = book(db)
+    latest = max((c["session"] for c in bk["calls"]), default=None)
+    rules = backtest(db)
+    record = {"trades": sum(r["all"]["n"] for r in rules.values()), "pnl": sum(r["pnl"] for r in rules.values()),
+              "market": sum(r["pnl_market"] for r in rules.values()),
+              "best": max(({"rule": k, "years": f"{r['years_positive']}/{r['years_total']}", "hit": r["all"]["hit"]}
+                           for k, r in rules.items()), key=lambda x: int(x["years"].split("/")[0]) / int(x["years"].split("/")[1]))}
+    # Each reacted report with the calls the book made on it.
+    by_ticker: dict[str, list] = {}
+    for c in bk["calls"]:
+        by_ticker.setdefault(c["ticker"], []).append({"rule": c["rule"], "side": c["side"], "ret": c.get("ret"), "status": c["status"]})
+    for r in reacted:
+        r["calls"] = by_ticker.get(r["ticker"], [])
     body = {
+        "direction": {"latest_session": latest, "calls": [c for c in bk["calls"] if c["session"] == latest] if latest else [],
+                      "live": bk["summary"], "record": record},
+        "setups": _setups(db, reporting),
         "session": str(day), "next_session": str(nxt), "reactions_on": str(last) if last else None,
         "as_of": datetime.now(timezone.utc).isoformat(),
         "summary": summary, "market": market, "reporting": reporting[:120],

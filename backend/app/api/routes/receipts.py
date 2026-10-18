@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from backend.app.db.session import get_db
-from backend.app.services import lookup_service, receipts_service, today_service
+from backend.app.services import direction_service, lookup_service, markets_service, receipts_service, today_service
 
 router = APIRouter(tags=["receipts"])
 
@@ -43,3 +43,13 @@ def lookup(ticker: str, db: Session = Depends(get_db)):
         return lookup_service.lookup(db, ticker)
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+@router.get("/direction")
+def get_direction(db: Session = Depends(get_db)):
+    return direction_service.direction(db)
+
+
+@router.get("/markets")
+def get_markets():
+    return markets_service.markets()

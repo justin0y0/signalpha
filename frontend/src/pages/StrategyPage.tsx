@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { BookOpen, Wallet } from 'lucide-react'
+import { BookOpen, Compass, Wallet } from 'lucide-react'
 import { SubNav } from '../components/ui/SubNav'
 import { PageHead } from '../components/PageHead'
 import { Num } from '../components/ui/Num'
-import { useHeadline } from '../hooks/useHeadline'
+import { useDirection } from '../hooks/useDirection'
+import type { Book } from './DirectionBookPage'
 import { PlaybookPage } from './PlaybookPage'
+import { DirectionBookPage } from './DirectionBookPage'
 import { SimulatorPage } from './SimulatorPage'
 import { useT } from '../i18n'
 
@@ -22,14 +24,18 @@ import { useT } from '../i18n'
  */
 export function StrategyPage() {
   const { t } = useT()
-  const f = useHeadline()?.follow_through
+  const book = useDirection<Book>().data
+  const rules = book ? Object.values(book.rules) : []
+  const best = rules.reduce<{ p: number; s: string } | null>((b, r) => (!b || r.years_positive / r.years_total > b.p ? { p: r.years_positive / r.years_total, s: `${r.years_positive}/${r.years_total}` } : b), null)
+  const trades = rules.reduce((n, r) => n + r.all.n, 0)
   const ITEMS = [
+    { key: 'book', label: t('strategy.tab.book'), icon: <Compass size={15} /> },
     { key: 'playbook', label: t('strategy.tab.playbook'), icon: <BookOpen size={15} /> },
     { key: 'paper', label: t('strategy.tab.paper'), icon: <Wallet size={15} /> },
   ]
   const [params, setParams] = useSearchParams()
   const raw = params.get('view') ?? ''
-  const [view, setView] = useState(raw === 'simulator' || raw === 'paper' ? 'paper' : 'playbook')
+  const [view, setView] = useState(raw === 'simulator' || raw === 'paper' ? 'paper' : raw === 'playbook' || raw === 'backtest' || raw === 'showdown' ? 'playbook' : 'book')
 
   const change = (key: string) => {
     setView(key)
@@ -42,18 +48,18 @@ export function StrategyPage() {
     <div className="page-stack">
       <PageHead
         kicker={t('nav.strategy')}
-        title={<>{t('pb.h.a')} <em>{t('pb.h.b')}</em></>}
-        lede={t('pb.lede')}
+        title={<>{t('db.h.a')} <em>{t('db.h.b')}</em></>}
+        lede={t('db.h.lede')}
         spike={0.3}
       >
         <div className="figs">
-          <div className="is-up"><b><Num value={f ? f.hit * 100 : null} format={(v) => `${v.toFixed(1)}%`} /></b><span>{t('pb.fig.rule', { k: f?.k ?? 2, hold: f?.hold ?? 20 })}</span></div>
-          <div><b><Num value={f ? f.baseline_hit * 100 : null} format={(v) => `${v.toFixed(1)}%`} /></b><span>{t('pb.fig.base')}</span></div>
-          <div className="is-signal"><b><Num value={f?.t} format={(v) => v.toFixed(1)} /></b><span>{t('pb.fig.t')}</span></div>
+          <div className="is-signal"><b><Num value={rules.length || null} /></b><span>{t('db.fig.rules')}</span></div>
+          <div className="is-up"><b>{best?.s ?? '—'}</b><span>{t('db.fig.years')}</span></div>
+          <div><b><Num value={trades || null} /></b><span>{t('db.fig.trades')}</span></div>
         </div>
       </PageHead>
       <SubNav items={ITEMS} active={view} onChange={change} />
-      {view === 'playbook' ? <PlaybookPage /> : <SimulatorPage />}
+      {view === 'book' ? <DirectionBookPage /> : view === 'playbook' ? <PlaybookPage /> : <SimulatorPage />}
     </div>
   )
 }

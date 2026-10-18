@@ -484,6 +484,27 @@ def freeze_and_grade_receipts() -> None:
         db.close()
 
 
+def issue_direction_calls() -> None:
+    """Direction book: after the open, write the calls for every report trading today."""
+    from backend.app.services.direction_service import backfill_follow_gap, issue_due
+    db = SessionLocal()
+    try:
+        logger.info("Direction calls: %s (follow_gap from reactions: %s)", issue_due(db), backfill_follow_gap(db))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Direction calls failed: %s", exc)
+    finally:
+        db.close()
+
+
+def refresh_market_snapshot() -> None:
+    """Markets page: last price and change for every trained-tier name."""
+    from backend.app.services.markets_service import refresh_snapshot
+    try:
+        logger.info("Market snapshot: %s", refresh_snapshot())
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Market snapshot failed: %s", exc)
+
+
 def sync_universe_calendar() -> None:
     """Upcoming reports for every trained-tier name, from the NASDAQ earnings calendar."""
     from data_pipeline.universe import sync_calendar
