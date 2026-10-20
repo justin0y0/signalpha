@@ -63,9 +63,13 @@ def live_caps() -> tuple[float, float]:
     return (float(os.getenv("LIVE_CAP_PER_TRADE", "1000")), float(os.getenv("LIVE_CAP_GROSS", "5000")))
 
 
+# On by default: only the two rules that still beat SPY at the price the bot actually gets
+# (SIP replay 2016-2026, sleeve CAGR: fade_spike +19.9%, buy_flush +17.4%, SPY +14.8%).
+# fade_miss (+0.2%) and follow_gap (+9.5% vs SPY +11.2% since 2008) are there to switch on.
+DEFAULT_ON = {"follow_gap": False, "fade_spike": True, "buy_flush": True, "fade_miss": False}
 DEFAULTS: dict[str, Any] = {
     "enabled": False,
-    "strategies": {k: {"on": True, "alloc": ALLOC[k], "slots": SLOTS[k]} for k in ORDER},
+    "strategies": {k: {"on": DEFAULT_ON[k], "alloc": ALLOC[k], "slots": SLOTS[k]} for k in ORDER},
     "daily_loss_pct": 3.0, "max_gross_pct": 100.0, "min_price": 5.0,
     "allow_short": True, "notify": True, "live_ack_at": None,
 }
