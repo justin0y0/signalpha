@@ -13,6 +13,7 @@ from backend.app.core.logging import configure_logging, get_logger
 from data_pipeline.jobs import (
     freeze_and_grade_receipts,
     issue_direction_calls,
+    autopilot_job,
     refresh_market_snapshot,
     sync_universe_calendar,
     run_pulse_scan,
@@ -102,6 +103,23 @@ scheduler.add_job(freeze_and_grade_receipts, CronTrigger(minute="5,35", timezone
 # Direction book: the gap is known a few minutes after the bell; again later for slow opens.
 scheduler.add_job(issue_direction_calls, CronTrigger(day_of_week="mon-fri", hour=9, minute="36,50", timezone=TZ),
                   id="issue_direction_calls", max_instances=1, coalesce=True)
+# Autopilot (services/autotrade_service.py): at 9:31 the opening prints come from the
+# broker feed, the calls go out and orders follow in the same pass; again at 9:32:30 for
+# late opens, and after each Yahoo pass above until 10:00. On-close orders before
+# Alpaca's 15:50 cutoff; a market-order fallback at 15:56; fills and P&L marks every
+# five minutes.
+scheduler.add_job(autopilot_job, CronTrigger(day_of_week="mon-fri", hour=9, minute=31, second=5, timezone=TZ),
+                  args=["open"], id="autopilot_open", max_instances=1, coalesce=True, misfire_grace_time=120)
+scheduler.add_job(autopilot_job, CronTrigger(day_of_week="mon-fri", hour=9, minute=32, second=30, timezone=TZ),
+                  args=["open"], id="autopilot_open_retry", max_instances=1, coalesce=True, misfire_grace_time=120)
+scheduler.add_job(autopilot_job, CronTrigger(day_of_week="mon-fri", hour=9, minute="37,51", timezone=TZ),
+                  args=["entries"], id="autopilot_entries", max_instances=1, coalesce=True)
+scheduler.add_job(autopilot_job, CronTrigger(day_of_week="mon-fri", hour=15, minute=44, timezone=TZ),
+                  args=["closes"], id="autopilot_closes", max_instances=1, coalesce=True)
+scheduler.add_job(autopilot_job, CronTrigger(day_of_week="mon-fri", hour=15, minute=56, timezone=TZ),
+                  args=["flatten"], id="autopilot_flatten", max_instances=1, coalesce=True)
+scheduler.add_job(autopilot_job, CronTrigger(day_of_week="mon-fri", hour="9-16", minute="*/5", timezone=TZ),
+                  args=["reconcile"], id="autopilot_reconcile", max_instances=1, coalesce=True)
 scheduler.add_job(issue_direction_calls, CronTrigger(day_of_week="mon-fri", hour="10,17", minute=15, timezone=TZ),
                   id="issue_direction_calls_late", max_instances=1, coalesce=True)
 # Markets page: every fifteen minutes (a full pass takes ~6) through the session, once after the close and pre-open.

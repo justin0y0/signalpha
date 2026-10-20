@@ -3,7 +3,7 @@
  *
  * The site's pages are not a flat list: five of them are one story told in sequence —
  * what is coming, what matters this week, what everyone called, what to do after the
- * number is out, and whether any of it works. Navigation, page headers and the rail at
+ * number is out, having it done for you, and whether any of it works. Navigation, page headers and the rail at
  * the foot of each page all read this one list, so the numbering can never drift.
  */
 export const JOURNEY = [
@@ -11,7 +11,8 @@ export const JOURNEY = [
   { to: '/brief', key: 'brief', nav: 'nav.brief', step: '02', phase: 'journey.before' },
   { to: '/arena', key: 'arena', nav: 'nav.arena', step: '03', phase: 'journey.call' },
   { to: '/strategy', key: 'strategy', nav: 'nav.strategy', step: '04', phase: 'journey.after' },
-  { to: '/model', key: 'model', nav: 'nav.model', step: '05', phase: 'journey.proof' },
+  { to: '/autopilot', key: 'autopilot', nav: 'nav.autopilot', step: '05', phase: 'journey.act' },
+  { to: '/model', key: 'model', nav: 'nav.model', step: '06', phase: 'journey.proof' },
 ] as const
 
 export const DESKS = [

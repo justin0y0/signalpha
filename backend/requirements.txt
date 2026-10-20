@@ -29,3 +29,4 @@ moomoo-api
 pypdf>=4.2,<6
 anthropic
 mcp>=2.3,<3
+cryptography>=42

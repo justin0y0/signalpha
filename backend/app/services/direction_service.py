@@ -162,8 +162,22 @@ def _sessions_back(d: date) -> date:
     return p
 
 
-def issue_due(db: Session, now: datetime | None = None) -> dict[str, Any]:
-    """Run after the open: every report trading today, its gap from the open, its calls."""
+def candidates(db: Session, today: date) -> list[dict[str, Any]]:
+    """Reports whose reaction session is `today`: BMO/DMH today, or AMC the session before."""
+    return [dict(r) for r in db.execute(text("""
+        SELECT e.ticker, e.earnings_date, e.report_time, u.tier
+        FROM earnings_events e LEFT JOIN universe u ON u.ticker=e.ticker
+        WHERE (e.earnings_date = :today AND e.report_time IN ('BMO', 'DMH'))
+           OR (e.earnings_date = :prev AND e.report_time = 'AMC')"""),
+        {"today": today, "prev": _sessions_back(today)}).mappings().all()]
+
+
+def issue_due(db: Session, now: datetime | None = None, opens: dict[str, float] | None = None) -> dict[str, Any]:
+    """Run after the open: every report trading today, its gap from the open, its calls.
+
+    `opens` (ticker -> today's opening print, from the broker feed a minute after the bell)
+    lets the calls go out at 9:31 instead of waiting ~15 minutes for Yahoo's daily bar.
+    Tickers missing from it fall back to Yahoo as before."""
     from zoneinfo import ZoneInfo
 
     from backend.app.services.flat_band import load_flat_bands
@@ -171,14 +185,9 @@ def issue_due(db: Session, now: datetime | None = None) -> dict[str, Any]:
 
     now_et = (now or datetime.now(timezone.utc)).astimezone(ZoneInfo("America/New_York"))
     today = now_et.date()
-    if today.weekday() >= 5 or (now_et.hour, now_et.minute) < (9, 33):
+    if today.weekday() >= 5 or (now_et.hour, now_et.minute) < ((9, 30) if opens else (9, 33)):
         return {"issued": 0, "why": "market not open"}
-    prev = _sessions_back(today)
-    rows = db.execute(text("""
-        SELECT e.ticker, e.earnings_date, e.report_time, u.tier
-        FROM earnings_events e LEFT JOIN universe u ON u.ticker=e.ticker
-        WHERE (e.earnings_date = :today AND e.report_time IN ('BMO', 'DMH'))
-           OR (e.earnings_date = :prev AND e.report_time = 'AMC')"""), {"today": today, "prev": prev}).mappings().all()
+    rows = candidates(db, today)
     if not rows:
         return {"issued": 0, "candidates": 0}
     tickers = sorted({r["ticker"] for r in rows})
@@ -188,16 +197,20 @@ def issue_due(db: Session, now: datetime | None = None) -> dict[str, Any]:
     for r in rows:
         t = r["ticker"]
         o, c = px["Open"].get(t), px["Close"].get(t)
-        if o is None or c is None:
+        if c is None:
             continue
-        o, c = o.dropna(), c.dropna()
+        c = c.dropna()
         ts = pd.Timestamp(today)
-        if ts not in o.index:
+        if opens and opens.get(t):
+            first = float(opens[t])
+        elif o is not None and ts in o.dropna().index:
+            first = float(o.dropna().loc[ts])
+        else:
             continue  # no print yet today
         before = c[c.index < ts]
         if before.empty:
             continue
-        gap = float(o.loc[ts]) / float(before.iloc[-1]) - 1
+        gap = first / float(before.iloc[-1]) - 1
         band = bands.get(t)
         if not band:
             continue

@@ -11,6 +11,7 @@ from backend.app.api.routes.telegram_webhook import router as tg_webhook_router
 from backend.app.api.routes.backtest import router as backtest_router
 from backend.app.api.routes.calendar import router as calendar_router
 from backend.app.api.routes.receipts import router as receipts_router
+from backend.app.api.routes.autopilot import router as autopilot_router
 from backend.app.api.routes.features import router as features_router
 from backend.app.api.routes.health import router as health_router
 from backend.app.api.routes.performance import router as performance_router
@@ -60,6 +61,18 @@ async def lifespan(_: FastAPI):
         warm_scan_cache()
     except Exception:
         pass
+    # Autopilot's strategy catalog runs four portfolio backtests (~20 s cold); build it
+    # off the request path so the first visitor does not wait for it.
+    def _warm_autopilot():
+        from backend.app.db.session import SessionLocal
+        from backend.app.services.strategy_lab import catalog
+        try:
+            with SessionLocal() as db:
+                catalog(db)
+        except Exception:
+            pass
+    import threading
+    threading.Thread(target=_warm_autopilot, daemon=True).start()
     # The MCP transport keeps a session manager that must be running while requests are
     # served; as a route inside this app it does not get its own lifespan.
     from backend.app.mcp_server import mcp as _mcp
@@ -99,6 +112,7 @@ app.include_router(waitlist_router, prefix=settings.api_v1_prefix)
 app.include_router(moves_router, prefix=settings.api_v1_prefix)
 app.include_router(playbook_router, prefix=settings.api_v1_prefix)
 app.include_router(receipts_router, prefix=settings.api_v1_prefix)
+app.include_router(autopilot_router, prefix=settings.api_v1_prefix)
 
 # SignAlpha as an MCP server for AI agents (backend/app/mcp_server.py). Registered as an
 # exact route rather than a Mount: a Mount on /api would swallow FastAPI's trailing-slash

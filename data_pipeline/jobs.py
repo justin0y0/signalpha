@@ -496,6 +496,22 @@ def issue_direction_calls() -> None:
         db.close()
 
 
+def autopilot_job(step: str) -> None:
+    """Autopilot (services/autotrade_service.py): the open, entries, on-close orders, the late fallback, fills and marks."""
+    from backend.app.services import autotrade_service as at
+    db = SessionLocal()
+    try:
+        fn = {"open": at.run_open, "entries": at.run_entries, "closes": at.run_closes, "flatten": at.flatten_late,
+              "reconcile": at.reconcile}[step]
+        result = fn(db)
+        if step != "reconcile" or result.get("updated"):
+            logger.info("Autopilot %s: %s", step, result)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Autopilot %s failed: %s", step, exc)
+    finally:
+        db.close()
+
+
 def refresh_market_snapshot() -> None:
     """Markets page: last price and change for every trained-tier name."""
     from backend.app.services.markets_service import refresh_snapshot

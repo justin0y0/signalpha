@@ -8,6 +8,7 @@ import { ArenaPage } from './pages/ArenaPage'
 import { PricingPage } from './pages/PricingPage'
 import { ModelPage } from './pages/ModelPage'
 import { StrategyPage } from './pages/StrategyPage'
+import { AutopilotPage } from './pages/AutopilotPage'
 import { OraclePage } from './pages/OraclePage'
 import { PulsePage } from './pages/PulsePage'
 import { MarketsPage } from './pages/MarketsPage'
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="/predict/:ticker" element={<PredictionDeepDivePage />} />
         <Route path="/model" element={<ModelPage />} />
         <Route path="/strategy" element={<StrategyPage />} />
+        <Route path="/autopilot" element={<AutopilotPage />} />
         <Route path="/markets" element={<MarketsPage />} />
         <Route path="/pulse" element={<PulsePage />} />
         <Route path="/oracle" element={<OraclePage />} />
@@ -38,7 +40,7 @@ export default function App() {
         <Route path="/track-record" element={<Navigate to="/model?view=record" replace />} />
         <Route path="/backtest" element={<Navigate to="/strategy?view=playbook" replace />} />
         <Route path="/showdown" element={<Navigate to="/strategy?view=playbook" replace />} />
-        <Route path="/simulator" element={<Navigate to="/strategy?view=paper" replace />} />
+        <Route path="/simulator" element={<Navigate to="/autopilot" replace />} />
       </Route>
       <Route path="/admin" element={<AdminPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -142,8 +142,47 @@ def bars(tickers: list[str], start: date, ttl: int = 600) -> dict[str, pd.DataFr
             else:
                 out[f] = pd.DataFrame({key[0][0]: raw[f]})
             out[f].index = pd.to_datetime(out[f].index).tz_localize(None).normalize()
+    _fill_last_session(out)
     _px[key] = (time.time(), out)
     return out
+
+
+def _fill_last_session(out: dict[str, pd.DataFrame]) -> None:
+    """Yahoo often leaves the latest session's close (sometimes the open) empty until the
+    next morning, which froze every call on its previous bar. Fill those cells from the
+    consolidated (SIP) daily bar at the broker's data feed, which is final ~15 minutes
+    after the bell."""
+    from backend.app.services.strategy_lab import data_headers, from_alpaca, to_alpaca
+
+    c = out.get("Close")
+    if c is None or c.empty:
+        return
+    last = c.index.max()
+    now = pd.Timestamp.now(tz="America/New_York")
+    if last.date() == now.date() and (now.hour, now.minute) < (16, 20):
+        return  # today's bar is not final yet
+    gaps = [t for t in c.columns if pd.isna(c.at[last, t]) or pd.isna(out["Open"].at[last, t])]
+    h = data_headers() if gaps else None
+    if not h:
+        return
+    try:
+        import httpx
+
+        for i in range(0, len(gaps), 100):
+            r = httpx.get("https://data.alpaca.markets/v2/stocks/bars", headers=h, timeout=15, params={
+                "symbols": ",".join(to_alpaca(g) for g in gaps[i:i + 100]), "timeframe": "1Day", "feed": "sip", "adjustment": "raw",
+                "start": last.date().isoformat(),  # the free data plan refuses SIP from the last 15 minutes
+                "end": (pd.Timestamp.now(tz="UTC") - pd.Timedelta(minutes=16)).isoformat()})
+            for raw_sym, rows in ((r.json() or {}).get("bars") or {}).items() if r.status_code == 200 else []:
+                sym = from_alpaca(raw_sym)
+                for b in rows:
+                    if pd.Timestamp(b["t"]).tz_convert("America/New_York").tz_localize(None).normalize() == last:
+                        if pd.isna(out["Open"].at[last, sym]):
+                            out["Open"].at[last, sym] = float(b["o"])
+                        if pd.isna(out["Close"].at[last, sym]):
+                            out["Close"].at[last, sym] = float(b["c"])
+    except Exception:  # noqa: BLE001 - Yahoo's own fill arrives by morning anyway
+        pass
 
 
 def closes(tickers: list[str], start: date, ttl: int = 600) -> pd.DataFrame:

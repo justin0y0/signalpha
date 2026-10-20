@@ -8,7 +8,7 @@ import { useDirection } from '../hooks/useDirection'
 import type { Book } from './DirectionBookPage'
 import { PlaybookPage } from './PlaybookPage'
 import { DirectionBookPage } from './DirectionBookPage'
-import { SimulatorPage } from './SimulatorPage'
+import { AutopilotDesk } from './AutopilotPage'
 import { useT } from '../i18n'
 
 /**
@@ -19,6 +19,9 @@ import { useT } from '../i18n'
  * that call is a coin flip, so two of the three were elaborate views of nothing. What
  * replaced them is the Playbook — the post-report follow-through signal with a lab to
  * test any variation — and the paper account, which trades that same rule.
+ *
+ * The third tab was an in-house simulated account; it is now Autopilot, which trades the
+ * same rules in a real (paper or live) Alpaca account — the full page is /autopilot.
  *
  * Old ?view= values (backtest, showdown, simulator) still land somewhere sensible.
  */
@@ -31,7 +34,7 @@ export function StrategyPage() {
   const ITEMS = [
     { key: 'book', label: t('strategy.tab.book'), icon: <Compass size={15} /> },
     { key: 'playbook', label: t('strategy.tab.playbook'), icon: <BookOpen size={15} /> },
-    { key: 'paper', label: t('strategy.tab.paper'), icon: <Wallet size={15} /> },
+    { key: 'paper', label: t('strategy.tab.autopilot'), icon: <Wallet size={15} /> },
   ]
   const [params, setParams] = useSearchParams()
   const raw = params.get('view') ?? ''
@@ -59,7 +62,7 @@ export function StrategyPage() {
         </div>
       </PageHead>
       <SubNav items={ITEMS} active={view} onChange={change} />
-      {view === 'book' ? <DirectionBookPage /> : view === 'playbook' ? <PlaybookPage /> : <SimulatorPage />}
+      {view === 'book' ? <DirectionBookPage /> : view === 'playbook' ? <PlaybookPage /> : <AutopilotDesk />}
     </div>
   )
 }
