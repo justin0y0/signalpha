@@ -189,40 +189,67 @@ def _account(db: Session, account_id: int, holder: str | None = None):
     return row
 
 
-def _client(row) -> Alpaca:
-    return Alpaca(row["mode"], row["key_id"], _fernet().decrypt(row["secret_enc"].encode()).decode(), row.get("auth") or "key")
+def _client(row):
+    """The broker client for a connection: Alpaca (keys or OAuth) or moomoo (OAuth bundle)."""
+    secret = _fernet().decrypt(row["secret_enc"].encode()).decode()
+    if (row.get("broker") or "alpaca") == "moomoo":
+        from backend.app.services.moomoo_rest import Moomoo
+
+        account_id = row["id"]
+
+        def save(bundle: dict) -> None:  # refreshed tokens, last close's equity
+            from backend.app.db.session import SessionLocal
+
+            with SessionLocal() as s:
+                s.execute(text("UPDATE autotrade_accounts SET secret_enc=:e, updated_at=NOW() WHERE id=:i"),
+                          {"e": _fernet().encrypt(json.dumps(bundle).encode()).decode(), "i": account_id})
+                s.commit()
+        return Moomoo(row["mode"], row["key_id"], json.loads(secret), saver=save)
+    return Alpaca(row["mode"], row["key_id"], secret, row.get("auth") or "key")
+
+
+def make_client(broker: str, mode: str, key_id: str, secret: str, auth: str):
+    if broker == "moomoo":
+        from backend.app.services.moomoo_rest import Moomoo
+
+        return Moomoo(mode, key_id, json.loads(secret))
+    return Alpaca(mode, key_id, secret, auth)
 
 
 def _account_headers(db: Session) -> dict[str, str] | None:
     """The house paper account's credentials, for market data when no data key is set."""
-    row = db.execute(text("""SELECT * FROM autotrade_accounts WHERE holder='owner' AND auth='key'
+    row = db.execute(text("""SELECT * FROM autotrade_accounts WHERE holder='owner' AND auth='key' AND broker='alpaca'
                              ORDER BY (mode='paper') DESC LIMIT 1""")).mappings().first()
     return _client(row).h if row else None
 
 
-def connect(db: Session, holder: str, role: str, mode: str, key_id: str, secret: str, auth: str = "key") -> dict[str, Any]:
+def connect(db: Session, holder: str, role: str, mode: str, key_id: str, secret: str, auth: str = "key",
+            broker: str = "alpaca") -> dict[str, Any]:
     if mode not in BASES:
         raise ValueError("mode must be paper or live")
+    if broker not in ("alpaca", "moomoo"):
+        raise ValueError("broker must be alpaca or moomoo")
     if mode == "live" and not live_allowed(role):
         raise PermissionError("Live trading is limited to the owner account for now")
     key_id, secret = key_id.strip(), secret.strip()
-    if auth == "key" and mode == "paper" and not key_id.startswith("PK"):
+    if broker == "alpaca" and auth == "key" and mode == "paper" and not key_id.startswith("PK"):
         raise ValueError("These look like live keys — paper keys start with PK")
-    if auth == "key" and mode == "live" and key_id.startswith("PK"):
+    if broker == "alpaca" and auth == "key" and mode == "live" and key_id.startswith("PK"):
         raise ValueError("These are paper keys — live keys come from the Live account's dashboard")
-    acct = Alpaca(mode, key_id, secret, auth).account()  # the credentials prove themselves before anything is stored
-    hint = (acct.get("account_number") or "")[-4:]
+    acct = make_client(broker, mode, key_id, secret, auth).account()  # the credentials prove themselves first
+    hint = str(acct.get("account_number") or "")[-4:]
     row = db.execute(text("""
-        INSERT INTO autotrade_accounts (holder, mode, auth, key_id, secret_enc, account_hint, settings)
-        VALUES (:h, :m, :au, :k, :s, :a, CAST(:st AS jsonb))
+        INSERT INTO autotrade_accounts (holder, broker, mode, auth, key_id, secret_enc, account_hint, settings)
+        VALUES (:h, :b, :m, :au, :k, :s, :a, CAST(:st AS jsonb))
         ON CONFLICT (holder, broker, mode) DO UPDATE SET key_id=EXCLUDED.key_id, secret_enc=EXCLUDED.secret_enc,
             auth=EXCLUDED.auth, account_hint=EXCLUDED.account_hint, updated_at=NOW()
         RETURNING id"""),
-        {"h": holder, "m": mode, "au": auth, "k": key_id, "s": _fernet().encrypt(secret.encode()).decode(), "a": hint,
-         "st": json.dumps(DEFAULTS)}).first()
+        {"h": holder, "b": broker, "m": mode, "au": auth, "k": key_id, "s": _fernet().encrypt(secret.encode()).decode(),
+         "a": hint, "st": json.dumps(DEFAULTS)}).first()
     db.commit()
-    event(db, row.id, "info", f"Connected Alpaca {mode} account …{hint}" + (" (OAuth)" if auth == "oauth" else ""))
-    return {"id": row.id, "mode": mode, "account_hint": hint, "status": acct.get("status")}
+    name = "moomoo" if broker == "moomoo" else "Alpaca"
+    event(db, row.id, "info", f"Connected {name} {mode} account …{hint}" + (" (OAuth)" if auth == "oauth" else ""))
+    return {"id": row.id, "broker": broker, "mode": mode, "account_hint": hint, "status": acct.get("status")}
 
 
 def disconnect(db: Session, holder: str, account_id: int) -> None:
@@ -524,13 +551,20 @@ def run_entries(db: Session) -> dict[str, Any]:
     return {"calls": len(calls), "accounts": out}
 
 
-def run_closes(db: Session) -> dict[str, Any]:
-    """Market-on-close: exits due today (every connection), then follow_gap entries (enabled ones)."""
+def run_closes(db: Session, broker: str = "alpaca") -> dict[str, Any]:
+    """Closing orders: exits due today (every connection), then follow_gap entries (enabled ones).
+
+    Alpaca takes market-on-close orders until 15:50, so its pass runs at 15:44. moomoo has
+    no on-close order in its simulator: its pass runs at 15:58 with market orders."""
     now = _now()
-    if now.weekday() >= 5 or (now.hour, now.minute) >= CLOSE_CUTOFF:
-        return {"why": "after the on-close cutoff"}
+    cutoff = CLOSE_CUTOFF if broker == "alpaca" else (16, 0)
+    if now.weekday() >= 5 or (now.hour, now.minute) >= cutoff:
+        return {"why": "after the closing-order cutoff"}
+    tif = "cls" if broker == "alpaca" else "day"
     out = {}
     for row in _accounts(db, False):
+        if (row["broker"] or "alpaca") != broker:
+            continue
         s = _settings(row)
         try:
             alp = _client(row)
@@ -544,12 +578,13 @@ def run_closes(db: Session) -> dict[str, Any]:
                 cid = f"sa{row['id']}-{o['call_id']}-exit"
                 q = int(o["filled_qty"])
                 base = dict(account_id=row["id"], call_id=o["call_id"], rule=o["rule"], ticker=o["ticker"], leg="exit",
-                            side=side, qty=q, tif="cls", cid=cid)
+                            side=side, qty=q, tif=tif, cid=cid)
                 try:
-                    r = alp.submit(o["ticker"], q, side, "cls", cid)
+                    r = alp.submit(o["ticker"], q, side, tif, cid)
                     _record(db, **base, boid=r["id"], status=r["status"])
                     placed += 1
-                    event(db, row["id"], "trade", f"{side.upper()} {q} {o['ticker']} on the close · exit · {o['rule']}")
+                    how = "on the close" if tif == "cls" else "at market before the close"
+                    event(db, row["id"], "trade", f"{side.upper()} {q} {o['ticker']} {how} · exit · {o['rule']}")
                 except BrokerError as exc:
                     _record(db, **base, status="failed", error=str(exc))
                     event(db, row["id"], "error", f"{o['ticker']} on-close exit failed: {exc} — market order at 15:56")
@@ -561,7 +596,7 @@ def run_closes(db: Session) -> dict[str, Any]:
                     ORDER BY abs(c.gap_x) DESC"""), {"d": now.date(), "a": row["id"]}).mappings().all()
                 if calls:
                     book = _Book(db, row, alp)
-                    placed += sum(_place(db, row, s, alp, c, tif="cls", book=book, acct=acct) for c in calls)
+                    placed += sum(_place(db, row, s, alp, c, tif=tif, book=book, acct=acct) for c in calls)
             out[row["id"]] = placed
         except Exception as exc:  # noqa: BLE001
             event(db, row["id"], "error", f"closes: {exc}")
@@ -660,6 +695,11 @@ def mark(db: Session, row, alp: Alpaca | None = None) -> None:
     s = _settings(row)
     acct = alp.account()
     equity = float(acct.get("equity", 0))
+    db.execute(text("INSERT INTO autotrade_marks (account_id, strategy, pnl, capital, n_open) VALUES (:a, '_equity', :e, :e, 0)"),
+               {"a": row["id"], "e": round(equity, 2)})
+    if (row.get("broker") or "alpaca") == "moomoo" and (now.hour, now.minute) >= (16, 0) and getattr(alp, "saver", None):
+        alp.b["last_equity"] = equity  # moomoo reports no previous close; the daily-loss guard needs one
+        alp.saver(alp.b)
     prices = {p["symbol"]: float(p["current_price"]) for p in alp.positions() if p.get("current_price")}
     ledger = _ledger(db, row["id"])
     for k in ORDER:
@@ -705,7 +745,19 @@ def strategy_candles(db: Session, account_id: int, key: str) -> list[dict[str, A
     return candles(pts, "D")
 
 
-def account_candles(alp: Alpaca) -> list[dict[str, Any]]:
+def equity_candles(db: Session, account_id: int) -> list[dict[str, Any]]:
+    """Daily candles of the account's return from Autopilot's own five-minute equity marks."""
+    from backend.app.services.strategy_lab import candles
+
+    rows = db.execute(text("""SELECT at, pnl FROM autotrade_marks WHERE account_id=:a AND strategy='_equity' ORDER BY at"""),
+                      {"a": account_id}).all()
+    if not rows:
+        return []
+    base = float(rows[0].pnl) or 1.0
+    return candles([(r.at.isoformat(), round((float(r.pnl) / base - 1) * 100, 4)) for r in rows], "D")
+
+
+def account_candles(alp) -> list[dict[str, Any]]:
     """Daily candles of the whole account's return, from the broker's own equity history."""
     from backend.app.services.strategy_lab import candles
 
@@ -763,16 +815,17 @@ def kill(db: Session, holder: str, account_id: int, flatten: bool) -> dict[str, 
 # ───────────────────────────── read side ─────────────────────────────
 
 def accounts_of(db: Session, holder: str) -> list[dict[str, Any]]:
-    rows = db.execute(text("SELECT * FROM autotrade_accounts WHERE holder=:h ORDER BY mode DESC"), {"h": holder}).mappings().all()
+    rows = db.execute(text("SELECT * FROM autotrade_accounts WHERE holder=:h ORDER BY broker, mode DESC"), {"h": holder}).mappings().all()
     return [{"id": r["id"], "mode": r["mode"], "broker": r["broker"], "auth": r["auth"], "account_hint": r["account_hint"],
              "key_hint": "OAuth" if r["auth"] == "oauth" else r["key_id"][:4] + "…" + r["key_id"][-2:],
+             "label": ("moomoo" if r["broker"] == "moomoo" else "Alpaca") + " · " + r["mode"],
              "settings": _settings(r), "created_at": r["created_at"].isoformat()} for r in rows]
 
 
 def overview(db: Session, holder: str, role: str) -> dict[str, Any]:
     cap_trade, cap_gross = live_caps()
     return {"holder": holder, "role": role, "live_allowed": live_allowed(role), "live_ack_phrase": LIVE_ACK,
-            "oauth": oauth_enabled(), "defaults": DEFAULTS,
+            "oauth": oauth_enabled(), "moomoo": True, "defaults": DEFAULTS,
             "caps": {"live_per_trade": cap_trade, "live_gross": cap_gross, "short_min_equity": SHORT_MIN_EQUITY},
             "accounts": accounts_of(db, holder), "now_et": _now().isoformat()}
 
@@ -780,7 +833,7 @@ def overview(db: Session, holder: str, role: str) -> dict[str, Any]:
 def state(db: Session, holder: str, account_id: int) -> dict[str, Any]:
     row = _account(db, account_id, holder)
     s = _settings(row)
-    body: dict[str, Any] = {"id": row["id"], "mode": row["mode"], "auth": row["auth"], "settings": s,
+    body: dict[str, Any] = {"id": row["id"], "broker": row["broker"], "mode": row["mode"], "auth": row["auth"], "settings": s,
                             "account_hint": row["account_hint"]}
     prices: dict[str, float] = {}
     try:
@@ -794,7 +847,7 @@ def state(db: Session, holder: str, account_id: int) -> dict[str, Any]:
         body["positions"] = [{k: p.get(k) for k in ("symbol", "qty", "side", "avg_entry_price", "current_price", "market_value",
                                                      "unrealized_pl", "unrealized_plpc", "change_today")} for p in pos]
         body["clock"] = alp.clock()
-        body["candles"] = account_candles(alp)
+        body["candles"] = account_candles(alp) or equity_candles(db, account_id)
     except Exception as exc:  # noqa: BLE001 - the page still shows the bot's own records
         body["broker_error"] = str(exc)
     ledger = _ledger(db, account_id)

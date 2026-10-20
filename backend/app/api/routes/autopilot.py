@@ -83,6 +83,45 @@ def oauth_callback(code: str = Query(""), state: str = Query(""), error: str = Q
         return RedirectResponse("/autopilot?oauth=failed", status_code=302)
 
 
+@router.get("/moomoo/start")
+def moomoo_start(mode: str = Query("paper"), h: ap_auth.Holder = Depends(ap_auth.current)):
+    from backend.app.services import moomoo_rest
+
+    if mode not in ("paper", "live"):
+        raise HTTPException(400, "mode must be paper or live")
+    if mode == "live" and not at.live_allowed(h.role):
+        raise HTTPException(403, "Live trading is limited to the owner account for now")
+    return {"url": _guard(lambda: moomoo_rest.oauth_start(h.key, h.role, mode))}
+
+
+@router.get("/moomoo/callback")
+def moomoo_callback(code: str = Query(""), state: str = Query(""), error: str = Query(""),
+                    db: Session = Depends(get_db)):
+    """moomoo sends the holder back here after they approve; pick their US account and connect it."""
+    import json
+    import logging
+
+    from backend.app.services import moomoo_rest
+
+    if error or not code:
+        return RedirectResponse("/autopilot?oauth=denied", status_code=302)
+    try:
+        st, bundle = moomoo_rest.oauth_finish(code, state)
+        accts = moomoo_rest.Moomoo.accounts(bundle["access_token"], st["mode"])
+        if st["mode"] == "paper":
+            us = [a for a in accts if int(a.get("market_id") or 0) == moomoo_rest.US_SIM_MARKET]
+        else:
+            us = [a for a in accts if 2 in [int(m) for m in (a.get("enable_market") or [])]] or accts
+        if not us:
+            return RedirectResponse("/autopilot?oauth=noaccount", status_code=302)
+        acc_id = str(us[0].get("account_id"))
+        r = at.connect(db, st["holder"], st["role"], st["mode"], acc_id, json.dumps(bundle), auth="oauth", broker="moomoo")
+        return RedirectResponse(f"/autopilot?connected={r['mode']}&broker=moomoo", status_code=302)
+    except Exception as exc:  # noqa: BLE001 - the page explains; details go to the log
+        logging.getLogger(__name__).warning("moomoo connect failed: %s", exc)
+        return RedirectResponse("/autopilot?oauth=failed", status_code=302)
+
+
 @router.delete("/accounts/{account_id}")
 def disconnect(account_id: int, h: ap_auth.Holder = Depends(ap_auth.current), db: Session = Depends(get_db)):
     _guard(lambda: at.disconnect(db, h.key, account_id))

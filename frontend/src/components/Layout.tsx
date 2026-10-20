@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { LayoutGroup, motion } from 'framer-motion'
-import { Menu, Search, X } from 'lucide-react'
+import { ChevronDown, Menu, Search, X } from 'lucide-react'
 import { LocaleToggle } from './ui/LocaleToggle'
 import { useT } from '../i18n'
 import { AuthWidget } from './AuthWidget'
@@ -16,10 +16,32 @@ import { DESKS, JOURNEY, META } from '../lib/journey'
 /**
  * The shell every page lives in: masthead, tape, page, journey rail.
  *
- * Navigation is grouped by what the pages are — the five-step earnings loop (numbered,
- * because order is the point), the two side desks, and the meta pages — instead of
- * nine equal tabs.
+ * Navigation is grouped by what the pages are — the earnings loop (numbered, because
+ * order is the point), the research desks behind one menu, and the meta pages — instead
+ * of a row of equal tabs that no longer fits.
  */
+
+function DeskMenu() {
+  const { t } = useT()
+  const { pathname } = useLocation()
+  const [open, setOpen] = useState(false)
+  const active = DESKS.some((d) => pathname.startsWith(d.to))
+  useEffect(() => setOpen(false), [pathname])
+  return (
+    <div className={`nav-menu${open ? ' is-open' : ''}`} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button type="button" className={`nav-menu__btn${active ? ' active' : ''}`} aria-expanded={open} aria-haspopup="true"
+        onClick={() => setOpen((o) => !o)}>
+        {t('nav.desks')}<ChevronDown size={13} />
+        {active && <motion.span layoutId="nav-ink" className="nav__ink" transition={{ type: 'spring', stiffness: 520, damping: 40 }} />}
+      </button>
+      <div className="nav-menu__panel" role="menu">
+        {DESKS.map((d) => (
+          <NavLink key={d.to} to={d.to} role="menuitem">{t(d.nav as 'nav.calendar')}</NavLink>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function marketClock(now: Date): { label: string; cls: string } {
   const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
@@ -89,7 +111,7 @@ export function Layout() {
             <nav className="nav" aria-label="Primary">
               {JOURNEY.map(link)}
               <span className="nav__sep" />
-              {DESKS.map(link)}
+              <DeskMenu />
               <span className="nav__sep" />
               {META.map(link)}
             </nav>

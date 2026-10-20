@@ -438,4 +438,74 @@ def catalog(db: Session) -> dict[str, Any]:
                     "signal": {k: s.get(k) for k in ("all", "excess", "discovery", "holdout", "years_positive",
                                                      "years_total", "per_year", "span")},
                     "backtest": backtest(db, key), "live": live_record(db, key)})
-    return {"as_of": datetime.now(timezone.utc).isoformat(), "strategies": out}
+    return {"as_of": datetime.now(timezone.utc).isoformat(), "strategies": out, "research": research()}
+
+
+# ───────────────────────────── the rest of the lab ─────────────────────────────
+
+def _json(name: str) -> dict[str, Any] | None:
+    import json
+    from pathlib import Path
+
+    path = Path(os.getenv("DATA_DIR", "/app/data")) / name
+    if not path.exists():
+        return None
+    return _cached(("file", name, path.stat().st_mtime), 24 * 3600, lambda: json.loads(path.read_text()))
+
+
+def research() -> list[dict[str, Any]]:
+    """Every other strategy the platform could trade, with the test it was put through and
+    the verdict. Only rules that survive reach the catalog above; the rest are shown so a
+    paying user can see what was tried and why it is not on offer.
+
+    verdict: 'edge' (tradable), 'weak' (positive but not significant or not beating the
+    market), 'none' (no edge or negative), 'pending' (test still running)."""
+    import json
+    from pathlib import Path
+
+    out: list[dict[str, Any]] = []
+    lean = Path(os.getenv("MODEL_DIR", "/app/artifacts")) / "lean_model.json"
+    if lean.exists():
+        m = json.loads(lean.read_text()).get("metrics", {})
+        out.append({"key": "ml_direction", "verdict": "none", "n": m.get("n"), "since": m.get("first_oos_date"),
+                    "nums": {"hit": m.get("accuracy"), "majority": m.get("majority"), "ls_mean": m.get("long_short_mean"),
+                             "ls_t": m.get("long_short_t")}})
+    misc = _json("research_misc.json") or {}
+    mf = misc.get("ml_filter") or {}
+    if mf:
+        hi = mf.get("high", {})
+        out.append({"key": "ml_filter", "verdict": "none" if abs((hi.get("excess") or {}).get("t") or 0) < 2 else "edge",
+                    "n": (hi.get("raw") or {}).get("n"), "since": mf.get("since"),
+                    "nums": {"raw": (hi.get("raw") or {}).get("mean"), "base": hi.get("base"),
+                             "excess": (hi.get("excess") or {}).get("mean"), "t": (hi.get("excess") or {}).get("t")}})
+    st = _json("research_straddles.json")
+    if st:
+        s = st["summary"]
+        top = {int(k): v for k, v in s["by_decile"].items()}
+        best = top.get(10, {})
+        t = (best.get("open") or {}).get("t") or 0
+        mean = (best.get("open") or {}).get("mean") or 0
+        out.append({"key": "ml_straddle", "verdict": "edge" if t >= 2 and mean > 0.05 else "weak" if mean > 0 else "none",
+                    "n": s.get("n"), "since": st.get("since"),
+                    "nums": {"top_open": mean, "top_t": t, "top_beat": best.get("beat"),
+                             "bottom_open": ((top.get(1) or {}).get("open") or {}).get("mean"),
+                             "deciles": {k: (v.get("open") or {}).get("mean") for k, v in sorted(top.items())}}})
+    else:
+        out.append({"key": "ml_straddle", "verdict": "pending"})
+    pl = _json("research_pulse.json")
+    for key in ("al_reversion", "gao_1530"):
+        if pl and key in pl:
+            a = pl[key]["all"]
+            out.append({"key": key, "verdict": "edge" if (a.get("t") or 0) >= 2 and (a.get("mean") or 0) > 0 else "none",
+                        "n": a.get("n"), "since": pl.get("start"),
+                        "nums": {"mean": a.get("mean"), "t": a.get("t"), "hit": a.get("hit"),
+                                 "gross": (pl[key].get("gross") or {}).get("mean")},
+                        "curve": candles(pl[key].get("curve") or [], "M")})
+        else:
+            out.append({"key": key, "verdict": "pending"})
+    orc = misc.get("oracle") or {}
+    if orc:
+        out.append({"key": "oracle", "verdict": "none", "n": (orc.get("h1") or {}).get("n"), "since": orc.get("since"),
+                    "nums": {"h1": (orc.get("h1") or {}).get("mean"), "h1_t": (orc.get("h1") or {}).get("t"),
+                             "h5": (orc.get("h5") or {}).get("mean"), "h5_t": (orc.get("h5") or {}).get("t")}})
+    return out

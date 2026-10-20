@@ -160,6 +160,18 @@ h1 em, h2 em, h3 em, .serif em { font-style: italic; font-weight: 420; color: va
 }
 .nav a:hover { color: var(--text-primary); }
 .nav a.active { color: var(--text-primary); }
+.nav-menu { position: relative; }
+.nav-menu__btn { position: relative; display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.45rem 0.6rem; border: 0; background: none; border-radius: 6px; color: var(--text-tertiary); font: 500 0.86rem var(--font-sans); white-space: nowrap; cursor: pointer; transition: color 0.18s var(--ease); }
+.nav-menu__btn:hover, .nav-menu.is-open .nav-menu__btn, .nav-menu__btn.active { color: var(--text-primary); }
+.nav-menu__btn svg { transition: transform 0.2s var(--ease); }
+.nav-menu.is-open .nav-menu__btn svg { transform: rotate(180deg); }
+.nav-menu__panel { position: absolute; top: 100%; left: 0; z-index: 60; display: none; flex-direction: column; min-width: 10rem; padding: 0.35rem; margin-top: 0.2rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg-2); box-shadow: var(--shadow-md); }
+.nav-menu.is-open .nav-menu__panel { display: flex; }
+.nav-menu__panel::before { content: ''; position: absolute; left: 0; right: 0; top: -0.45rem; height: 0.45rem; }
+.nav .nav-menu__panel a { padding: 0.45rem 0.6rem; border-radius: 4px; }
+.nav .nav-menu__panel a:hover { background: var(--bg-3); }
+.nav .nav-menu__panel a.active { color: var(--signal); }
+@media (max-width: 1500px) { .nav a, .nav-menu__btn { padding-left: 0.5rem; padding-right: 0.5rem; } .nav__sep { margin: 0 0.25rem; } }
 .nav__ink { position: absolute; left: 0.7rem; right: 0.7rem; bottom: 0.1rem; height: 2px; background: var(--signal); border-radius: 2px; }
 .nav__sep { width: 1px; height: 16px; background: var(--border-strong); margin: 0 0.45rem; flex: none; }
 .nav__step { font: 500 0.56rem var(--font-mono); color: var(--text-muted); margin-right: 0.3rem; vertical-align: 0.15em; }

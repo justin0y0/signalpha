@@ -119,6 +119,9 @@ scheduler.add_job(autopilot_job, CronTrigger(day_of_week="mon-fri", hour=15, min
                   args=["closes"], id="autopilot_closes", max_instances=1, coalesce=True)
 scheduler.add_job(autopilot_job, CronTrigger(day_of_week="mon-fri", hour=15, minute=56, timezone=TZ),
                   args=["flatten"], id="autopilot_flatten", max_instances=1, coalesce=True)
+# moomoo has no on-close order in its simulator: its closing orders go out at market at 15:58.
+scheduler.add_job(autopilot_job, CronTrigger(day_of_week="mon-fri", hour=15, minute=58, timezone=TZ),
+                  args=["closes_moomoo"], id="autopilot_closes_moomoo", max_instances=1, coalesce=True)
 scheduler.add_job(autopilot_job, CronTrigger(day_of_week="mon-fri", hour="9-16", minute="*/5", timezone=TZ),
                   args=["reconcile"], id="autopilot_reconcile", max_instances=1, coalesce=True)
 scheduler.add_job(issue_direction_calls, CronTrigger(day_of_week="mon-fri", hour="10,17", minute=15, timezone=TZ),

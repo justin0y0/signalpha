@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PageHead } from '../components/PageHead'
 import { Candles, type Candle } from '../components/Candles'
+import { EquityLine } from '../components/EquityLine'
 import { useT } from '../i18n'
 import './AutopilotPage.css'
 
@@ -43,14 +44,17 @@ type Strategy = {
   live: { live_from: string; candles: Candle[]; stats: { n: number; closed: number; open: number; right?: number; ret?: number; skipped?: number }
     calls: { ticker: string; session: string; status: string; entry_price: number; mark: number; ret: number | null }[] }
 }
+type Research = { key: string; verdict: 'edge' | 'weak' | 'none' | 'pending'; n?: number; since?: string
+  nums?: Record<string, any>; curve?: Candle[] }
 type Sub = { on: boolean; alloc: number; slots: number }
 type Settings = {
   enabled: boolean; strategies: Record<Key, Sub>; daily_loss_pct: number; max_gross_pct: number; min_price: number
   allow_short: boolean; notify: boolean; live_ack_at: string | null
 }
-type Conn = { id: number; mode: 'paper' | 'live'; auth: string; account_hint: string; key_hint: string; settings: Settings }
+type Broker = 'alpaca' | 'moomoo'
+type Conn = { id: number; broker: Broker; mode: 'paper' | 'live'; auth: string; account_hint: string; key_hint: string; settings: Settings }
 type Me = {
-  role: 'owner' | 'user'; email: string | null; live_allowed: boolean; live_ack_phrase: string; oauth: boolean
+  role: 'owner' | 'user'; email: string | null; live_allowed: boolean; live_ack_phrase: string; oauth: boolean; moomoo?: boolean
   caps: { live_per_trade: number; live_gross: number; short_min_equity: number }; accounts: Conn[]; now_et: string
 }
 type Trade = { call_id: number; rule: Key; ticker: string; side: string; qty: number; entry: number; exit: number | null; mark: number | null
@@ -123,9 +127,10 @@ export function AutopilotDesk() {
   const [params, setParams] = useSearchParams()
   const [token, setTokenState] = useState<string | null>(readToken)
   const [catalog, setCatalog] = useState<Strategy[] | null>(null)
+  const [research, setResearch] = useState<Research[]>([])
   const [catErr, setCatErr] = useState(false)
   const [me, setMe] = useState<Me | null>(null)
-  const [mode, setMode] = useState<'paper' | 'live'>('paper')
+  const [sel, setSel] = useState<number | 'new' | null>(null)
   const [st, setSt] = useState<State | null>(null)
   const [busy, setBusy] = useState(false)
   const [flash, setFlash] = useState<{ ok: boolean; msg: string } | null>(null)
@@ -134,7 +139,8 @@ export function AutopilotDesk() {
   const say = (ok: boolean, msg: string) => { setFlash({ ok, msg }); window.setTimeout(() => setFlash(null), 6000) }
 
   useEffect(() => {
-    call<{ strategies: Strategy[] }>('/strategies').then((d) => setCatalog(d.strategies)).catch(() => setCatErr(true))
+    call<{ strategies: Strategy[]; research?: Research[] }>('/strategies')
+      .then((d) => { setCatalog(d.strategies); setResearch(d.research ?? []) }).catch(() => setCatErr(true))
   }, [])
 
   const loadMe = useCallback(async () => {
@@ -147,12 +153,21 @@ export function AutopilotDesk() {
 
   useEffect(() => {
     const c = params.get('connected'), o = params.get('oauth')
-    if (c) { say(true, t('ap.flash.connected')); setMode(c === 'live' ? 'live' : 'paper') }
-    if (o) say(false, o === 'denied' ? t('ap.flash.denied') : t('ap.flash.oauthFail'))
-    if (c || o) { const n = new URLSearchParams(params); n.delete('connected'); n.delete('oauth'); setParams(n, { replace: true }) }
+    if (c) { say(true, t('ap.flash.connected')); want.current = { mode: c, broker: params.get('broker') ?? 'alpaca' } }
+    if (o) say(false, o === 'denied' ? t('ap.flash.denied') : o === 'noaccount' ? t('ap.flash.noUs') : t('ap.flash.oauthFail'))
+    if (c || o) { const n = new URLSearchParams(params); ['connected', 'oauth', 'broker'].forEach((k) => n.delete(k)); setParams(n, { replace: true }) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const conn = me?.accounts.find((a) => a.mode === mode) ?? null
+  // Which connection is on screen: the one just connected, else the first, else the connect panel.
+  const want = useRef<{ mode: string; broker: string } | null>(null)
+  useEffect(() => {
+    if (!me) return
+    const w = want.current
+    const hit = w && me.accounts.find((a) => a.mode === w.mode && a.broker === w.broker)
+    if (hit) { setSel(hit.id); want.current = null; return }
+    if (sel === null || (typeof sel === 'number' && !me.accounts.some((a) => a.id === sel))) setSel(me.accounts[0]?.id ?? 'new')
+  }, [me]) // eslint-disable-line react-hooks/exhaustive-deps
+  const conn = me?.accounts.find((a) => a.id === sel) ?? null
   const loadState = useCallback(async () => {
     if (!token || !conn) { setSt(null); return }
     try { setSt(await call<State>(`/accounts/${conn.id}`, { token })) } catch { /* keep last */ }
@@ -183,7 +198,6 @@ export function AutopilotDesk() {
     catch (e) { say(false, (e as Error).message) } finally { setBusy(false) }
   }
 
-  const live = me?.accounts.find((a) => a.mode === 'live') ?? null
   const totalAlloc = settings ? ORDER.reduce((n, k) => n + (settings.strategies[k].on ? settings.strategies[k].alloc : 0), 0) : 0
 
   return (
@@ -199,12 +213,13 @@ export function AutopilotDesk() {
           <div className="ap-bar__who">
             <span className="ap-tag">{me.role === 'owner' ? t('ap.role.owner') : me.email}</span>
             <div className="ap-modes" role="tablist">
-              {(['paper', 'live'] as const).map((m) => (
-                <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? 'is-on' : ''} onClick={() => setMode(m)}>
-                  {m === 'paper' ? t('ap.mode.paper') : t('ap.mode.live')}
-                  {me.accounts.some((a) => a.mode === m) && <i className={m === 'live' ? 'is-live' : ''} />}
+              {me.accounts.map((a) => (
+                <button key={a.id} role="tab" aria-selected={sel === a.id} className={sel === a.id ? 'is-on' : ''} onClick={() => setSel(a.id)}>
+                  {a.broker === 'moomoo' ? 'moomoo' : 'Alpaca'} · {a.mode === 'paper' ? t('ap.mode.paper') : t('ap.mode.live')}
+                  <i className={a.mode === 'live' ? 'is-live' : a.settings.enabled ? '' : 'is-off'} />
                 </button>
               ))}
+              <button role="tab" aria-selected={sel === 'new'} className={sel === 'new' ? 'is-on' : ''} onClick={() => setSel('new')}>{t('ap.addBroker')}</button>
             </div>
             <button className="ap-link" onClick={() => { setToken(null); setMe(null); setSt(null) }}>{t('ap.signOut')}</button>
           </div>
@@ -214,7 +229,7 @@ export function AutopilotDesk() {
               <div className="ap-fig"><span>{t('ap.fig.today')}</span>
                 <b className={tone(st?.account ? parseFloat(st.account.equity) - parseFloat(st.account.last_equity) : null)}>
                   {st?.account ? usd(parseFloat(st.account.equity) - parseFloat(st.account.last_equity), true) : '—'}</b></div>
-              <div className="ap-fig"><span>{t('ap.fig.account')}</span><b>{conn.mode.toUpperCase()} …{conn.account_hint}</b></div>
+              <div className="ap-fig"><span>{t('ap.fig.account')}</span><b>{conn.broker === 'moomoo' ? 'moomoo' : 'Alpaca'} …{conn.account_hint}</b></div>
               <div className="ap-fig"><span>{t('ap.fig.market')}</span>
                 <b>{st?.clock ? (st.clock.is_open ? t('ap.market.open') : `${t('ap.market.next')} ${md(st.clock.next_open)} ${hm(st.clock.next_open)} ET`) : '—'}</b></div>
               <div className="ap-master">
@@ -228,10 +243,12 @@ export function AutopilotDesk() {
               {st?.broker_error && <p className="ap-warn">{t('ap.brokerError')}: {st.broker_error}</p>}
               {settings.enabled && <p className="ap-next">{t('ap.next', { n: ORDER.filter((k) => settings.strategies[k].on).length })}</p>}
             </div>
-          ) : mode === 'paper' ? (
-            <Connect mode="paper" me={me} token={token} onDone={async () => { await loadMe(); say(true, t('ap.flash.connected')) }} onError={(m) => say(false, m)} />
+          ) : sel === 'new' || !me.accounts.length ? (
+            <ConnectPanel me={me} token={token}
+              onDone={async (r) => { want.current = { mode: r.mode, broker: r.broker }; await loadMe(); say(true, t('ap.flash.connected')) }}
+              onError={(m) => say(false, m)} />
           ) : (
-            <LiveIntro me={me} token={token} onDone={async () => { await loadMe(); say(true, t('ap.flash.connected')) }} onError={(m) => say(false, m)} />
+            <div className="shimmer" style={{ height: 90 }} />
           )}
         </section>
       )}
@@ -253,10 +270,11 @@ export function AutopilotDesk() {
         </div>
       </section>
 
+      {research.length > 0 && <Lab rows={research} />}
       {conn && st && <AccountDetail st={st} />}
       {conn && settings && <Risk settings={settings} disabled={busy} onSave={save} live={conn.mode === 'live'} caps={me?.caps ?? null} />}
-      {me && live && mode === 'live' && !live.settings.live_ack_at && (
-        <Acknowledge me={me} conn={live} token={token!} onDone={async () => { await Promise.all([loadMe(), loadState()]); say(true, t('ap.flash.acked')) }}
+      {me && conn && conn.mode === 'live' && !conn.settings.live_ack_at && (
+        <Acknowledge me={me} conn={conn} token={token!} onDone={async () => { await Promise.all([loadMe(), loadState()]); say(true, t('ap.flash.acked')) }}
           onError={(m) => say(false, m)} />
       )}
       <Notes />
@@ -282,14 +300,16 @@ function StrategyCard({ s, sub, mine, equity, disabled, live, caps, onSave }: {
   const b = real ? rp!.stats! : s.backtest.stats
   const per = sub && equity ? Math.min(equity * sub.alloc / 100 / Math.max(sub.slots, 1), live && caps ? caps.live_per_trade : Infinity) : null
   const views: { k: View; label: string; ok: boolean }[] = [
-    ...(real ? [{ k: 'replay' as View, label: t('ap.view.replay'), ok: true }] : []),
-    { k: 'bt', label: real ? t('ap.view.btOpen', { y: s.backtest.stats.span[0].slice(0, 4) }) : t('ap.view.bt', { y: b.span[0].slice(0, 4) }), ok: true },
-    { k: 'signal', label: t('ap.view.signal'), ok: true },
-    { k: 'mine', label: t('ap.view.mine'), ok: !!sub },
+    ...(real ? [{ k: 'replay' as View, label: t('ap.v.real'), ok: true }] : []),
+    { k: 'bt', label: real ? t('ap.v.open') : t('ap.v.bt'), ok: true },
+    { k: 'signal', label: t('ap.v.signal'), ok: true },
+    { k: 'mine', label: t('ap.v.mine'), ok: !!sub },
   ]
+  // Backtests are lines (monthly closes, log scale, drawdown underneath); live records are daily K-lines.
+  const line = (c: Candle[]) => c.map((x) => ({ t: x.t, v: x.c }))
   const chart = useMemo(() => {
-    if (view === 'bt') return <Candles data={s.backtest.candles} bench={s.backtest.bench} log benchLabel={t('ap.bench')} />
-    if (view === 'replay') return <Candles data={rp?.candles ?? []} bench={rp?.bench} log empty={t('ap.replay.none')} benchLabel={t('ap.bench')} />
+    if (view === 'bt') return <EquityLine series={line(s.backtest.candles)} bench={s.backtest.bench} years={s.backtest.stats.years} benchLabel={t('ap.bench')} />
+    if (view === 'replay') return <EquityLine series={line(rp?.candles ?? [])} bench={rp?.bench} years={rp?.stats?.years} empty={t('ap.replay.none')} benchLabel={t('ap.bench')} />
     if (view === 'signal') return <Candles data={s.live.candles} empty={t('ap.signal.none', { d: s.live_from })} />
     return <Candles data={mine?.candles ?? []} empty={t('ap.mine.none')} />
   }, [view, s, rp, mine, t])
@@ -357,6 +377,39 @@ function StrategyCard({ s, sub, mine, equity, disabled, live, caps, onSave }: {
       )}
       <footer>{t('ap.foot', { tiers: s.tiers.join(' · '), n: s.signal.all.n?.toLocaleString() ?? '—', t: s.signal.holdout.t?.toFixed(1) ?? '—' })}</footer>
     </article>
+  )
+}
+
+/* ─────────────────────────── the rest of the lab ─────────────────────────── */
+
+function Lab({ rows }: { rows: Research[] }) {
+  const { t } = useT()
+  const num = (r: Research) => {
+    const n = r.nums ?? {}
+    const v: Record<string, string | number> = { n: r.n?.toLocaleString() ?? '—', since: r.since ?? '' }
+    for (const [k, x] of Object.entries(n)) {
+      if (typeof x !== 'number') continue
+      v[k] = /(_t|^t)$/.test(k) || k === 'top_t' ? x.toFixed(1) : ['hit', 'majority', 'top_beat'].includes(k) ? pctAbs(x, 1) : pct(x, 2)
+    }
+    return v
+  }
+  return (
+    <section className="ap-lab">
+      <header className="ap-sec"><h2>{t('ap.lab.h')}</h2><p>{t('ap.lab.lede')}</p></header>
+      <ol className="ap-lab__list">
+        {rows.map((r) => (
+          <li key={r.key} className={`is-${r.verdict}`}>
+            <div className="ap-lab__head">
+              <h3>{t(`ap.lab.${r.key}.name` as 'ap.lab.oracle.name')}</h3>
+              <span className={`ap-verdict is-${r.verdict}`}>{t(`ap.verdict.${r.verdict}` as 'ap.verdict.none')}</span>
+            </div>
+            <p className="ap-lab__what">{t(`ap.lab.${r.key}.what` as 'ap.lab.oracle.what')}</p>
+            <p className="ap-lab__res">{r.verdict === 'pending' ? t('ap.lab.pending') : t(`ap.lab.${r.key}.res` as 'ap.lab.oracle.res', num(r))}</p>
+            {r.curve && r.curve.length > 1 && <EquityLine series={r.curve.map((c) => ({ t: c.t, v: c.c }))} />}
+          </li>
+        ))}
+      </ol>
+    </section>
   )
 }
 
@@ -498,51 +551,83 @@ function SignIn({ onToken }: { onToken: (t: string) => void }) {
   )
 }
 
-function Connect({ mode, me, token, onDone, onError }: { mode: 'paper' | 'live'; me: Me; token: string; onDone: () => void; onError: (m: string) => void }) {
+type Done = { mode: 'paper' | 'live'; broker: Broker }
+
+function ConnectPanel({ me, token, onDone, onError }: { me: Me; token: string; onDone: (r: Done) => void; onError: (m: string) => void }) {
   const { t } = useT()
+  const [broker, setBroker] = useState<Broker>('alpaca')
+  const [mode, setMode] = useState<'paper' | 'live'>('paper')
   const [key, setKey] = useState('')
   const [secret, setSecret] = useState('')
   const [busy, setBusy] = useState(false)
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setBusy(true)
-    try { await call('/accounts', { method: 'POST', body: { mode, key_id: key, secret }, token }); setKey(''); setSecret(''); onDone() }
+    try { await call('/accounts', { method: 'POST', body: { mode, key_id: key, secret }, token }); setKey(''); setSecret(''); onDone({ mode, broker: 'alpaca' }) }
     catch (x) { onError((x as Error).message) } finally { setBusy(false) }
   }
-  const oauth = async () => {
-    try { const r = await call<{ url: string }>(`/oauth/start?mode=${mode}`, { token }); window.location.href = r.url } catch (x) { onError((x as Error).message) }
+  const oauth = async (path: string) => {
+    setBusy(true)
+    try { const r = await call<{ url: string }>(path, { token }); window.location.href = r.url } catch (x) { onError((x as Error).message); setBusy(false) }
   }
+  const closed = mode === 'live' && !me.live_allowed
   return (
     <div className="ap-connect">
       <div>
-        <h3>{mode === 'paper' ? t('ap.connect.paperH') : t('ap.connect.liveH')}</h3>
-        <ol className="ap-steps">
-          <li>{mode === 'paper' ? t('ap.connect.s1paper') : t('ap.connect.s1live')}</li>
-          <li>{t('ap.connect.s2')}</li>
-          <li>{t('ap.connect.s3')}</li>
-        </ol>
+        <div className="ap-pick">
+          <div className="ap-modes" role="tablist" aria-label={t('ap.connect.broker')}>
+            {(['alpaca', 'moomoo'] as const).map((b) => (
+              <button key={b} role="tab" aria-selected={broker === b} className={broker === b ? 'is-on' : ''} onClick={() => setBroker(b)}>{b === 'moomoo' ? 'moomoo' : 'Alpaca'}</button>
+            ))}
+          </div>
+          <div className="ap-modes" role="tablist" aria-label={t('ap.connect.mode')}>
+            {(['paper', 'live'] as const).map((m) => (
+              <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? 'is-on' : ''} onClick={() => setMode(m)}>{m === 'paper' ? t('ap.mode.paper') : t('ap.mode.live')}</button>
+            ))}
+          </div>
+        </div>
+        {closed ? (
+          <><h3>{t('ap.live.closedH')}</h3><p className="ap-dim">{t('ap.live.closed')}</p></>
+        ) : broker === 'moomoo' ? (
+          <>
+            <h3>{mode === 'paper' ? t('ap.mm.paperH') : t('ap.mm.liveH')}</h3>
+            <ol className="ap-steps">
+              <li>{t('ap.mm.s1')}</li>
+              <li>{t('ap.mm.s2')}</li>
+              <li>{mode === 'paper' ? t('ap.mm.s3paper') : t('ap.mm.s3live')}</li>
+            </ol>
+          </>
+        ) : (
+          <>
+            <h3>{mode === 'paper' ? t('ap.connect.paperH') : t('ap.connect.liveH')}</h3>
+            <ol className="ap-steps">
+              <li>{mode === 'paper' ? t('ap.connect.s1paper') : t('ap.connect.s1live')}</li>
+              <li>{t('ap.connect.s2')}</li>
+              <li>{t('ap.connect.s3')}</li>
+            </ol>
+          </>
+        )}
+        {mode === 'live' && !closed && <p className="ap-dim">{t('ap.live.intro', { a: usd(me.caps.live_per_trade), b: usd(me.caps.live_gross) })}</p>}
       </div>
-      <div>
-        {me.oauth && <button className="ap-btn" onClick={oauth}>{t('ap.connect.oauth')}</button>}
-        <form onSubmit={submit} className="ap-form">
-          <input required placeholder={mode === 'paper' ? 'Key ID · PK…' : 'Key ID · AK…'} value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" spellCheck={false} />
-          <input required type="password" placeholder="Secret" value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="off" />
-          <button className="ap-btn" disabled={busy}>{busy ? t('ap.connect.checking') : t('ap.connect.go')}</button>
-        </form>
-        <p className="ap-dim">{t('ap.connect.privacy')}</p>
-      </div>
-    </div>
-  )
-}
-
-function LiveIntro({ me, token, onDone, onError }: { me: Me; token: string; onDone: () => void; onError: (m: string) => void }) {
-  const { t } = useT()
-  if (!me.live_allowed) {
-    return <div className="ap-connect"><div><h3>{t('ap.live.closedH')}</h3><p className="ap-dim">{t('ap.live.closed')}</p></div></div>
-  }
-  return (
-    <div className="ap-live">
-      <p className="ap-dim">{t('ap.live.intro', { a: usd(me.caps.live_per_trade), b: usd(me.caps.live_gross) })}</p>
-      <Connect mode="live" me={me} token={token} onDone={onDone} onError={onError} />
+      {!closed && (
+        <div>
+          {broker === 'moomoo' ? (
+            <>
+              <button className="ap-btn" disabled={busy} onClick={() => oauth(`/moomoo/start?mode=${mode}`)}>{t('ap.mm.go')}</button>
+              <p className="ap-dim">{t('ap.mm.privacy')}</p>
+            </>
+          ) : (
+            <>
+              {me.oauth && <button className="ap-btn" disabled={busy} onClick={() => oauth(`/oauth/start?mode=${mode}`)}>{t('ap.connect.oauth')}</button>}
+              <form onSubmit={submit} className="ap-form">
+                <input required placeholder={mode === 'paper' ? 'Key ID · PK…' : 'Key ID · AK…'} value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" spellCheck={false} />
+                <input required type="password" placeholder="Secret" value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="off" />
+                <button className="ap-btn" disabled={busy}>{busy ? t('ap.connect.checking') : t('ap.connect.go')}</button>
+              </form>
+              <p className="ap-dim">{t('ap.connect.privacy')}</p>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }
