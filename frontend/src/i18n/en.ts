@@ -1510,7 +1510,7 @@ export const en = {
   'ap.lab.ml_filter.res': 'Top third: {raw} a trade over 20 sessions ({n} trades) — but every report in that third drifted {base} anyway. Against them: {excess} (t = {t}). That is the risk premium of volatile stocks, not an edge.',
   'ap.lab.ml_straddle.name': 'Breakout model × earnings straddle (options)',
   'ap.lab.ml_straddle.what': 'Buy the at-the-money straddle at the close before the report, sell it on the reaction session; the model ranks which reports to buy.',
-  'ap.lab.ml_straddle.res': '{n} straddles since {since}, priced from real option trades: the model\'s top tenth {top_open} a trade at the reaction open (t = {top_t}), move beat the price {top_beat} of the time; bottom tenth {bottom_open}.',
+  'ap.lab.ml_straddle.res': '{n} straddles since {since}, priced from real option trades, lose money in every tenth of the model\'s ranking. Its top tenth: {top_open} a trade at the reaction open (t = {top_t}); the move beat the price only {top_beat} of the time. The options market already prices what the model sees — the top tenth carried an implied move of {top_implied} against {mid_implied} mid-pack, and moved {top_realised}.',
   'ap.lab.al_reversion.name': 'Intraday Avellaneda-Lee reversion (Pulse)',
   'ap.lab.al_reversion.what': '~100 mega-caps on 5-minute bars: fade a residual 1.25σ away from SPY + sector ETF; stop and target at 1σ√12, out within the hour.',
   'ap.lab.al_reversion.res': '{n} trades since {since} on SIP bars, filled at the next bar\'s open, 2 bp a side: {mean} a trade (t = {t}), {hit} winners; before costs {gross}.',

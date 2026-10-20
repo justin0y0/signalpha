@@ -438,6 +438,24 @@ Justin 要「全自动、零干预、以后别的用户也能接入、先模拟�
   - **结论（2026-10-19 夜，2016–2026）**：Yahoo 开盘价是干净的（SIP 触发一致 99.1–99.4%，同批交易收益相同）；但开盘类规则的利润大部分在第一分钟。每笔：fade_spike 开盘 +0.75% → 机器人成交 +0.31%（t 2.3）→ 晚一轮 +0.25%；buy_flush +0.50% → +0.33%（t 3.3）；fade_miss +0.91% → +0.60%（t 1.7，不显著）。仓位池年化（实际成交）：fade_spike **+19.9%**、buy_flush **+17.4%**、fade_miss +0.2%，同期 SPY +14.8%；成本 ×3 后 +9.1% / +4.1% / −2.6%。follow_gap 收盘成交、无需重放：2008 起 +9.5% vs SPY +11.2%。→ 首轮下单提前到 9:30:20；新用户默认只开 fade_spike + buy_flush（`DEFAULT_ON`）；站长模拟盘四条全开攒实盘数据。卡片头部数字对开盘类规则用重放口径，按开盘价的回测放在第二个标签并注明「拿不到」。
   - 下一步候选：盘前（IEX）价估跳空、9:28 前挂 OPG 开盘集合竞价单，拿回开盘价；先在重放里验证盘前估计的触发一致率。
 
+### 6k. 2026-10-20：moomoo REST、策略实验室、首页/导航/图表重做
+
+Justin：导航挤、首页波形图眼花；平台的 ML 预测、AL 回归、名人信号、动量为什么不用；要找出真正的 edge 和值得付费的点；要 moomoo。
+
+**moomoo（`services/moomoo_rest.py`）**：不走 OpenD（无 ARM 版，旧代码靠隧道，早已断）。走官方免网关 REST `https://webapi.moomoo.com` + OAuth 2.1/PKCE。网站的 OAuth 客户端已在 moomoo 动态注册（`MOOMOO_OAUTH_CLIENT_ID` 在 .env，回调 `/api/v1/autopilot/moomoo/callback`）。模拟盘走 `/api/v1.0/sim-trade/...`（market 2 = US；order_side 1 买 2 卖 3 卖空 4 买回；只有市价/限价，**没有 MOC → moomoo 的平仓在 15:58 市价**，job `autopilot_closes_moomoo`），实盘走 `/api/v1.0/accounts/...`。时钟/日历/ETB/现价借用站内 Alpaca。订单 text/remark 放 client_order_id 去重。moomoo 没有净值历史 → `autotrade_marks` 记 `_equity`，K 线从这里画；`last_equity` 在 16:00 后写回 token bundle。**端到端未验证：需要 Justin 用自己的 moomoo 账号点一次授权。**
+
+**连接改为 券商 × 模式**（`autotrade_accounts` 唯一键 holder+broker+mode）；页面顶部按连接切换，「+ 连接券商」选 Alpaca/moomoo × 模拟/实盘。
+
+**策略实验室（`strategy_lab.research()`，页面「其余的策略，我们都测过」）**：所有可能自动化的信号同一标准检验，结果文件在 `data/research_*.json`：
+- 财报前 ML 方向（lean）：86,408 份样本外，命中 51.39% vs 永远猜涨 51.52%，多空 t 0.87 → 没有 edge。
+- ML 大波动概率当 follow_gap 过滤器（`research_misc.py`）：最高三分之一每笔 +2.82%，但同组所有财报本来 +2.23%，超额 +0.37%（t 1.3）→ 风险溢价不是 edge；组合 2017 起 12.3% < SPY 14.6%。
+- 名人信号（`research_misc.py`）：10-05 起 101 条，跟单 1 天超额 −0.12%（t −0.4），5 天 −3.88%（t −3.6，n 59）→ 没有 edge（两周，样本太短）。
+- ML × 财报跨式（`research_straddles.py`，Alpaca OPRA 期权日线 2024-02 起，大+中盘，OCC 代码按候选行权价拼出，每腿当天 ≥20 笔成交）：5,657 次，**按 prob_move 十分位每一档都亏**（反应日开盘卖：−3%~−7.5%/笔，扣成本前）；最高一档 −6.3%（t −3.7），实际波动超过隐含的只有 26%（全档最低），隐含 9.7% vs 中间档 7.4% → 期权市场已经定价了模型看到的东西。卖跨式每档都 +3%~7.5%，但那是普遍的波动率溢价，模型不增值，且裸卖无限风险 → 没有 edge。
+- 盘中脉搏（`research_pulse.py`，101 只超大盘，SIP 5 分钟线 2025-01 起，下一根开盘成交，每边 2bp）：AL 回归 118,080 笔，**扣成本前** −0.003%/笔（t −2.1），扣后 −0.043%（t −31），10 仓组合 −99%；最后半小时动量 4 万笔，扣成本前 +0.002%（t 0.9），扣后 −0.038% → 都没有 edge。实盘 48 笔「胜率 71%、+0.03%」是小赚多次被止损吃掉。
+- **结论**：能交易的只有 fade_spike、buy_flush 两条（开盘后几十秒入场，自动化本身就是价值）；ML 大波动模型准确（AUC 0.61）但它的信息已在期权价格里，价值在「信息/风险提示」，不在交易。
+
+**界面**：导航把 市场/盘中脉搏/名人信号 收进「研究台」下拉；首页 `EarningsTrace` 从每份财报一根尖刺（全市场后几百根 + 重叠标签 + 发光）改为每个交易日一根堆叠柱（琥珀=大动、蓝=偏高，顶上数字=大动份数，日期下=总份数）+ 右侧当天前 6 名；回测图改 `EquityLine`（对数收益线 + 回撤带 + 年度小柱），K 线只用于实盘日线。
+
 ### 6b. 仍未解决
 
 0. **✅ 已解决 — 标签泄漏（walk-forward 重生成完成并上线）**
@@ -576,7 +594,7 @@ ORM `create_all` 建：以上 7 张 + `simulation_config` `simulation_state` `si
 | `run_pulse_scan` | 每 5 分钟（仅工作日 04:00–20:00 ET） |
 | `autopilot_open_0..3` | 工作日 09:30:20、09:30:50、09:31:30、09:32:30（读开盘 → 发方向信号 → 下单） |
 | `autopilot_entries` | 工作日 09:37、09:51 |
-| `autopilot_closes` / `autopilot_flatten` | 工作日 15:44 / 15:56 |
+| `autopilot_closes` / `autopilot_flatten` / `autopilot_closes_moomoo` | 工作日 15:44（Alpaca MOC）/ 15:56 / 15:58（moomoo 市价） |
 | `autopilot_reconcile` | 工作日 9–16 点每 5 分钟（成交对账 + 策略 P&L mark） |
 
 Oracle 的 `oracle_worker()` 不在 scheduler 里——它在 `backend` 容器的后台线程里跑（`main.py`），每 `ORACLE_SCAN_SEC`（90）秒一次。各数据源另有 `_due()` 节流（redis `oracle:srcrun:*`，ARK/国会/EDGAR 1 小时）——**手工调试时直接调 `src_*()` 会吃掉这个节流**，worker 一小时内不会再跑它；调完 `redis-cli del oracle:srcrun:<name>`。

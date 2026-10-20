@@ -389,7 +389,8 @@ function Lab({ rows }: { rows: Research[] }) {
     const v: Record<string, string | number> = { n: r.n?.toLocaleString() ?? '—', since: r.since ?? '' }
     for (const [k, x] of Object.entries(n)) {
       if (typeof x !== 'number') continue
-      v[k] = /(_t|^t)$/.test(k) || k === 'top_t' ? x.toFixed(1) : ['hit', 'majority', 'top_beat'].includes(k) ? pctAbs(x, 1) : pct(x, 2)
+      v[k] = /(_t|^t)$/.test(k) || k === 'top_t' ? x.toFixed(1)
+        : ['hit', 'majority', 'top_beat', 'top_implied', 'top_realised', 'mid_implied'].includes(k) ? pctAbs(x, 1) : pct(x, 2)
     }
     return v
   }

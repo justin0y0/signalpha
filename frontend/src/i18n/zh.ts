@@ -1517,7 +1517,7 @@ export const zh: Partial<Record<keyof typeof en, string>> = {
   'ap.lab.ml_filter.res': '最高三分之一每笔 {raw}（{n} 笔，20 个交易日）——但同组所有财报本来就涨 {base}。扣掉之后超额 {excess}（t = {t}）。这是高波动股票的风险溢价，不是 edge。',
   'ap.lab.ml_straddle.name': 'ML 大波动概率 × 财报跨式（期权）',
   'ap.lab.ml_straddle.what': '财报前一天收盘买平值跨式（看涨 + 看跌），反应日卖出；用模型给财报排序，只买最可能大动的。',
-  'ap.lab.ml_straddle.res': '{since} 起 {n} 次财报跨式，用真实期权成交价：模型最看好的 10% 在反应日开盘卖出，每笔 {top_open}（t = {top_t}），实际波动超过期权定价的比例 {top_beat}；最不看好的 10% 每笔 {bottom_open}。',
+  'ap.lab.ml_straddle.res': '{since} 起 {n} 次财报跨式，用真实期权成交价：按模型排序的每一档都亏钱。最看好大动的 10%，反应日开盘卖出每笔 {top_open}（t = {top_t}），实际波动超过期权定价的只有 {top_beat}。期权市场早就把模型看到的东西定价了：这一档的隐含波动 {top_implied}，中间几档只有 {mid_implied}，实际只动了 {top_realised}。',
   'ap.lab.al_reversion.name': '盘中 AL 均值回归（盘中脉搏）',
   'ap.lab.al_reversion.what': '约 100 只超大盘股、5 分钟线：相对 SPY + 行业 ETF 的残差偏离 1.25σ 时逆向开仓；止盈止损 1σ√12，一小时内出场。',
   'ap.lab.al_reversion.res': '{since} 起 {n} 笔，SIP 5 分钟线、下一根开盘成交、每边 2 个基点：每笔 {mean}（t = {t}），胜率 {hit}；不计成本每笔 {gross}。',

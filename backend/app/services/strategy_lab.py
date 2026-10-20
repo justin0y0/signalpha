@@ -488,6 +488,8 @@ def research() -> list[dict[str, Any]]:
         out.append({"key": "ml_straddle", "verdict": "edge" if t >= 2 and mean > 0.05 else "weak" if mean > 0 else "none",
                     "n": s.get("n"), "since": st.get("since"),
                     "nums": {"top_open": mean, "top_t": t, "top_beat": best.get("beat"),
+                             "top_implied": best.get("implied"), "top_realised": best.get("realised"),
+                             "mid_implied": float(np.median([top[k]["implied"] for k in (4, 5, 6, 7) if k in top])) if top else None,
                              "bottom_open": ((top.get(1) or {}).get("open") or {}).get("mean"),
                              "deciles": {k: (v.get("open") or {}).get("mean") for k, v in sorted(top.items())}}})
     else:
