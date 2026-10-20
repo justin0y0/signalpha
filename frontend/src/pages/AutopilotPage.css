@@ -66,6 +66,7 @@
 .ap-card h3 { margin: 0; font-family: var(--font-display); font-size: 1.7rem; font-weight: 440; letter-spacing: -0.02em; line-height: 1.05; }
 .ap-when { margin: 0; font-size: 0.84rem; line-height: 1.5; color: var(--text-secondary); }
 
+.ap-basis { margin: 0 0 -0.35rem; font: 600 0.56rem var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--signal); }
 .ap-bt { margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .ap-bt > div { padding: 0.5rem 0.55rem; display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
 .ap-bt > div:not(:nth-child(4n + 1)) { border-left: 1px solid var(--border); }

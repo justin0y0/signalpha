@@ -1468,4 +1468,8 @@ export const en = {
   'ap.notes.3': 'Every order has a unique id (account–signal–entry/exit), so a job that runs twice cannot double it; an account holds one position per ticker.',
   'ap.notes.4': 'Honest limits: the backtest covers US stocks above $300M from 2008; companies that later delisted are missing, which flatters the long rules; shorts carry no borrow fee and the history of the easy-to-borrow list is not available — the bot skips hard-to-borrow names live.',
   'ap.notes.5': 'Paper is Alpaca\'s own simulated matching, no money involved. Going live takes three steps, all by the account holder: live keys, the signed acknowledgement, the switch.',
+  'ap.basis.replay': 'At the bot\'s real fill · SIP tape · {y}–',
+  'ap.basis.bt': 'Backtest · fills at the closing auction · {y}–',
+  'ap.view.btOpen': 'At the open {y}– (out of reach)',
+  'ap.bt.atOpen': 'At the open',
 } as const

@@ -32,7 +32,7 @@ type Replay = {
   since: string
   summary: { yahoo: Stat; yahoo_on_sip_open: Stat; realistic: Stat; agree: number | null; sip_only: number
     same_trades: { yahoo: Stat; open: Stat; fill: Stat; late?: Stat } }
-  stats: BtStats | null; candles: Candle[]
+  stats: BtStats | null; candles: Candle[]; bench?: { t: string; v: number }[]
 }
 type Strategy = {
   key: Key; side: 'LONG' | 'SHORT'; entry: 'open' | 'close'; hold: number; tiers: string[]; live_from: string
@@ -273,19 +273,23 @@ function StrategyCard({ s, sub, mine, equity, disabled, live, caps, onSave }: {
   caps: Me['caps'] | null; onSave: (p: Partial<Sub>) => void
 }) {
   const { t } = useT()
-  const [view, setView] = useState<View>('bt')
-  const b = s.backtest.stats
   const rp = s.backtest.replay
+  // What the card leads with: for rules that enter at the open, the replay at the price
+  // the bot actually gets (the open itself is out of reach); otherwise the backtest,
+  // whose closing-auction prices are the fills.
+  const real = !!(rp?.stats && s.entry === 'open')
+  const [view, setView] = useState<View>(real ? 'replay' : 'bt')
+  const b = real ? rp!.stats! : s.backtest.stats
   const per = sub && equity ? Math.min(equity * sub.alloc / 100 / Math.max(sub.slots, 1), live && caps ? caps.live_per_trade : Infinity) : null
   const views: { k: View; label: string; ok: boolean }[] = [
-    { k: 'bt', label: t('ap.view.bt', { y: b.span[0].slice(0, 4) }), ok: true },
-    { k: 'replay', label: t('ap.view.replay'), ok: !!rp?.candles?.length },
+    ...(real ? [{ k: 'replay' as View, label: t('ap.view.replay'), ok: true }] : []),
+    { k: 'bt', label: real ? t('ap.view.btOpen', { y: s.backtest.stats.span[0].slice(0, 4) }) : t('ap.view.bt', { y: b.span[0].slice(0, 4) }), ok: true },
     { k: 'signal', label: t('ap.view.signal'), ok: true },
     { k: 'mine', label: t('ap.view.mine'), ok: !!sub },
   ]
   const chart = useMemo(() => {
     if (view === 'bt') return <Candles data={s.backtest.candles} bench={s.backtest.bench} log benchLabel={t('ap.bench')} />
-    if (view === 'replay') return <Candles data={rp?.candles ?? []} log empty={t('ap.replay.none')} />
+    if (view === 'replay') return <Candles data={rp?.candles ?? []} bench={rp?.bench} log empty={t('ap.replay.none')} benchLabel={t('ap.bench')} />
     if (view === 'signal') return <Candles data={s.live.candles} empty={t('ap.signal.none', { d: s.live_from })} />
     return <Candles data={mine?.candles ?? []} empty={t('ap.mine.none')} />
   }, [view, s, rp, mine, t])
@@ -302,6 +306,7 @@ function StrategyCard({ s, sub, mine, equity, disabled, live, caps, onSave }: {
       <h3>{t(`db.rule.${s.key}` as 'db.rule.follow_gap')}</h3>
       <p className="ap-when">{t(`db.when.${s.key}` as 'db.when.follow_gap')}</p>
 
+      <p className="ap-basis">{real ? t('ap.basis.replay', { y: b.span[0].slice(0, 4) }) : t('ap.basis.bt', { y: b.span[0].slice(0, 4) })}</p>
       <dl className="ap-bt">
         <div><dt>{t('ap.bt.cagr')}</dt><dd className={tone(b.cagr)}>{pct(b.cagr)}</dd></div>
         <div><dt>{t('ap.bt.spy')}</dt><dd>{pct(b.spy_cagr ?? null)}</dd></div>
@@ -309,7 +314,9 @@ function StrategyCard({ s, sub, mine, equity, disabled, live, caps, onSave }: {
         <div><dt>{t('ap.bt.years')}</dt><dd>{b.years_up}/{b.years_total}</dd></div>
         <div><dt>{t('ap.bt.hit')}</dt><dd>{pctAbs(b.hit)}</dd></div>
         <div><dt>{t('ap.bt.avg')}</dt><dd className={tone(b.avg)}>{pct(b.avg, 2)}</dd></div>
-        <div><dt>{t('ap.bt.holdout')}</dt><dd className={tone(b.holdout_cagr)}>{pct(b.holdout_cagr)}</dd></div>
+        {real
+          ? <div><dt>{t('ap.bt.atOpen')}</dt><dd className={tone(s.backtest.stats.cagr)}>{pct(s.backtest.stats.cagr)}</dd></div>
+          : <div><dt>{t('ap.bt.holdout')}</dt><dd className={tone(b.holdout_cagr)}>{pct(b.holdout_cagr)}</dd></div>}
         <div><dt>{t('ap.bt.stress')}</dt><dd className={tone(b.stress_cagr)}>{pct(b.stress_cagr)}</dd></div>
       </dl>
 

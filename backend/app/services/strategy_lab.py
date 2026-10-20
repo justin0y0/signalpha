@@ -251,9 +251,17 @@ def replay(key: str, slots: int) -> dict[str, Any] | None:
     t["gap_x"] = t.gap_x_sip
     t["gross"] = t.ret_fill + COST  # _simulate takes the cost off again
     s, tk = _simulate(t, slots, RULES[key]["entry"], COST)
-    out["stats"] = {**_stats(s, tk), "signals": int(len(t))}
+    s2, _ = _simulate(t, slots, RULES[key]["entry"], STRESS_COST)
+    out["stats"] = {**_stats(s, tk), "signals": int(len(t)), "stress_cagr": _stats(s2, tk).get("cagr")}
     out["candles"] = candles([(str((s.index[0] - pd.Timedelta(days=1)).date()), 0.0)]
                              + [(str(d.date()), round((v - 1) * 100, 3)) for d, v in s.items()], "M")
+    spy = _spy_monthly()
+    if len(spy):
+        sp = spy[(spy.index >= s.index[0] - pd.offsets.MonthEnd(1)) & (spy.index <= s.index[-1] + pd.offsets.MonthEnd(1))]
+        if len(sp) > 1:
+            base = float(sp.iloc[0])
+            out["bench"] = [{"t": str(i.to_period("M")), "v": round((float(v) / base - 1) * 100, 3)} for i, v in sp.items()]
+            out["stats"]["spy_cagr"] = float((float(sp.iloc[-1]) / base) ** (1 / max((sp.index[-1] - sp.index[0]).days / 365.25, 1e-9)) - 1)
     return out
 
 
