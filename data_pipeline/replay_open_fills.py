@@ -12,8 +12,9 @@ For every report since 2016 whose Yahoo gap comes near a rule's threshold (relax
 quarter, so triggers that only the consolidated tape would see are included too), this
 pulls the SIP daily bars and the 9:30–9:45 minute bars from Alpaca and records:
   gap_x_sip  the gap on SIP prices          -> does the rule still fire?
-  fill       VWAP of the first whole minute after the stock has printed (9:31 at the
-             earliest) — the bot's market order
+  fill       the bot's market order: sent in the first open pass (9:30:20, 9:30:50,
+             9:31:30, 9:32:30, then 9:37/9:51) after the stock's first print, priced at the
+             close of that minute; plus a one-pass-late check (VWAP of 9:31 or later)
   exit       SIP close of the exit session (actual trading days)
   ret_yahoo / ret_open / ret_fill   the trade at Yahoo's open, the SIP open, the fill
 All net of the same 10 bp round trip. Borrow availability is not modelled (the bot skips
@@ -153,7 +154,12 @@ def main() -> None:
     need = t[t.yahoo_fires | t.sip_fires]
     print(f"{len(t)} with SIP bars; {len(need)} fire on either tape; fetching opening minutes", flush=True)
 
-    fills: dict[tuple[str, pd.Timestamp], tuple[float, str]] = {}
+    # The bot's open passes (scheduler): it sees a stock from its first print onwards and
+    # sends a market order in the next pass. A print is assumed to land mid-minute; the
+    # fill is the close of the minute the pass falls in (a little later than the order,
+    # so slightly conservative). Second estimate: one pass later, VWAP of the 9:31 minute.
+    passes = [(9, 30, 20), (9, 30, 50), (9, 31, 30), (9, 32, 30), (9, 37, 0), (9, 51, 0)]
+    fills: dict[tuple[str, pd.Timestamp], tuple[float, str, float]] = {}
     days = sorted(need.entry_day.unique())
     for i, day in enumerate(days):
         syms_day = sorted(need[need.entry_day == day].ticker.unique())
@@ -161,12 +167,18 @@ def main() -> None:
             for sym, f in minutes(pd.Timestamp(day), syms_day[j:j + 100]).items():
                 if f.empty:
                     continue
-                first = f.index[0]
-                earliest = max(first + pd.Timedelta(minutes=1), first.replace(hour=9, minute=31, second=0))
-                after = f[f.index >= earliest]
-                if len(after):
-                    b = after.iloc[0]
-                    fills[(sym, pd.Timestamp(day))] = (float(b["vw"] or b["c"]), after.index[0].strftime("%H:%M"))
+                seen = f.index[0] + pd.Timedelta(seconds=30)
+                run = next((f.index[0].replace(hour=h, minute=m, second=sec) for h, m, sec in passes
+                            if f.index[0].replace(hour=h, minute=m, second=sec) >= seen), None)
+                if run is None:
+                    continue
+                at = f[f.index >= run.floor("min")]
+                late = f[f.index >= max(run.floor("min") + pd.Timedelta(minutes=1), f.index[0].replace(hour=9, minute=31))]
+                if not len(at):
+                    continue
+                b = at.iloc[0]
+                v931 = float(late.iloc[0]["vw"] or late.iloc[0]["c"]) if len(late) else np.nan
+                fills[(sym, pd.Timestamp(day))] = (float(b["c"]), run.strftime("%H:%M:%S"), v931)
         if i % 100 == 0:
             print(f"minutes {i}/{len(days)}", flush=True)
 
@@ -175,11 +187,14 @@ def main() -> None:
         r = RULES[key]
         sign = 1.0 if r["side"] == "LONG" else -1.0
         d = t[t.rule == key].copy()
-        d["fill"] = [fills.get((a, b), (np.nan, ""))[0] for a, b in zip(d.ticker, d.entry_day)]
-        d["fill_at"] = [fills.get((a, b), (np.nan, ""))[1] for a, b in zip(d.ticker, d.entry_day)]
+        got = [fills.get((a, b), (np.nan, "", np.nan)) for a, b in zip(d.ticker, d.entry_day)]
+        d["fill"] = [g[0] for g in got]
+        d["fill_at"] = [g[1] for g in got]
+        d["fill_late"] = [g[2] for g in got]
         d["ret_yahoo"] = sign * d.leg - COST
         d["ret_open"] = sign * (d.exit / d.open - 1) - COST
         d["ret_fill"] = sign * (d.exit / d.fill - 1) - COST
+        d["ret_late"] = sign * (d.exit / d.fill_late - 1) - COST
         y = d[d.yahoo_fires]
         s = d[d.sip_fires & d.fill.notna()]
         both = d[d.yahoo_fires & d.sip_fires & d.fill.notna()]
@@ -193,7 +208,8 @@ def main() -> None:
                         "agree": float(y.sip_fires.mean()) if len(y) else None,
                         "sip_only": int((d.sip_fires & ~d.yahoo_fires).sum()),
                         "realistic": m(s.ret_fill), "same_trades": {"yahoo": m(both.ret_yahoo), "open": m(both.ret_open),
-                                                                    "fill": m(both.ret_fill)},
+                                                                    "fill": m(both.ret_fill),
+                                                                    "late": m(both.ret_late.dropna())},
                         "fill_minute": s.fill_at.value_counts().head(5).to_dict()},
             "trades": [{"ticker": x.ticker, "entry_day": str(x.entry_day.date()), "exit_day": str(x.exit_day.date()),
                         "gap_x": round(x.gap_x, 3), "gap_x_sip": round(x.gap_x_sip, 3), "yahoo": bool(x.yahoo_fires),

@@ -419,6 +419,23 @@ Admin 面板：`https://signalpha.app/admin`，粘 `ADMIN_TOKEN`（存在 localS
 
 **口径**：见记忆 signalpha-marketing-and-direction——文案要响，但只用真实数字。
 
+### 6j. 2026-10-19：Autopilot（Alpaca 自动交易，多用户，模拟盘先行）
+
+Justin 要「全自动、零干预、以后别的用户也能接入、先模拟盘再进化到实盘」，并要求每条策略都有真实回测 + 实盘收益 K 线 + 实盘接入选项。
+
+**页面 `/autopilot`（导航主线 05，Model 顺延到 06）**；Strategy 页原「实盘模拟」子标签（旧 SimulatorPage）换成同一个 `AutopilotDesk`。策略库公开可看，连接账户要登录。
+
+**后端**
+- `services/ap_auth.py`：登录 = 6 位验证码。站长发到 `TELEGRAM_CHAT_ID`（holder=`owner`），其他人发邮件（复用 `platform_users`，holder=`u<id>`）。token = HMAC(ADMIN_TOKEN 派生)，30 天；redis 节流 1 次/分钟、5 次猜错作废。
+- `services/strategy_lab.py`：策略 = 一条方向规则做成「仓位池」——账户的 alloc% 平分 slots 份，信号占空位（同日先给跳空最大的），没空位跳过；**回测就是这个规则 + 这个仓位**（2008–2026、复利、10bp；另给 30bp 压力、2019 起样本外、同期 SPY 含息）。历史库只有进出场价、没有逐日路径 → 按平仓日记账，持有期浮亏不可见（页面写明）。月 K 线、对数坐标。信号实盘 = `direction_calls` 按官方开/收盘进出 + Alpaca IEX 30 分钟线逐段记账，日 K。默认 slots/alloc：follow_gap 10/40%，其余 5/20%。
+- `services/autotrade_service.py`：表 `autotrade_accounts`（holder×mode 唯一，secret Fernet 加密，`AUTOTRADE_KEY` 在 .env）、`autotrade_orders`（client_order_id=`sa<acct>-<call>-entry|exit`，幂等）、`autotrade_events`、`autotrade_marks`（每 5 分钟各策略 pnl+capital → 时间加权日 K）。账户 K 线用 Alpaca 自己的 portfolio history。实盘：实盘 key + 签字（`LIVE_ACK`，奶油纸面）+ 开关；`LIVE_CAP_PER_TRADE/GROSS`（.env，默认 1000/5000）；非站长实盘要 `AUTOPILOT_LIVE_PUBLIC=1`（RIA 合规没解决前别开）。OAuth（Connect with Alpaca）代码就绪，需要在 Alpaca 注册 OAuth app 后填 `ALPACA_OAUTH_CLIENT_ID/SECRET`，回调 `/api/v1/autopilot/oauth/callback`。
+- 时间线（ET）：**9:30:20 起 `run_open`**（:20、:50、9:31:30、9:32:30 四轮）用 Alpaca IEX 快照拿开盘第一笔 → `direction_service.issue_due(opens=...)` 发信号 → 同一轮下单；9:37/9:51 在 Yahoo 那两轮之后补；15:44 MOC（先平到期仓、再 follow_gap 入场）；15:56 集合竞价没接的改市价；*/5 对账 + 记 mark。**一个账户一只股票只持一笔**；做空要可做空 + ETB + 净值 ≥$2,000。
+- 代码转换：Yahoo `BRK-B` ↔ Alpaca `BRK.B`（`to_alpaca/from_alpaca`；`Alpaca.positions()` 已转回 Yahoo 写法）。
+- 修了一个老 bug：Yahoo 收盘后当天日线 Close=NaN，到第二天才补 → 方向簿当天的信号整晚「pending」。`receipts_service.bars` 现在用 Alpaca SIP 日线补（只在 16:20 ET 之后；免费 data plan 不给最近 15 分钟的 SIP，end 要留 16 分钟）。
+- 站长模拟盘（PA393C3HC）已连接并开启四条策略，见 6j 末尾的状态。
+
+**`data_pipeline/replay_open_fills.py`（回测诚实度检查，结果 `data/strategy_replay.json`，页面「9:31 成交重放」）**：开盘类三条规则 2016 起在 SIP 上重放——用 SIP 开盘价重新判定是否触发，按 9:31 起第一分钟 VWAP 入场（机器人实际能拿到的价），SIP 收盘出场。一次跑约 45 分钟（免费 data API 200 次/分钟），用一次性 scheduler 容器跑。
+
 ### 6b. 仍未解决
 
 0. **✅ 已解决 — 标签泄漏（walk-forward 重生成完成并上线）**
@@ -555,7 +572,11 @@ ORM `create_all` 建：以上 7 张 + `simulation_config` `simulation_state` `si
 | `run_simulator_step` | 每 30 分钟（仅工作日 04:00–20:00 ET） |
 | `collect_post_earnings_results` | 每小时 |
 | `run_pulse_scan` | 每 5 分钟（仅工作日 04:00–20:00 ET） |
+| `autopilot_open_0..3` | 工作日 09:30:20、09:30:50、09:31:30、09:32:30（读开盘 → 发方向信号 → 下单） |
+| `autopilot_entries` | 工作日 09:37、09:51 |
+| `autopilot_closes` / `autopilot_flatten` | 工作日 15:44 / 15:56 |
+| `autopilot_reconcile` | 工作日 9–16 点每 5 分钟（成交对账 + 策略 P&L mark） |
 
 Oracle 的 `oracle_worker()` 不在 scheduler 里——它在 `backend` 容器的后台线程里跑（`main.py`），每 `ORACLE_SCAN_SEC`（90）秒一次。各数据源另有 `_due()` 节流（redis `oracle:srcrun:*`，ARK/国会/EDGAR 1 小时）——**手工调试时直接调 `src_*()` 会吃掉这个节流**，worker 一小时内不会再跑它；调完 `redis-cli del oracle:srcrun:<name>`。
 
-backend 启动时还会后台预热一次 Pulse 扫描（`warm_scan_cache()`）。
+backend 启动时还会后台预热一次 Pulse 扫描（`warm_scan_cache()`）和 Autopilot 策略库（四个组合回测，冷启动约 20 秒）。

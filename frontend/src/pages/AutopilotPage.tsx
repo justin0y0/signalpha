@@ -31,7 +31,7 @@ type BtStats = {
 type Replay = {
   since: string
   summary: { yahoo: Stat; yahoo_on_sip_open: Stat; realistic: Stat; agree: number | null; sip_only: number
-    same_trades: { yahoo: Stat; open: Stat; fill: Stat } }
+    same_trades: { yahoo: Stat; open: Stat; fill: Stat; late?: Stat } }
   stats: BtStats | null; candles: Candle[]
 }
 type Strategy = {
@@ -103,8 +103,10 @@ const usd = (v: number | string | null | undefined, sign = false) => {
   return sign ? `${n >= 0 ? '+' : '−'}${s}` : (n < 0 ? `−${s}` : s)
 }
 const tone = (v: number | null | undefined) => (v == null ? '' : v > 0 ? 'is-up' : v < 0 ? 'is-down' : '')
-const hm = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-const md = (iso: string) => new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' })
+// Every time on this page is New York time: that is the clock the market and the bot run on.
+const NYT = { timeZone: 'America/New_York' } as const
+const hm = (iso: string) => new Date(iso).toLocaleTimeString([], { ...NYT, hour: '2-digit', minute: '2-digit', hour12: false })
+const md = (iso: string) => new Date(iso).toLocaleDateString([], { ...NYT, month: 'short', day: 'numeric' })
 
 export function AutopilotPage() {
   const { t } = useT()
@@ -214,7 +216,7 @@ export function AutopilotDesk() {
                   {st?.account ? usd(parseFloat(st.account.equity) - parseFloat(st.account.last_equity), true) : '—'}</b></div>
               <div className="ap-fig"><span>{t('ap.fig.account')}</span><b>{conn.mode.toUpperCase()} …{conn.account_hint}</b></div>
               <div className="ap-fig"><span>{t('ap.fig.market')}</span>
-                <b>{st?.clock ? (st.clock.is_open ? t('ap.market.open') : `${t('ap.market.next')} ${md(st.clock.next_open)} ${hm(st.clock.next_open)}`) : '—'}</b></div>
+                <b>{st?.clock ? (st.clock.is_open ? t('ap.market.open') : `${t('ap.market.next')} ${md(st.clock.next_open)} ${hm(st.clock.next_open)} ET`) : '—'}</b></div>
               <div className="ap-master">
                 <Switch on={settings.enabled} disabled={busy || (conn.mode === 'live' && !settings.live_ack_at)}
                   onChange={(v) => save({ enabled: v })} label={settings.enabled ? t('ap.master.on') : t('ap.master.off')} big />
@@ -322,6 +324,7 @@ function StrategyCard({ s, sub, mine, equity, disabled, live, caps, onSave }: {
         {view === 'replay' && rp && t('ap.cap.replay', {
           since: rp.since.slice(0, 4), n: rp.summary.realistic.n.toLocaleString(), y: pct(rp.summary.same_trades.yahoo.mean, 2),
           o: pct(rp.summary.same_trades.open.mean, 2), f: pct(rp.summary.same_trades.fill.mean, 2), agree: pctAbs(rp.summary.agree, 0),
+          l: pct(rp.summary.same_trades.late?.mean ?? null, 2),
           cagr: pct(rp.stats?.cagr ?? null) })}
         {view === 'signal' && t('ap.cap.signal', { d: s.live_from, n: s.live.stats.n, c: s.live.stats.closed, r: pct(s.live.stats.ret ?? 0, 2) })}
         {view === 'mine' && mine && t('ap.cap.mine', { o: mine.open, c: mine.closed, w: mine.wins, r: usd(mine.realized, true), u: usd(mine.unrealized, true) })}

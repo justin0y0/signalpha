@@ -41,13 +41,16 @@ echo
 echo "API — these break first when nginx holds a stale upstream address"
 for ep in /api/v1/health /api/v1/calendar /api/v1/performance /api/v1/brief \
           /api/v1/showdown /api/v1/track-record/summary /api/v1/pulse/track-record \
-          /api/v1/oracle/signals /api/v1/simulator/dashboard /api/v1/entitlement; do
+          /api/v1/oracle/signals /api/v1/simulator/dashboard /api/v1/entitlement \
+          /api/v1/direction /api/v1/autopilot/strategies; do
   check "$ep"
 done
+# Autopilot's account routes must refuse a request without a sign-in token.
+check /api/v1/autopilot/me 401
 
 echo
 echo "Pages"
-for p in / /brief /model /strategy /pulse /oracle /about /contact /admin; do
+for p in / /brief /model /strategy /autopilot /markets /pulse /oracle /about /contact /admin; do
   check "$p"
 done
 

@@ -18,6 +18,7 @@ type Props = {
 }
 
 const fmt = (v: number) => `${v >= 0 ? '+' : ''}${Math.abs(v) >= 1000 ? Math.round(v).toLocaleString() : v.toFixed(Math.abs(v) >= 100 ? 0 : 2)}%`
+const tickFmt = (v: number) => (v === 0 ? '0%' : `${v > 0 ? '+' : ''}${Math.abs(v) >= 1 ? Math.round(v).toLocaleString() : v.toFixed(Math.abs(v) >= 0.1 ? 1 : 2)}%`)
 
 export function Candles({ data, bench, log = false, height = 180, empty = '—', benchLabel = 'SPY' }: Props) {
   const ref = useRef<SVGSVGElement>(null)
@@ -50,8 +51,13 @@ export function Candles({ data, bench, log = false, height = 180, empty = '—',
       const unit = [1, 2, 5, 10].map((k) => k * mag).find((u) => u >= raw) ?? raw
       for (let v = Math.ceil(lo / unit) * unit; v <= hi; v += unit) ticks.push(+v.toFixed(6))
     }
+    // keep labels at least 16px apart, zero first
+    const kept: number[] = []
+    for (const v of [...ticks].sort((a, b) => (a === 0 ? -1 : b === 0 ? 1 : 0))) {
+      if (kept.every((k) => Math.abs(Y(k) - Y(v)) >= 16)) kept.push(v)
+    }
     const bpts = data.map((d, i) => (bmap.has(d.t) ? `${X(i).toFixed(1)},${Y(bmap.get(d.t)!).toFixed(1)}` : null)).filter(Boolean)
-    return { X, Y, step, ticks, bpts }
+    return { X, Y, step, ticks: kept, bpts }
   }, [data, bench, log, H])
 
   if (!m) return <div className="kl-empty">{empty}</div>
@@ -75,7 +81,7 @@ export function Candles({ data, bench, log = false, height = 180, empty = '—',
         {ticks.map((v) => (
           <g key={v}>
             <line x1={padL} x2={W - padR} y1={Y(v)} y2={Y(v)} className={v === 0 ? 'kl-zero' : 'kl-grid'} />
-            <text x={W - padR + 6} y={Y(v) + 3} className="kl-tick">{fmt(v)}</text>
+            <text x={W - padR + 6} y={Y(v) + 3} className="kl-tick">{tickFmt(v)}</text>
           </g>
         ))}
         {bpts.length > 1 && <polyline points={bpts.join(' ')} className="kl-bench" />}
