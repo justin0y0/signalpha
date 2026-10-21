@@ -426,10 +426,29 @@ def live_record(db: Session, key: str, slots: int | None = None) -> dict[str, An
     return _cached(("live", key, slots, len(calls), calls[-1]["session"]), 300, run)
 
 
+_catalog_lock = __import__("threading").Lock()
+
+
 def catalog(db: Session) -> dict[str, Any]:
-    """The whole /autopilot/strategies body, cached for two minutes (a cold build is ~30 s:
-    ten backtests, live records, research files); the backend warms it at start."""
-    return _cached(("catalog",), 120, lambda: _catalog(db))
+    """The whole /autopilot/strategies body, fresh for two minutes. A cold build is ~30 s
+    (ten backtests, live records, research files), so only one build runs at a time: while
+    it does, callers get the previous body if there is one, or wait for the build."""
+    hit = _cache.get(("catalog",))
+    if hit and time.time() - hit[0] < 120:
+        return hit[1]
+    if hit and not _catalog_lock.acquire(blocking=False):
+        return hit[1]  # someone is rebuilding; serve the stale body
+    if not hit:
+        _catalog_lock.acquire()
+    try:
+        hit = _cache.get(("catalog",))
+        if hit and time.time() - hit[0] < 120:
+            return hit[1]
+        val = _catalog(db)
+        _cache[("catalog",)] = (time.time(), val)
+        return val
+    finally:
+        _catalog_lock.release()
 
 
 def _catalog(db: Session) -> dict[str, Any]:
