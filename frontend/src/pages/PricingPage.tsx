@@ -24,14 +24,15 @@ type Feature = { key: string; want?: string; status: Status }
 
 const FREE: Feature[] = [
   { key: 'pro.f.calendar', status: 'live' },
+  { key: 'pro.f.autopaper', status: 'live' },
+  { key: 'pro.f.lab', status: 'live' },
   { key: 'pro.f.arena', status: 'live' },
-  { key: 'pro.f.evidence', status: 'live' },
   { key: 'pro.f.brief', status: 'live' },
 ]
 const PRO: Feature[] = [
+  { key: 'pro.f.autolive', want: 'autopilot_live', status: 'soon' },
+  { key: 'pro.f.signals', want: 'signal_alerts', status: 'soon' },
   { key: 'pro.f.straddle', want: 'straddle_check', status: 'beta' },
-  { key: 'pro.f.alerts', want: 'alerts', status: 'soon' },
-  { key: 'pro.f.arenaAlerts', want: 'arena_alerts', status: 'soon' },
   { key: 'pro.f.portfolio', want: 'portfolio_risk', status: 'soon' },
   { key: 'pro.f.mcp', want: 'api_mcp', status: 'beta' },
 ]
@@ -43,7 +44,7 @@ export function PricingPage() {
   const ft = headline?.follow_through
   const [annual, setAnnual] = useState(true)
   const [email, setEmail] = useState('')
-  const [wants, setWants] = useState<string[]>(['straddle_check', 'alerts'])
+  const [wants, setWants] = useState<string[]>(['autopilot_live', 'signal_alerts'])
   const [state, setState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle')
   const [msg, setMsg] = useState('')
   const [copied, setCopied] = useState(false)
@@ -185,7 +186,7 @@ export function PricingPage() {
       </section>
 
       <section className="pro-faq">
-        {(['trade', 'advice', 'trust', 'when'] as const).map((k) => (
+        {(['trade', 'money', 'live', 'advice', 'trust', 'when'] as const).map((k) => (
           <div key={k}>
             <h3>{t(`pro.faq.${k}.q` as 'pro.faq.trade.q')}</h3>
             <p>{t(`pro.faq.${k}.a` as 'pro.faq.trade.a')}</p>

@@ -249,6 +249,9 @@ function PulseHero({ data, now, highConv }: { data: PulseData; now: Date; highCo
           <div><b><Num value={highConv} /></b><span>{t('pulse.fig.high')}</span></div>
         </div>
       </PageHead>
+      <p className="pulse-retired">
+        {t('pulse.retired')} <a href="/autopilot#lab">{t('pulse.retired.link')}</a>
+      </p>
       <div className="pulse-status">
         <span className="pulse-status__live"><i />{t('pulse.scanning')}</span>
         <span className="mono">{now.toLocaleTimeString('en-US', { hour12: false })}</span>

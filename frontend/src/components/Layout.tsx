@@ -159,6 +159,7 @@ export function Layout() {
       <footer className="colophon">
         <span className="serif">SignAlpha</span>
         <span>{t('footer.line')}</span>
+        <NavLink to="/legal">{t('nav.legal')}</NavLink>
         <NavLink to="/contact">{t('nav.contact')}</NavLink>
       </footer>
 

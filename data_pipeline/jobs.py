@@ -496,6 +496,19 @@ def issue_direction_calls() -> None:
         db.close()
 
 
+def strategy_job(step: str) -> None:
+    """Signals for the strategies beyond the direction rules (services/strategies.py)."""
+    from backend.app.services import strategies as st
+    db = SessionLocal()
+    try:
+        fn = {"pre_run": st.gen_pre_run, "sue_gap": st.gen_sue_gap, "insider": st.gen_insider, "targets": st.gen_targets}[step]
+        logger.info("Strategy %s: %s", step, fn(db))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Strategy %s failed: %s", step, exc)
+    finally:
+        db.close()
+
+
 def autopilot_job(step: str) -> None:
     """Autopilot (services/autotrade_service.py): the open, entries, on-close orders, the late fallback, fills and marks."""
     from backend.app.services import autotrade_service as at

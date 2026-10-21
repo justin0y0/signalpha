@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowUpRight } from 'lucide-react'
 import { PageHead } from '../components/PageHead'
@@ -126,6 +127,8 @@ export function AboutPage() {
         <p className="ledger__foot">{t('about.ledger.foot')} <code>GET /api/v1/model/headline</code></p>
       </section>
 
+      <AutoLedger />
+
       {/* ── the loop ── */}
       <section className="about-block">
         <header className="about-block__head">
@@ -223,5 +226,22 @@ export function AboutPage() {
         </div>
       </section>
     </div>
+  )
+}
+
+/** Autopilot in one paragraph: how many strategies are on offer and how many were thrown out. */
+function AutoLedger() {
+  const { t } = useT()
+  const [n, setN] = useState<{ cards: number; lab: number } | null>(null)
+  useEffect(() => {
+    fetch('/api/v1/autopilot/strategies').then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setN({ cards: (d.cards ?? []).length, lab: (d.research ?? []).filter((x: { verdict: string }) => x.verdict !== 'edge').length }))
+      .catch(() => {})
+  }, [])
+  return (
+    <section className="about-block">
+      <h2 className="serif">{t('about.auto.h')}</h2>
+      <p>{t('about.auto.p', { n: n?.cards ?? '—', m: n?.lab ?? '—' })} <Link to="/autopilot" className="tlink">{t('about.auto.link')}</Link></p>
+    </section>
   )
 }

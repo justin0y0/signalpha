@@ -161,7 +161,36 @@ def alpaca_headers() -> dict[str, str]:
 
 
 def alpaca_daily(symbols: list[str], start: str, end: str | None = None, adjustment: str = "all") -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Daily SIP opens and closes (split+dividend adjusted by default), one column per ticker."""
+    """Daily SIP opens and closes (split+dividend adjusted by default), one column per ticker.
+    Cached for a day under $DATA_DIR/bars_cache, keyed by the request."""
+    import hashlib
+
+    key = hashlib.md5(json_key(sorted(set(symbols)), start, adjustment).encode()).hexdigest()[:16]
+    cache = os.path.join(os.getenv("DATA_DIR", "/app/data"), "bars_cache")
+    os.makedirs(cache, exist_ok=True)
+    fo, fc = os.path.join(cache, f"{key}_o.pkl"), os.path.join(cache, f"{key}_c.pkl")
+    if os.path.exists(fc) and time.time() - os.path.getmtime(fc) < 86400:
+        return pd.read_pickle(fo), pd.read_pickle(fc)
+    O, C = _alpaca_daily(symbols, start, end, adjustment)
+    O.to_pickle(fo)
+    C.to_pickle(fc)
+    return O, C
+
+
+def json_key(*parts) -> str:
+    import json as _j
+
+    return _j.dumps(parts, default=str)
+
+
+def ew_index(C: pd.DataFrame, names: list[str]) -> pd.Series:
+    """Equal-weight index of `names` (daily rebalanced, daily moves clipped at ±50%): the
+    baseline that carries the same survivorship as any rule run on the same list."""
+    r = C[[n for n in names if n in C]].pct_change().clip(-0.5, 0.5)
+    return (1 + r.mean(axis=1).fillna(0)).cumprod()
+
+
+def _alpaca_daily(symbols: list[str], start: str, end: str | None = None, adjustment: str = "all") -> tuple[pd.DataFrame, pd.DataFrame]:
     from backend.app.services.strategy_lab import from_alpaca, to_alpaca
 
     h = alpaca_headers()

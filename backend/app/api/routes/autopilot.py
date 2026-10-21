@@ -122,6 +122,58 @@ def moomoo_callback(code: str = Query(""), state: str = Query(""), error: str = 
         return RedirectResponse("/autopilot?oauth=failed", status_code=302)
 
 
+@router.post("/connect/tradier")
+def connect_tradier(mode: str = Body(...), token: str = Body(...),
+                    h: ap_auth.Holder = Depends(ap_auth.current), db: Session = Depends(get_db)):
+    return _guard(lambda: at.connect_tradier(db, h.key, h.role, mode, token))
+
+
+@router.post("/connect/tastytrade")
+def connect_tasty(mode: str = Body(...), client_secret: str = Body(...), refresh_token: str = Body(...),
+                  h: ap_auth.Holder = Depends(ap_auth.current), db: Session = Depends(get_db)):
+    return _guard(lambda: at.connect_tasty(db, h.key, h.role, mode, client_secret, refresh_token))
+
+
+@router.get("/robinhood/start")
+def robinhood_start(h: ap_auth.Holder = Depends(ap_auth.current)):
+    return {"url": _guard(lambda: at.robinhood_start(h.key, h.role))}
+
+
+@router.get("/robinhood/callback")
+def robinhood_callback(code: str = Query(""), state: str = Query(""), error: str = Query(""),
+                       db: Session = Depends(get_db)):
+    import logging
+
+    if error or not code:
+        return RedirectResponse("/autopilot?oauth=denied", status_code=302)
+    try:
+        at.robinhood_finish(db, code, state)
+        return RedirectResponse("/autopilot?connected=live&broker=robinhood", status_code=302)
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("robinhood connect failed: %s", exc)
+        return RedirectResponse("/autopilot?oauth=failed", status_code=302)
+
+
+@router.get("/snaptrade/start")
+def snaptrade_start(broker: str | None = Query(None), h: ap_auth.Holder = Depends(ap_auth.current),
+                    db: Session = Depends(get_db)):
+    return {"url": _guard(lambda: at.snaptrade_start(db, h.key, h.role, broker))}
+
+
+@router.get("/snaptrade/callback")
+def snaptrade_callback(state: str = Query(""), db: Session = Depends(get_db)):
+    import logging
+
+    try:
+        made = at.snaptrade_finish(db, state)
+        if not made:
+            return RedirectResponse("/autopilot?oauth=noaccount", status_code=302)
+        return RedirectResponse(f"/autopilot?connected={made[-1]['mode']}&broker={made[-1]['broker']}", status_code=302)
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("snaptrade connect failed: %s", exc)
+        return RedirectResponse("/autopilot?oauth=failed", status_code=302)
+
+
 @router.delete("/accounts/{account_id}")
 def disconnect(account_id: int, h: ap_auth.Holder = Depends(ap_auth.current), db: Session = Depends(get_db)):
     _guard(lambda: at.disconnect(db, h.key, account_id))

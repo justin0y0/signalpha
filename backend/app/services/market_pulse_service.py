@@ -720,7 +720,10 @@ def scan_market() -> dict[str, Any]:
                 "high_conviction": abs(score) >= NOTIFY_THRESHOLD,
                 "notified": False, "news": [], "ai": None,
             }
-            if sig["high_conviction"]:
+            # No alerts: on SIP 5-minute bars since 2025 (data_pipeline/research_pulse.py) the
+            # AL reversion signal loses before costs (118k trades, -0.003% each) and the
+            # last-half-hour momentum signal is flat. The scan stays as a market view only.
+            if sig["high_conviction"] and os.getenv("PULSE_ALERTS", "0") == "1":
                 sig["news"] = fetch_news(ticker, hours=24, limit=5)
                 sig["ai"] = ai_explain(sig, sig["news"])
                 sig["notified"] = send_telegram(sig)

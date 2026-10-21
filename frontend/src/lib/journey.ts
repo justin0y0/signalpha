@@ -15,9 +15,11 @@ export const JOURNEY = [
   { to: '/model', key: 'model', nav: 'nav.model', step: '06', phase: 'journey.proof' },
 ] as const
 
+// Pulse (/pulse) is off the menu since 2026-10-21: its intraday signals were backtested on
+// the consolidated tape and lose before costs (Autopilot → strategy lab). The page stays
+// reachable for old links, with that verdict on top.
 export const DESKS = [
   { to: '/markets', nav: 'nav.markets' },
-  { to: '/pulse', nav: 'nav.pulse' },
   { to: '/oracle', nav: 'nav.oracle' },
 ] as const
 

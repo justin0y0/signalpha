@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import './OraclePage.css'
 import { PageHead } from '../components/PageHead'
+import { OracleVerdict } from '../components/OracleVerdict'
 import { Num } from '../components/ui/Num'
 import { OhlcChart } from './OhlcChart'
 import { useT } from '../i18n'
@@ -147,6 +148,8 @@ export function OraclePage() {
           <div className={avgCall >= 0 ? 'is-up' : 'is-down'}><b>{avgCall >= 0 ? '+' : ''}{avgCall.toFixed(1)}%</b><span>{t('oracle.stat.avg')}</span></div>
         </div>
       </PageHead>
+
+      <OracleVerdict />
 
       {board.length > 0 && (
         <section className="orc2-lb-wrap">

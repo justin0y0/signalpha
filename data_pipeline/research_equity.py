@@ -36,15 +36,16 @@ from sqlalchemy import text
 
 from backend.app.db.session import SessionLocal
 from backend.app.services.market_pulse_service import SECTORS as MEGA
-from data_pipeline.research_common import alpaca_daily, curve, event_sleeve, out_path, summary, tstat
+from data_pipeline.research_common import alpaca_daily, curve, event_sleeve, ew_index, out_path, summary, tstat
 from data_pipeline.research_etf import rsi
 
 COST = 0.001
 START = "2015-06-01"
 
 
-def excess(trades: pd.DataFrame, C: pd.DataFrame) -> pd.Series:
-    spy = C.SPY
+def excess(trades: pd.DataFrame, C: pd.DataFrame, bench: pd.Series | None = None) -> pd.Series:
+    """Each trade against SPY (or `bench`, an index level series) over the same sessions."""
+    spy = C.SPY if bench is None else bench
     out = []
     for t in trades.itertuples():
         try:
@@ -72,6 +73,9 @@ def main() -> None:
     C, O = C.sort_index(), O.reindex(C.index)
     days = C.index
     spy = C.SPY.pct_change().fillna(0)
+    ew = ew_index(C, list(uni.ticker))
+    out["ew_universe"] = summary(ew.pct_change().fillna(0), spy)
+    print(f"EW universe CAGR {out['ew_universe']['cagr']*100:+.1f}% vs SPY {out['ew_universe']['spy_cagr']*100:+.1f}%", flush=True)
     pos = {d: i for i, d in enumerate(days)}
     out: dict = {"generated_at": datetime.now(timezone.utc).isoformat(), "start": START, "cost": COST,
                  "universe": int(len(uni)), "rules": {}}
@@ -81,9 +85,10 @@ def main() -> None:
         first = r.ne(0).idxmax()
         r = r[r.index >= first]
         ex = excess(taken, C) if len(taken) else pd.Series(dtype=float)
+        ex_ew = excess(taken, C, ew) if len(taken) else pd.Series(dtype=float)
         body = {"all": summary(r, spy), "per_trade": tstat(taken.ret) if len(taken) else {},
-                "excess": tstat(ex), "signals": int(len(trades)), "taken": int(len(taken)), "slots": slots,
-                **curve(r, spy)}
+                "excess": tstat(ex), "excess_ew": tstat(ex_ew), "signals": int(len(trades)), "taken": int(len(taken)),
+                "slots": slots, "ew_sleeve": summary(r - ew.pct_change().reindex(r.index).fillna(0)), **curve(r, spy)}
         if len(taken):
             taken = taken.assign(excess=ex.values, yr=pd.to_datetime(taken.entry).dt.year)
             body["by_year"] = {int(y): tstat(g.excess) for y, g in taken.groupby("yr")}
@@ -92,7 +97,8 @@ def main() -> None:
         a, e = body["all"], body["excess"]
         print(f"{key:10s} CAGR {a.get('cagr', 0)*100:+.1f}% vs SPY {a.get('spy_cagr', 0)*100:+.1f}% DD {a.get('max_dd', 0)*100:.0f}% "
               f"Sharpe {a.get('sharpe') or 0:.2f} vs {a.get('spy_sharpe') or 0:.2f} | per trade {body['per_trade'].get('mean', 0)*100:+.2f}% "
-              f"| excess vs SPY {e.get('mean', 0)*100:+.2f}% t={e.get('t') or 0:+.1f} n={e.get('n')} (signals {len(trades)})", flush=True)
+              f"| excess vs SPY {e.get('mean', 0)*100:+.2f}% t={e.get('t') or 0:+.1f} | vs EW universe {body['excess_ew'].get('mean', 0)*100:+.2f}% "
+              f"t={body['excess_ew'].get('t') or 0:+.1f} n={e.get('n')} (signals {len(trades)})", flush=True)
 
     # ── earnings windows
     ev["reaction_date"] = pd.to_datetime(ev.reaction_date)

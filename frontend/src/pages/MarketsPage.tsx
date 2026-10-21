@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHead } from '../components/PageHead'
+import { MarketRules } from '../components/MarketRules'
 import { Num } from '../components/ui/Num'
 import { useT } from '../i18n'
 import './MarketsPage.css'
@@ -124,6 +125,7 @@ export function MarketsPage() {
 
       {!d ? <div className="shimmer" style={{ height: 520 }} /> : (
         <>
+          <MarketRules />
           <section className="mk-majors">
             {(d.majors ?? []).map((q) => (
               <div key={q.symbol} className="mk-major">

@@ -19,7 +19,7 @@ from backend.app.db.session import get_db
 router = APIRouter(prefix="/waitlist", tags=["waitlist"])
 
 _EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,255}\.[A-Za-z]{2,}$")
-_WANTS = {"straddle_check", "alerts", "portfolio_risk", "arena_alerts", "api_mcp", "full_universe"}
+_WANTS = {"straddle_check", "alerts", "portfolio_risk", "arena_alerts", "api_mcp", "full_universe", "autopilot_live", "signal_alerts"}
 
 
 class Join(BaseModel):

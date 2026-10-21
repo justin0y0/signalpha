@@ -46,7 +46,8 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from backend.app.services.strategy_lab import ALLOC, ORDER, SLOTS, from_alpaca, to_alpaca
+from backend.app.services.strategies import ORDER, SPECS
+from backend.app.services.strategy_lab import from_alpaca, to_alpaca
 
 NY = ZoneInfo("America/New_York")
 BASES = {"paper": "https://paper-api.alpaca.markets", "live": "https://api.alpaca.markets"}
@@ -63,13 +64,11 @@ def live_caps() -> tuple[float, float]:
     return (float(os.getenv("LIVE_CAP_PER_TRADE", "1000")), float(os.getenv("LIVE_CAP_GROSS", "5000")))
 
 
-# On by default: only the two rules that still beat SPY at the price the bot actually gets
-# (SIP replay 2016-2026, sleeve CAGR: fade_spike +19.9%, buy_flush +17.4%, SPY +14.8%).
-# fade_miss (+0.2%) and follow_gap (+9.5% vs SPY +11.2% since 2008) are there to switch on.
-DEFAULT_ON = {"follow_gap": False, "fade_spike": True, "buy_flush": True, "fade_miss": False}
+# Which strategies a new connection starts with, their share of the account and their slots:
+# services/strategies.py SPECS (on = the ones that held up after costs and out of sample).
 DEFAULTS: dict[str, Any] = {
     "enabled": False,
-    "strategies": {k: {"on": DEFAULT_ON[k], "alloc": ALLOC[k], "slots": SLOTS[k]} for k in ORDER},
+    "strategies": {k: {"on": SPECS[k]["on"], "alloc": float(SPECS[k]["alloc"]), "slots": SPECS[k]["slots"]} for k in ORDER},
     "daily_loss_pct": 3.0, "max_gross_pct": 100.0, "min_price": 5.0,
     "allow_short": True, "notify": True, "live_ack_at": None,
 }
@@ -97,6 +96,9 @@ DDL = [
         id BIGSERIAL PRIMARY KEY, account_id BIGINT NOT NULL, strategy TEXT NOT NULL,
         at TIMESTAMPTZ NOT NULL DEFAULT NOW(), pnl NUMERIC NOT NULL, capital NUMERIC NOT NULL, n_open INTEGER NOT NULL)""",
     "CREATE INDEX IF NOT EXISTS idx_autotrade_marks ON autotrade_marks (account_id, strategy, at)",
+    """CREATE TABLE IF NOT EXISTS autotrade_vault (
+        holder TEXT NOT NULL, kind TEXT NOT NULL, secret_enc TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (holder, kind))""",
 ]
 
 
@@ -190,29 +192,51 @@ def _account(db: Session, account_id: int, holder: str | None = None):
 
 
 def _client(row):
-    """The broker client for a connection: Alpaca (keys or OAuth) or moomoo (OAuth bundle)."""
+    """The broker client for a connection (see services/brokers.py for all but Alpaca)."""
+    account_id = row["id"]
+
+    def save(bundle: dict) -> None:  # refreshed tokens, last close's equity
+        from backend.app.db.session import SessionLocal
+
+        with SessionLocal() as s:
+            s.execute(text("UPDATE autotrade_accounts SET secret_enc=:e, updated_at=NOW() WHERE id=:i"),
+                      {"e": _fernet().encrypt(json.dumps(bundle).encode()).decode(), "i": account_id})
+            s.commit()
     secret = _fernet().decrypt(row["secret_enc"].encode()).decode()
-    if (row.get("broker") or "alpaca") == "moomoo":
-        from backend.app.services.moomoo_rest import Moomoo
-
-        account_id = row["id"]
-
-        def save(bundle: dict) -> None:  # refreshed tokens, last close's equity
-            from backend.app.db.session import SessionLocal
-
-            with SessionLocal() as s:
-                s.execute(text("UPDATE autotrade_accounts SET secret_enc=:e, updated_at=NOW() WHERE id=:i"),
-                          {"e": _fernet().encrypt(json.dumps(bundle).encode()).decode(), "i": account_id})
-                s.commit()
-        return Moomoo(row["mode"], row["key_id"], json.loads(secret), saver=save)
-    return Alpaca(row["mode"], row["key_id"], secret, row.get("auth") or "key")
+    return make_client(row.get("broker") or "alpaca", row["mode"], row["key_id"], secret, row.get("auth") or "key", save)
 
 
-def make_client(broker: str, mode: str, key_id: str, secret: str, auth: str):
+BROKER_NAMES = {"alpaca": "Alpaca", "moomoo": "moomoo", "tradier": "Tradier", "tastytrade": "tastytrade",
+                "robinhood": "Robinhood"}
+
+
+def broker_name(broker: str) -> str:
+    if broker.startswith("snaptrade:"):
+        return broker.split(":", 1)[1] + " (SnapTrade)"
+    return BROKER_NAMES.get(broker, broker)
+
+
+def make_client(broker: str, mode: str, key_id: str, secret: str, auth: str, save=None):
     if broker == "moomoo":
         from backend.app.services.moomoo_rest import Moomoo
 
-        return Moomoo(mode, key_id, json.loads(secret))
+        return Moomoo(mode, key_id, json.loads(secret), saver=save)
+    if broker == "tradier":
+        from backend.app.services.brokers import Tradier
+
+        return Tradier(mode, key_id, secret)
+    if broker == "tastytrade":
+        from backend.app.services.brokers import Tasty
+
+        return Tasty(mode, key_id, json.loads(secret), saver=save)
+    if broker == "robinhood":
+        from backend.app.services.brokers import Robinhood
+
+        return Robinhood(mode, key_id, json.loads(secret), saver=save)
+    if broker.startswith("snaptrade:"):
+        from backend.app.services.brokers import SnapTrade
+
+        return SnapTrade(mode, key_id, json.loads(secret))
     return Alpaca(mode, key_id, secret, auth)
 
 
@@ -227,8 +251,8 @@ def connect(db: Session, holder: str, role: str, mode: str, key_id: str, secret:
             broker: str = "alpaca") -> dict[str, Any]:
     if mode not in BASES:
         raise ValueError("mode must be paper or live")
-    if broker not in ("alpaca", "moomoo"):
-        raise ValueError("broker must be alpaca or moomoo")
+    if broker not in BROKER_NAMES and not broker.startswith("snaptrade:"):
+        raise ValueError("unknown broker")
     if mode == "live" and not live_allowed(role):
         raise PermissionError("Live trading is limited to the owner account for now")
     key_id, secret = key_id.strip(), secret.strip()
@@ -247,9 +271,112 @@ def connect(db: Session, holder: str, role: str, mode: str, key_id: str, secret:
         {"h": holder, "b": broker, "m": mode, "au": auth, "k": key_id, "s": _fernet().encrypt(secret.encode()).decode(),
          "a": hint, "st": json.dumps(DEFAULTS)}).first()
     db.commit()
-    name = "moomoo" if broker == "moomoo" else "Alpaca"
-    event(db, row.id, "info", f"Connected {name} {mode} account …{hint}" + (" (OAuth)" if auth == "oauth" else ""))
+    event(db, row.id, "info", f"Connected {broker_name(broker)} {mode} account …{hint}" + (" (OAuth)" if auth == "oauth" else ""))
     return {"id": row.id, "broker": broker, "mode": mode, "account_hint": hint, "status": acct.get("status")}
+
+
+# ── brokers that connect by pasted credentials or their own OAuth (services/brokers.py)
+
+def _vault_get(db: Session, holder: str, kind: str) -> dict | None:
+    v = db.execute(text("SELECT secret_enc FROM autotrade_vault WHERE holder=:h AND kind=:k"), {"h": holder, "k": kind}).scalar()
+    return json.loads(_fernet().decrypt(v.encode()).decode()) if v else None
+
+
+def _vault_put(db: Session, holder: str, kind: str, body: dict) -> None:
+    db.execute(text("""INSERT INTO autotrade_vault (holder, kind, secret_enc) VALUES (:h, :k, :e)
+                       ON CONFLICT (holder, kind) DO UPDATE SET secret_enc=EXCLUDED.secret_enc, updated_at=NOW()"""),
+               {"h": holder, "k": kind, "e": _fernet().encrypt(json.dumps(body).encode()).decode()})
+    db.commit()
+
+
+def connect_tradier(db: Session, holder: str, role: str, mode: str, token: str) -> dict[str, Any]:
+    from backend.app.services.brokers import Tradier
+
+    accts = Tradier.accounts(mode, token.strip())
+    if not accts:
+        raise ValueError("This Tradier token has no brokerage account" + (" — paper tokens come from the sandbox dashboard" if mode == "paper" else ""))
+    a = next((x for x in accts if x.get("type") == "margin"), accts[0])
+    return connect(db, holder, role, mode, str(a["account_number"]), token, broker="tradier")
+
+
+def connect_tasty(db: Session, holder: str, role: str, mode: str, client_secret: str, refresh_token: str) -> dict[str, Any]:
+    from backend.app.services.brokers import Tasty
+
+    accts, b = Tasty.accounts(mode, {"client_secret": client_secret.strip(), "refresh_token": refresh_token.strip()})
+    if not accts:
+        raise ValueError("No tastytrade account under this grant" + (" — sandbox grants come from the cert environment" if mode == "paper" else ""))
+    a = accts[0]
+    b["margin_or_cash"] = a.get("margin-or-cash")
+    return connect(db, holder, role, mode, str(a.get("account-number")), json.dumps(b), auth="oauth", broker="tastytrade")
+
+
+def _redirect(path: str) -> str:
+    return os.getenv("PUBLIC_BASE_URL", "https://signalpha.app").rstrip("/") + path
+
+
+def robinhood_start(holder: str, role: str) -> str:
+    from backend.app.services.ap_auth import _redis
+    from backend.app.services.brokers import Robinhood
+
+    if not live_allowed(role):
+        raise PermissionError("Robinhood agentic accounts trade real money — live trading is limited to the owner account for now")
+    cb = _redirect("/api/v1/autopilot/robinhood/callback")
+    cid = Robinhood.client_id(cb)
+    state, verifier = secrets.token_urlsafe(24), secrets.token_urlsafe(64)[:96]
+    _redis().set(f"ap:rhoauth:{state}", json.dumps({"holder": holder, "role": role, "verifier": verifier, "client_id": cid}), ex=600)
+    return Robinhood.authorize_url(cid, cb, state, verifier)
+
+
+def robinhood_finish(db: Session, code: str, state: str) -> dict[str, Any]:
+    from backend.app.services.ap_auth import _redis
+    from backend.app.services.brokers import Robinhood
+
+    raw = _redis().getdel(f"ap:rhoauth:{state}") if state else None
+    if not raw:
+        raise ValueError("This authorisation link has expired — start again from the Autopilot page")
+    st = json.loads(raw)
+    b = Robinhood.exchange(code, st["client_id"], _redirect("/api/v1/autopilot/robinhood/callback"), st["verifier"])
+    rh = Robinhood("live", "", b)
+    b["tools"] = rh.tools()
+    accts = rh.call("get_accounts")
+    items = accts if isinstance(accts, list) else Robinhood._find(accts, "results", "accounts", "items") or []
+    agentic = [a for a in items if isinstance(a, dict) and "agent" in json.dumps(a).lower()] or (items if isinstance(items, list) else [])
+    number = str(Robinhood._find(agentic[0], "account_number", "number", "id")) if agentic else ""
+    return connect(db, st["holder"], st["role"], "live", number, json.dumps(b), auth="oauth", broker="robinhood")
+
+
+def snaptrade_start(db: Session, holder: str, role: str, broker: str | None) -> str:
+    from backend.app.services.ap_auth import _redis
+    from backend.app.services.brokers import SnapTrade
+
+    if not live_allowed(role):
+        raise PermissionError("Brokers connected through SnapTrade trade real money — live trading is limited to the owner account for now")
+    u = _vault_get(db, holder, "snaptrade")
+    if not u:
+        uid = f"sa-{holder}-{secrets.token_hex(4)}"
+        u = {"user_id": uid, "user_secret": SnapTrade.register(uid)}
+        _vault_put(db, holder, "snaptrade", u)
+    state = secrets.token_urlsafe(24)
+    _redis().set(f"ap:snapstate:{state}", json.dumps({"holder": holder, "role": role}), ex=1800)
+    return SnapTrade.portal(u["user_id"], u["user_secret"], _redirect(f"/api/v1/autopilot/snaptrade/callback?state={state}"), broker)
+
+
+def snaptrade_finish(db: Session, state: str) -> list[dict[str, Any]]:
+    from backend.app.services.ap_auth import _redis
+    from backend.app.services.brokers import SnapTrade
+
+    raw = _redis().getdel(f"ap:snapstate:{state}") if state else None
+    if not raw:
+        raise ValueError("This connection link has expired — start again from the Autopilot page")
+    st = json.loads(raw)
+    u = _vault_get(db, st["holder"], "snaptrade")
+    out = []
+    for a in SnapTrade.list_accounts(u["user_id"], u["user_secret"]):
+        inst = (a.get("institution_name") or "broker").strip()
+        mode = "paper" if "practice" in inst.lower() or "paper" in inst.lower() else "live"
+        out.append(connect(db, st["holder"], st["role"], mode, str(a["id"]), json.dumps(u), auth="oauth",
+                           broker=f"snaptrade:{inst}"))
+    return out
 
 
 def disconnect(db: Session, holder: str, account_id: int) -> None:
@@ -410,7 +537,17 @@ def _open_trades(db: Session, account_id: int) -> list[dict[str, Any]]:
         {"a": account_id, "dead": list(DEAD)}).mappings().all()]
 
 
-def _guard(s: dict, alp: Alpaca, mode: str) -> tuple[bool, str, dict]:
+def _last_equity(db: Session | None, account_id: int | None) -> float | None:
+    """Yesterday's last equity mark, for brokers that do not report a previous close."""
+    if db is None or account_id is None:
+        return None
+    v = db.execute(text("""SELECT pnl FROM autotrade_marks WHERE account_id=:a AND strategy='_equity'
+                           AND (at AT TIME ZONE 'America/New_York')::date < :d ORDER BY at DESC LIMIT 1"""),
+                   {"a": account_id, "d": _now().date()}).scalar()
+    return float(v) if v is not None else None
+
+
+def _guard(s: dict, alp: Alpaca, mode: str, db: Session | None = None, account_id: int | None = None) -> tuple[bool, str, dict]:
     if not s["enabled"]:
         return False, "Autopilot is off", {}
     if mode == "live" and not s.get("live_ack_at"):
@@ -419,28 +556,38 @@ def _guard(s: dict, alp: Alpaca, mode: str) -> tuple[bool, str, dict]:
     if acct.get("trading_blocked") or acct.get("account_blocked"):
         return False, "The broker has blocked trading on this account", acct
     eq = float(acct.get("equity", 0))
-    day_pl = eq - float(acct.get("last_equity", 0))
+    last = acct.get("last_equity")
+    last = float(last) if last not in (None, "") else _last_equity(db, account_id)
+    day_pl = eq - last if last else 0.0
     if day_pl <= -abs(s["daily_loss_pct"]) / 100 * eq:
         return False, f"Daily loss limit reached ({day_pl:+.2f})", acct
     return True, "", acct
 
 
 class _Book:
-    """What one account holds right now, for sizing and for the one-position-per-ticker rule."""
+    """What one account holds right now: gross exposure for the limits, each ticker's direction
+    (a long and a short in the same name cannot live in one account), slots per strategy."""
 
     def __init__(self, db: Session, row, alp: Alpaca):
         self.positions = alp.positions()
-        self.gross = sum(abs(float(p["market_value"])) for p in self.positions)
-        self.tickers = {p["symbol"] for p in self.positions}
+        self.gross = sum(abs(float(p["market_value"] or 0)) for p in self.positions)
+        self.sides: dict[str, set[str]] = {}
+        for p in self.positions:
+            self.sides.setdefault(p["symbol"], set()).add("short" if float(p["qty"]) < 0 else "long")
         self.trades = _open_trades(db, row["id"])
-        self.tickers |= {t["ticker"] for t in self.trades}
+        for t in self.trades:
+            self.sides.setdefault(t["ticker"], set()).add("short" if t["side"] == "sell" else "long")
         self.slots_used: dict[str, int] = {}
         for t in self.trades:
             self.slots_used[t["rule"]] = self.slots_used.get(t["rule"], 0) + 1
 
+    def same_strategy(self, rule: str, ticker: str) -> bool:
+        return any(t["rule"] == rule and t["ticker"] == ticker for t in self.trades)
 
-def _place(db: Session, row, s: dict, alp: Alpaca, c, *, tif: str, book: _Book, acct: dict) -> bool:
-    """One entry for one call, inside every limit."""
+
+def _place(db: Session, row, s: dict, alp: Alpaca, c, *, tif: str, book: _Book, acct: dict,
+           notional: float | None = None) -> bool:
+    """One entry for one signal (a direction call, a strategy signal, or a target), inside every limit."""
     from backend.app.services.direction_service import RULES
 
     st = s["strategies"][c["rule"]]
@@ -448,7 +595,7 @@ def _place(db: Session, row, s: dict, alp: Alpaca, c, *, tif: str, book: _Book, 
     short = c["side"] == "SHORT"
     side = "sell" if short else "buy"
     cid = f"sa{row['id']}-{c['id']}-entry"
-    per = equity * st["alloc"] / 100 / max(st["slots"], 1)
+    per = notional if notional is not None else equity * st["alloc"] / 100 / max(st["slots"], 1)
     max_gross = equity * s["max_gross_pct"] / 100
     if row["mode"] == "live":
         cap_trade, cap_gross = live_caps()
@@ -458,10 +605,12 @@ def _place(db: Session, row, s: dict, alp: Alpaca, c, *, tif: str, book: _Book, 
         skip = "strategy switched off"
     elif book.slots_used.get(c["rule"], 0) >= st["slots"]:
         skip = f"all {st['slots']} slots in use"
-    elif c["ticker"] in book.tickers:
-        skip = "already holding this ticker"
+    elif ("long" if short else "short") in book.sides.get(c["ticker"], set()):
+        skip = "the account holds this ticker the other way"
+    elif book.same_strategy(c["rule"], c["ticker"]):
+        skip = "this strategy already holds this ticker"
     elif short and (not s["allow_short"] or not acct.get("shorting_enabled") or equity < SHORT_MIN_EQUITY):
-        skip = "shorting unavailable (needs margin and $2,000 equity)"
+        skip = "shorting unavailable on this account (needs a margin account with $2,000; SnapTrade and Robinhood agentic accounts cannot short)"
     asset = None
     if not skip:
         try:
@@ -491,13 +640,16 @@ def _place(db: Session, row, s: dict, alp: Alpaca, c, *, tif: str, book: _Book, 
         _record(db, **base, qty=qty, status="failed", error=str(exc))
         event(db, row["id"], "error", f"{c['ticker']} entry failed: {exc}")
         return False
-    exit_session = _session_after(alp, c["session"], RULES[c["rule"]]["hold"])
+    exit_session = c["exit_session"] if "exit_session" in c else _session_after(alp, c["session"], RULES[c["rule"]]["hold"])
     _record(db, **base, qty=qty, boid=o["id"], status=o["status"], exit_session=exit_session)
     book.gross += qty * px
-    book.tickers.add(c["ticker"])
+    book.sides.setdefault(c["ticker"], set()).add("short" if short else "long")
+    book.trades.append({"rule": c["rule"], "ticker": c["ticker"], "side": side})
     book.slots_used[c["rule"]] = book.slots_used.get(c["rule"], 0) + 1
     how = "on the close" if tif == "cls" else "at market"
-    event(db, row["id"], "trade", f"{side.upper()} {qty} {c['ticker']} {how} · {c['rule']} · gap {c['gap_x']:+.1f}× · exit {exit_session}")
+    detail = f"gap {c['gap_x']:+.1f}×" if c.get("gap_x") is not None else ""
+    until = f"exit {exit_session}" if exit_session else "held until the rule changes"
+    event(db, row["id"], "trade", " · ".join(x for x in (f"{side.upper()} {qty} {c['ticker']} {how}", c["rule"], detail, until) if x))
     _notify(row, f"{side.upper()} {qty} {c['ticker']} {how} ({c['rule']})")
     return True
 
@@ -567,8 +719,11 @@ def run_entries(db: Session) -> dict[str, Any]:
     now = _now()
     if now.weekday() >= 5 or (now.hour, now.minute) < (9, 30) or (now.hour, now.minute) >= ENTRY_DEADLINE:
         return {"why": "outside the entry window"}
+    from backend.app.services.strategies import signals_for
+
     calls = list(db.execute(text("""SELECT * FROM direction_calls WHERE session=:d AND entry='open' AND origin='open'
                                     ORDER BY abs(gap_x) DESC"""), {"d": now.date()}).mappings())
+    calls += signals_for(db, now.date(), "open")
     out = {}
     for row in _accounts(db, True):
         s = _settings(row)
@@ -580,7 +735,7 @@ def run_entries(db: Session) -> dict[str, Any]:
                 out[row["id"]] = 0
                 continue
             alp = _client(row)
-            ok, why, acct = _guard(s, alp, row["mode"])
+            ok, why, acct = _guard(s, alp, row["mode"], db, row["id"])
             if not ok:
                 out[row["id"]] = why
                 continue
@@ -629,20 +784,86 @@ def run_closes(db: Session, phase: str = "moc") -> dict[str, Any]:
                 except BrokerError as exc:
                     _record(db, **base, status="failed", error=str(exc))
                     event(db, row["id"], "error", f"{o['ticker']} closing exit failed: {exc}" + (" — market order at 15:56" if tif == "cls" else ""))
-            ok, why, acct = _guard(s, alp, row["mode"])
-            if ok and s["strategies"]["follow_gap"]["on"]:
-                calls = db.execute(text("""
-                    SELECT c.* FROM direction_calls c WHERE c.session=:d AND c.rule='follow_gap'
-                      AND NOT EXISTS (SELECT 1 FROM autotrade_orders o WHERE o.account_id=:a AND o.call_id=c.id AND o.leg='entry')
-                    ORDER BY abs(c.gap_x) DESC"""), {"d": now.date(), "a": row["id"]}).mappings().all()
+            placed += _close_targets(db, row, s, alp, tif, now)
+            ok, why, acct = _guard(s, alp, row["mode"], db, row["id"])
+            if ok:
+                from backend.app.services.strategies import signals_for
+
+                done = {r[0] for r in db.execute(text("SELECT call_id FROM autotrade_orders WHERE account_id=:a AND leg='entry'"),
+                                                 {"a": row["id"]}).all()}
+                calls = [c for c in db.execute(text("""SELECT * FROM direction_calls WHERE session=:d AND rule='follow_gap'
+                                                       ORDER BY abs(gap_x) DESC"""), {"d": now.date()}).mappings()]
+                calls += signals_for(db, now.date(), "close")
+                calls = [c for c in calls if c["id"] not in done and s["strategies"].get(c["rule"], {}).get("on")]
+                book = _Book(db, row, alp) if calls or _targets_today(db, now) else None
                 if calls:
-                    book = _Book(db, row, alp)
                     placed += sum(_place(db, row, s, alp, c, tif=tif, book=book, acct=acct) for c in calls)
+                if book is not None:
+                    placed += _open_targets(db, row, s, alp, tif, now, book, acct)
             out[row["id"]] = placed
         except Exception as exc:  # noqa: BLE001
             event(db, row["id"], "error", f"closes: {exc}")
             out[row["id"]] = f"error: {exc}"
     return {"accounts": out}
+
+
+def _targets_today(db: Session, now: datetime) -> dict:
+    from backend.app.services.strategies import targets_for
+
+    return targets_for(db, now.date())
+
+
+def _target_trades(db: Session, account_id: int, key: str) -> list[dict]:
+    return [t for t in _open_trades(db, account_id) if t["rule"] == key]
+
+
+def _close_targets(db: Session, row, s: dict, alp, tif: str, now: datetime) -> int:
+    """Target strategies: sell what today's weights dropped (or everything, if the strategy is off)."""
+    n = 0
+    for key, w in _targets_today(db, now).items():
+        on = s["strategies"].get(key, {}).get("on") and s["enabled"]
+        for t in _target_trades(db, row["id"], key):
+            if on and t["ticker"] in w:
+                continue
+            if not (t["filled_qty"] or 0) > 0:
+                continue
+            side = "buy" if t["side"] == "sell" else "sell"
+            q = int(t["filled_qty"])
+            cid = f"sa{row['id']}-{t['call_id']}-exit"
+            base = dict(account_id=row["id"], call_id=t["call_id"], rule=key, ticker=t["ticker"], leg="exit", side=side,
+                        qty=q, tif=tif, cid=cid)
+            try:
+                r = alp.submit(t["ticker"], q, side, tif, cid)
+                _record(db, **base, boid=r["id"], status=r["status"])
+                event(db, row["id"], "trade", f"{side.upper()} {q} {t['ticker']} · {key} rebalance")
+                n += 1
+            except BrokerError as exc:
+                _record(db, **base, status="failed", error=str(exc))
+                event(db, row["id"], "error", f"{t['ticker']} {key} rebalance exit failed: {exc}")
+    return n
+
+
+def _open_targets(db: Session, row, s: dict, alp, tif: str, now: datetime, book: _Book, acct: dict) -> int:
+    """Target strategies: buy what today's weights added, sized sleeve x weight."""
+    from backend.app.services.strategies import target_signal
+
+    n = 0
+    equity = float(acct.get("equity", 0))
+    for key, w in _targets_today(db, now).items():
+        st = s["strategies"].get(key)
+        if not st or not st["on"]:
+            continue
+        held = {t["ticker"] for t in _target_trades(db, row["id"], key)}
+        for ticker, weight in w.items():
+            if ticker in held or weight <= 0:
+                continue
+            c = target_signal(db, key, ticker, now.date())
+            done = db.execute(text("SELECT 1 FROM autotrade_orders WHERE account_id=:a AND call_id=:c AND leg='entry'"),
+                              {"a": row["id"], "c": c["id"]}).first()
+            if done:
+                continue
+            n += _place(db, row, s, alp, c, tif=tif, book=book, acct=acct, notional=equity * st["alloc"] / 100 * float(weight))
+    return n
 
 
 def flatten_late(db: Session) -> dict[str, Any]:
@@ -683,7 +904,8 @@ def reconcile(db: Session) -> dict[str, Any]:
             continue
         for o in open_orders:
             try:
-                r = alp.order(o["client_order_id"])
+                r = (alp.order_any(o["client_order_id"], o["broker_order_id"]) if hasattr(alp, "order_any")
+                     else alp.order(o["client_order_id"]))
             except BrokerError:
                 continue
             fq = float(r.get("filled_qty") or 0)
@@ -859,14 +1081,31 @@ def accounts_of(db: Session, holder: str) -> list[dict[str, Any]]:
     rows = db.execute(text("SELECT * FROM autotrade_accounts WHERE holder=:h ORDER BY broker, mode DESC"), {"h": holder}).mappings().all()
     return [{"id": r["id"], "mode": r["mode"], "broker": r["broker"], "auth": r["auth"], "account_hint": r["account_hint"],
              "key_hint": "OAuth" if r["auth"] == "oauth" else r["key_id"][:4] + "…" + r["key_id"][-2:],
-             "label": ("moomoo" if r["broker"] == "moomoo" else "Alpaca") + " · " + r["mode"],
+             "label": broker_name(r["broker"]) + " · " + r["mode"],
+             "name": broker_name(r["broker"]),
              "settings": _settings(r), "created_at": r["created_at"].isoformat()} for r in rows]
+
+
+def broker_catalog() -> list[dict[str, Any]]:
+    from backend.app.services.brokers import CATALOG, SnapTrade
+
+    out = []
+    for b in CATALOG:
+        b = dict(b)
+        if b["key"] == "snaptrade":
+            b["ready"] = SnapTrade.enabled()
+        elif b["key"] == "alpaca":
+            b["ready"], b["oauth"] = True, oauth_enabled()
+        else:
+            b["ready"] = b["via"] is not None
+        out.append(b)
+    return out
 
 
 def overview(db: Session, holder: str, role: str) -> dict[str, Any]:
     cap_trade, cap_gross = live_caps()
     return {"holder": holder, "role": role, "live_allowed": live_allowed(role), "live_ack_phrase": LIVE_ACK,
-            "oauth": oauth_enabled(), "moomoo": True, "defaults": DEFAULTS,
+            "oauth": oauth_enabled(), "moomoo": True, "defaults": DEFAULTS, "brokers": broker_catalog(),
             "caps": {"live_per_trade": cap_trade, "live_gross": cap_gross, "short_min_equity": SHORT_MIN_EQUITY},
             "accounts": accounts_of(db, holder), "now_et": _now().isoformat()}
 

@@ -132,3 +132,42 @@ def ohlc(ticker: str, since: str = ""):
         return {"ticker": ticker, "candles": candles}
     except Exception as e:
         return {"ticker": ticker, "candles": [], "error": str(e)[:120]}
+
+
+@router.get("/insiders")
+def insiders():
+    """Officers and directors buying their own stock (Form 4, code P), last 30 days, grouped by
+    company; clusters of three or more insiders are what the insider_cluster strategy trades.
+    Alongside: what following the desk's other sources has been worth (strategy lab files)."""
+    import json
+    from pathlib import Path
+    import os
+    from sqlalchemy import text
+    from backend.app.db.session import SessionLocal
+
+    with SessionLocal() as db:
+        rows = [dict(r) for r in db.execute(text("""
+            SELECT t.ticker, count(DISTINCT t.owner_cik) insiders, sum(t.value) value, max(t.filed) last_filed,
+                   min(t.traded) first_trade, u.tier
+            FROM insider_trades t LEFT JOIN universe u ON u.ticker=t.ticker
+            WHERE t.filed >= CURRENT_DATE - 30 AND t.value >= 10000
+            GROUP BY t.ticker, u.tier ORDER BY count(DISTINCT t.owner_cik) DESC, sum(t.value) DESC LIMIT 40""")).mappings()]
+        sig = [dict(r) for r in db.execute(text("""SELECT ticker, session, exit_session, meta FROM strategy_signals
+                                                   WHERE strategy='insider_cluster' ORDER BY session DESC LIMIT 20""")).mappings()]
+        since = db.execute(text("SELECT min(filed) FROM insider_trades")).scalar()
+    for r in rows:
+        r["value"] = float(r["value"] or 0)
+        r["last_filed"], r["first_trade"] = str(r["last_filed"]), str(r["first_trade"])
+    for r in sig:
+        r["session"], r["exit_session"] = str(r["session"]), str(r["exit_session"])
+    base = Path(os.getenv("DATA_DIR", "/app/data"))
+    load = lambda n: json.loads((base / n).read_text()) if (base / n).exists() else {}  # noqa: E731
+    fl, misc = load("research_filings.json").get("rules", {}), load("research_misc.json")
+    pick = lambda b: {"excess": (b.get("excess") or {}).get("mean"), "t": (b.get("excess") or {}).get("t"),  # noqa: E731
+                      "n": (b.get("excess") or {}).get("n"), "cagr": (b.get("all") or {}).get("cagr"),
+                      "spy": (b.get("all") or {}).get("spy_cagr")} if b else None
+    return {"since": str(since) if since else None, "companies": rows, "signals": sig,
+            "verdicts": {"calls": {"h5": ((misc.get("oracle") or {}).get("h5") or {}),
+                                   "h1": ((misc.get("oracle") or {}).get("h1") or {})},
+                         "insider_cluster": pick(fl.get("insider_cluster")),
+                         "clone_buffett": pick(fl.get("clone_buffett")), "clone_ackman": pick(fl.get("clone_ackman"))}}

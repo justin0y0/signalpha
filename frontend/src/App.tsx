@@ -9,6 +9,7 @@ import { PricingPage } from './pages/PricingPage'
 import { ModelPage } from './pages/ModelPage'
 import { StrategyPage } from './pages/StrategyPage'
 import { AutopilotPage } from './pages/AutopilotPage'
+import { LegalPage } from './pages/LegalPage'
 import { OraclePage } from './pages/OraclePage'
 import { PulsePage } from './pages/PulsePage'
 import { MarketsPage } from './pages/MarketsPage'
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="/oracle" element={<OraclePage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/contact" element={<ContactPage />} />
+        <Route path="/legal" element={<LegalPage />} />
 
         {/* Old top-level tabs, now sections. Redirects keep existing links and any
             bookmarks working after the eleven-tab nav was collapsed to seven. */}

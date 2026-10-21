@@ -427,6 +427,12 @@ def live_record(db: Session, key: str, slots: int | None = None) -> dict[str, An
 
 
 def catalog(db: Session) -> dict[str, Any]:
+    """The whole /autopilot/strategies body, cached for two minutes (a cold build is ~30 s:
+    ten backtests, live records, research files); the backend warms it at start."""
+    return _cached(("catalog",), 120, lambda: _catalog(db))
+
+
+def _catalog(db: Session) -> dict[str, Any]:
     from backend.app.services.direction_service import backtest as rule_stats
 
     stats = rule_stats(db)
@@ -438,7 +444,47 @@ def catalog(db: Session) -> dict[str, Any]:
                     "signal": {k: s.get(k) for k in ("all", "excess", "discovery", "holdout", "years_positive",
                                                      "years_total", "per_year", "span")},
                     "backtest": backtest(db, key), "live": live_record(db, key)})
-    return {"as_of": datetime.now(timezone.utc).isoformat(), "strategies": out, "research": research()}
+    from backend.app.services import strategies as st
+
+    cards = [direction_card(c) for c in out] + st.catalog()
+    order = {k: i for i, k in enumerate(st.ORDER)}
+    cards.sort(key=lambda c: order.get(c["key"], 99))
+    return {"as_of": datetime.now(timezone.utc).isoformat(), "strategies": out, "cards": cards, "research": research()}
+
+
+def direction_card(c: dict[str, Any]) -> dict[str, Any]:
+    """A direction rule in the page's common card shape (services/strategies.card).
+
+    For rules that enter at the open the headline is the replay at the bot's real fill —
+    the open itself is out of reach — and the open-price backtest is kept as `alt`."""
+    from backend.app.services.strategies import SPECS
+
+    spec = SPECS[c["key"]]
+    bt = c["backtest"]
+    rp = bt.get("replay") or {}
+    real = bool(rp.get("stats") and c["entry"] == "open")
+    src = rp["stats"] if real else bt["stats"]
+    line = lambda cs: [{"t": x["t"], "v": x["c"]} for x in cs or []]  # noqa: E731
+    stats = {"cagr": src.get("cagr"), "spy_cagr": src.get("spy_cagr"), "max_dd": src.get("max_dd"),
+             "sharpe": src.get("sharpe"), "years_up": src.get("years_up"), "years_total": src.get("years_total"),
+             "years": src.get("years") or [], "span": src.get("span"), "trades": src.get("trades"),
+             "signals": src.get("signals"), "hit": src.get("hit"), "avg": src.get("avg"),
+             "stress_cagr": src.get("stress_cagr"), "holdout_cagr": bt["stats"].get("holdout_cagr"),
+             "excess": (c["signal"].get("excess") or {}).get("mean"), "excess_t": (c["signal"].get("holdout") or {}).get("t"),
+             "basis": "replay" if real else "backtest"}
+    out = {"key": c["key"], "family": spec["family"], "kind": "direction", "side": c["side"], "entry": c["entry"],
+           "hold": c["hold"], "slots": spec["slots"], "alloc": spec["alloc"], "on": spec["on"], "source": spec["source"],
+           "desk": spec["desk"], "live_from": c["live_from"], "tiers": c["tiers"],
+           "backtest": {"stats": stats, "series": line(rp.get("candles") if real else bt.get("candles")),
+                        "bench": (rp.get("bench") if real else bt.get("bench")) or [],
+                        "replay_summary": rp.get("summary") if real else None},
+           "live": {"n": c["live"]["stats"].get("n"), "closed": c["live"]["stats"].get("closed"),
+                    "right": c["live"]["stats"].get("right"), "ret": c["live"]["stats"].get("ret"),
+                    "calls": c["live"].get("calls") or [], "candles": c["live"].get("candles") or []}}
+    if real:
+        out["alt"] = {"basis": "open", "series": line(bt.get("candles")), "bench": bt.get("bench") or [],
+                      "cagr": bt["stats"].get("cagr")}
+    return out
 
 
 # ───────────────────────────── the rest of the lab ─────────────────────────────
@@ -505,6 +551,31 @@ def research() -> list[dict[str, Any]]:
                         "curve": candles(pl[key].get("curve") or [], "M")})
         else:
             out.append({"key": key, "verdict": "pending"})
+    # Published rules that did not survive their own publication (research_etf.py): numbers after it.
+    etf = (_json("research_etf.json") or {}).get("rules", {})
+    for key, verdict in (("gem", "none"), ("tom", "none"), ("overnight", "none"), ("fomc", "weak")):
+        b = etf.get(key)
+        if not b:
+            continue
+        post = b.get("post") or {}
+        out.append({"key": f"etf_{key}", "verdict": verdict, "since": b.get("published"), "n": post.get("n_days"),
+                    "nums": {"cagr": post.get("cagr"), "spy": post.get("spy_cagr"), "sharpe": post.get("sharpe"),
+                             "spy_sharpe": post.get("spy_sharpe"), "dd": post.get("max_dd"),
+                             "ev": (b.get("event_ret") or {}).get("post")}})
+    # Single-stock and filing rules that did not hold up (research_equity.py, research_filings.py).
+    eq = (_json("research_equity.json") or {}).get("rules", {})
+    fl = (_json("research_filings.json") or {}).get("rules", {})
+    for src, key in ((eq, "rsi2_mega"), (eq, "pre_run_ml"), (eq, "momentum"), (fl, "clone_buffett"),
+                     (fl, "clone_ackman"), (fl, "clone_burry")):
+        b = src.get(key)
+        if not b:
+            continue
+        ex, ew = b.get("excess") or {}, b.get("excess_ew") or {}
+        good = (ew.get("t") or ex.get("t") or 0) >= 2 and (ew.get("mean") if ew else ex.get("mean") or 0) > 0
+        out.append({"key": key, "verdict": "weak" if good else "none", "n": ex.get("n"),
+                    "since": ((b.get("all") or {}).get("start") or "")[:4],
+                    "nums": {"ex": ex.get("mean"), "ex_t": ex.get("t"), "ew": ew.get("mean"), "ew_t": ew.get("t"),
+                             "cagr": (b.get("all") or {}).get("cagr"), "spy": (b.get("all") or {}).get("spy_cagr")}})
     orc = misc.get("oracle") or {}
     if orc:
         out.append({"key": "oracle", "verdict": "none", "n": (orc.get("h1") or {}).get("n"), "since": orc.get("since"),

@@ -13,7 +13,7 @@ BASE = Path(__file__).resolve().parent.parent / "frontend" / "src" / "i18n"
 
 
 def _esc(v: str) -> str:
-    return v.replace("\\", "\\\\").replace("'", "\\'")
+    return v.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
 
 
 def _set(path: Path, values: dict[str, str]) -> list[str]:

@@ -35,7 +35,7 @@ import pandas as pd
 from sqlalchemy import text
 
 from backend.app.db.session import SessionLocal
-from data_pipeline.research_common import alpaca_daily, curve, event_sleeve, out_path, summary, tstat
+from data_pipeline.research_common import alpaca_daily, curve, event_sleeve, ew_index, out_path, summary, tstat
 
 UA = {"User-Agent": os.getenv("SEC_USER_AGENT") or "Signalpha-research contact@signalpha.app"}
 CACHE = Path(os.getenv("DATA_DIR", "/app/data")) / "sec_cache"
@@ -204,10 +204,13 @@ def main() -> None:
         plans[key] = plan
         print(f"13F {key}: {len(plan)} filings, latest {plan[-1]['filed'] if plan else None} top {plan[-1]['top'] if plan else None}", flush=True)
 
-    names = sorted(set(cl.ticker) | tick_13f | {"SPY"})
+    names = sorted(set(cl.ticker) | tick_13f | uni | {"SPY"})
     O, C = alpaca_daily(names, START)
     days = C.index
     spy = C.SPY.pct_change().fillna(0)
+    ew = ew_index(C, sorted(uni))
+    out["ew_universe"] = summary(ew.pct_change().fillna(0), spy)
+    print(f"EW universe (large/mid/small) CAGR {out['ew_universe']['cagr']*100:+.1f}% vs SPY {out['ew_universe']['spy_cagr']*100:+.1f}%", flush=True)
 
     def nxt(d: pd.Timestamp) -> pd.Timestamp | None:
         k = days.searchsorted(d, side="right")
@@ -216,19 +219,23 @@ def main() -> None:
     def record(key: str, trades: pd.DataFrame, slots: int, extra: dict | None = None) -> None:
         r, taken = event_sleeve(trades, C, O, slots, COST)
         r = r[r.index >= r.ne(0).idxmax()]
-        ex = []
+        ex, ex_ew = [], []
         for t in taken.itertuples():
             try:
                 ex.append(t.ret - (C.SPY.loc[t.exit] / O.SPY.loc[t.entry] - 1))
+                k = days.get_loc(t.entry)
+                ex_ew.append(t.ret - (ew.loc[t.exit] / ew.iloc[max(k - 1, 0)] - 1))
             except KeyError:
                 pass
         body = {"all": summary(r, spy), "per_trade": tstat(taken.ret) if len(taken) else {}, "excess": tstat(ex),
+                "excess_ew": tstat(ex_ew),
                 "signals": int(len(trades)), "taken": int(len(taken)), "slots": slots, **curve(r, spy)}
         body.update(extra or {})
         out["rules"][key] = body
         a, e = body["all"], body["excess"]
         print(f"{key:16s} CAGR {a.get('cagr', 0)*100:+.1f}% vs SPY {a.get('spy_cagr', 0)*100:+.1f}% DD {a.get('max_dd', 0)*100:.0f}% "
-              f"Sharpe {a.get('sharpe') or 0:.2f} vs {a.get('spy_sharpe') or 0:.2f} | excess {e.get('mean', 0)*100:+.2f}% t={e.get('t') or 0:+.1f} n={e.get('n')}", flush=True)
+              f"Sharpe {a.get('sharpe') or 0:.2f} vs {a.get('spy_sharpe') or 0:.2f} | excess {e.get('mean', 0)*100:+.2f}% t={e.get('t') or 0:+.1f} "
+              f"| vs EW {body['excess_ew'].get('mean', 0)*100:+.2f}% t={body['excess_ew'].get('t') or 0:+.1f} n={e.get('n')}", flush=True)
 
     tr = []
     for c in cl.itertuples():

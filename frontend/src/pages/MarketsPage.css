@@ -71,3 +71,17 @@
 .mk-tk small { font: 500 0.62rem var(--font-mono); color: var(--text-muted); margin-left: 0.3rem; }
 .mk-table { min-width: 0; }
 @media (max-width: 600px) { .mk-major { padding: 0.8rem 0.8rem 0.6rem; } .mk-major__row { flex-wrap: wrap; gap: 0.1rem 0.5rem; } .mk-major__row b { font-size: 1.3rem; } }
+
+/* the three market rules Autopilot runs, read off today's tape */
+.mk-rules { display: flex; flex-direction: column; gap: 0.6rem; }
+.mk-rules header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.mk-rules h2 { margin: 0; font: 600 0.66rem var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--signal); }
+.mk-rules header a { font-size: 0.8rem; color: var(--text-secondary); }
+.mk-rules__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-card); }
+.mk-rules__grid > div { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.8rem 0.95rem; min-width: 0; }
+.mk-rules__grid > div + div { border-left: 1px solid var(--border); }
+.mk-rules__k { font: 600 0.58rem var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-tertiary); }
+.mk-rules__grid b { font: 600 1.05rem var(--font-mono); color: var(--text-primary); }
+.mk-rules__why { font-size: 0.76rem; line-height: 1.45; color: var(--text-secondary); }
+.mk-rules__bt { font: 500 0.64rem var(--font-mono); color: var(--text-tertiary); }
+@media (max-width: 760px) { .mk-rules__grid { grid-template-columns: 1fr; } .mk-rules__grid > div + div { border-left: 0; border-top: 1px solid var(--border); } }

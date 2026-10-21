@@ -405,6 +405,10 @@ def _push(m):
     done=set()
     if ch:
         _send(ch); done.add(str(ch))
+    # Subscribers get these only on request: following them has not paid so far
+    # (data_pipeline/research_misc.py — five-session excess vs SPY negative), so they are
+    # news for the owner's chat, not trade alerts for everyone.
+    if os.getenv("ORACLE_PUSH_USERS","0")!="1": return
     try:
         from backend.app.services import auth_service as _auth
         recips=_auth.verified_recipients()
