@@ -385,7 +385,7 @@ def card(key: str) -> dict[str, Any] | None:
     spec = SPECS[key]
     f, k = spec["research"]
     full = _research(f) or {}
-    body = full.get("rules", {}).get(key)
+    body = full.get("rules", {}).get(k)
     if not body:
         return None
     ew_all = full.get("ew_universe") or {}
