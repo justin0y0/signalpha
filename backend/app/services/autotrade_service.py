@@ -507,18 +507,59 @@ def _accounts(db: Session, enabled_only: bool) -> list:
     return list(db.execute(text(q)).mappings())
 
 
+def uses_moc(row) -> bool:
+    """Market-on-close orders only where they fill: Alpaca live. Alpaca's paper simulator
+    accepts them and lets every one expire at 16:00 (seen 2026-10-20); moomoo's simulator
+    has no such order. Everyone else closes with a market order at 15:58:20."""
+    return (row.get("broker") or "alpaca") == "alpaca" and row["mode"] == "live"
+
+
+def sweep_overdue(db: Session, row, alp, now: datetime) -> int:
+    """Close at market every position the bot opened whose exit session has passed and whose
+    exit never filled — so one missed closing order cannot turn into an open-ended hold."""
+    n = 0
+    for o in _open_trades(db, row["id"]):
+        if not o["exit_session"] or o["exit_session"] >= now.date() or not (o["filled_qty"] or 0) > 0:
+            continue
+        side = "buy" if o["side"] == "sell" else "sell"
+        q = int(o["filled_qty"])
+        cid = f"sa{row['id']}-{o['call_id']}-exit-{now:%m%d}"
+        base = dict(account_id=row["id"], call_id=o["call_id"], rule=o["rule"], ticker=o["ticker"], leg="exit-late",
+                    side=side, qty=q, tif="day", cid=cid)
+        try:
+            r = alp.submit(o["ticker"], q, side, "day", cid)
+            _record(db, **base, boid=r["id"], status=r["status"])
+            event(db, row["id"], "warn", f"{side.upper()} {q} {o['ticker']} at market — overdue exit "
+                                         f"(due {o['exit_session']}, its closing order did not fill)")
+            n += 1
+        except BrokerError as exc:
+            _record(db, **base, status="failed", error=str(exc))
+            event(db, row["id"], "error", f"{o['ticker']} overdue exit failed: {exc}")
+            _notify(row, f"⚠ could not close overdue {o['ticker']}: {exc}")
+    return n
+
+
 def run_open(db: Session) -> dict[str, Any]:
-    """A minute after the bell: opening prints from the broker feed, the day's calls, the orders."""
+    """Seconds after the bell: overdue exits first, then the opening prints from the broker
+    feed, the day's calls and their orders."""
     from backend.app.services import direction_service as ds
     from backend.app.services.strategy_lab import opens_today
 
     now = _now()
     if now.weekday() >= 5 or (now.hour, now.minute) < (9, 30) or (now.hour, now.minute) >= ENTRY_DEADLINE:
         return {"why": "outside the entry window"}
+    swept = {}
+    for row in _accounts(db, False):
+        try:
+            k = sweep_overdue(db, row, _client(row), now)
+            if k:
+                swept[row["id"]] = k
+        except Exception as exc:  # noqa: BLE001
+            event(db, row["id"], "error", f"overdue sweep: {exc}")
     cands = ds.candidates(db, now.date())
     opens = opens_today(sorted({c["ticker"] for c in cands}), db) if cands else {}
     issued = ds.issue_due(db, opens=opens) if cands else {"issued": 0}
-    return {"candidates": len(cands), "opened": len(opens), "issued": issued, "entries": run_entries(db)}
+    return {"swept": swept, "candidates": len(cands), "opened": len(opens), "issued": issued, "entries": run_entries(db)}
 
 
 def run_entries(db: Session) -> dict[str, Any]:
@@ -551,24 +592,24 @@ def run_entries(db: Session) -> dict[str, Any]:
     return {"calls": len(calls), "accounts": out}
 
 
-def run_closes(db: Session, broker: str = "alpaca") -> dict[str, Any]:
+def run_closes(db: Session, phase: str = "moc") -> dict[str, Any]:
     """Closing orders: exits due today (every connection), then follow_gap entries (enabled ones).
 
-    Alpaca takes market-on-close orders until 15:50, so its pass runs at 15:44. moomoo has
-    no on-close order in its simulator: its pass runs at 15:58 with market orders."""
+    phase "moc" (15:44): connections that take market-on-close orders (uses_moc), before
+    Alpaca's 15:50 cutoff. phase "late" (15:58:20): everyone else, at market."""
     now = _now()
-    cutoff = CLOSE_CUTOFF if broker == "alpaca" else (16, 0)
+    cutoff = CLOSE_CUTOFF if phase == "moc" else (16, 0)
     if now.weekday() >= 5 or (now.hour, now.minute) >= cutoff:
         return {"why": "after the closing-order cutoff"}
-    tif = "cls" if broker == "alpaca" else "day"
+    tif = "cls" if phase == "moc" else "day"
     out = {}
     for row in _accounts(db, False):
-        if (row["broker"] or "alpaca") != broker:
+        if uses_moc(row) != (phase == "moc"):
             continue
         s = _settings(row)
         try:
             alp = _client(row)
-            placed = 0
+            placed = sweep_overdue(db, row, alp, now) if phase == "late" else 0
             # Exits run even if Autopilot was switched off after the entry: a position the
             # bot opened is a position the bot closes.
             for o in _open_trades(db, row["id"]):
@@ -587,7 +628,7 @@ def run_closes(db: Session, broker: str = "alpaca") -> dict[str, Any]:
                     event(db, row["id"], "trade", f"{side.upper()} {q} {o['ticker']} {how} · exit · {o['rule']}")
                 except BrokerError as exc:
                     _record(db, **base, status="failed", error=str(exc))
-                    event(db, row["id"], "error", f"{o['ticker']} on-close exit failed: {exc} — market order at 15:56")
+                    event(db, row["id"], "error", f"{o['ticker']} closing exit failed: {exc}" + (" — market order at 15:56" if tif == "cls" else ""))
             ok, why, acct = _guard(s, alp, row["mode"])
             if ok and s["strategies"]["follow_gap"]["on"]:
                 calls = db.execute(text("""

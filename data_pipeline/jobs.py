@@ -502,7 +502,7 @@ def autopilot_job(step: str) -> None:
     db = SessionLocal()
     try:
         fn = {"open": at.run_open, "entries": at.run_entries, "closes": at.run_closes, "flatten": at.flatten_late,
-              "reconcile": at.reconcile, "closes_moomoo": lambda d: at.run_closes(d, broker="moomoo")}[step]
+              "reconcile": at.reconcile, "closes_late": lambda d: at.run_closes(d, phase="late")}[step]
         result = fn(db)
         if step != "reconcile" or result.get("updated"):
             logger.info("Autopilot %s: %s", step, result)

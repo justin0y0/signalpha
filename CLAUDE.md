@@ -456,6 +456,11 @@ Justin：导航挤、首页波形图眼花；平台的 ML 预测、AL 回归、�
 
 **界面**：导航把 市场/盘中脉搏/名人信号 收进「研究台」下拉；首页 `EarningsTrace` 从每份财报一根尖刺（全市场后几百根 + 重叠标签 + 发光）改为每个交易日一根堆叠柱（琥珀=大动、蓝=偏高，顶上数字=大动份数，日期下=总份数）+ 右侧当天前 6 名；回测图改 `EquityLine`（对数收益线 + 回撤带 + 年度小柱），K 线只用于实盘日线。
 
+### 6l. 2026-10-20 实盘第一天发现：Alpaca 模拟盘的 MOC 单全部过期
+
+10-20 第一个交易日：CCK（buy_flush）9:32:30 市价买入成交 $110，但 15:44 提交的 4 张 `time_in_force=cls` 单（CCK 平仓 + WASH/RBB/COSO 三张 follow_gap 入场）**在 16:00 全部 expired**——Alpaca 模拟盘接受 MOC 单但不撮合。15:56 的 `flatten_late` 只看已失败的单，当时这些单还是 accepted，所以没兜住：CCK 当日单变成隔夜持仓，三张入场全部错过。
+修复：`uses_moc(row)` 只有 Alpaca 实盘用 MOC；其他连接（所有模拟盘、moomoo）在 15:58:20 用市价单（job `autopilot_closes_late`）。新增 `sweep_overdue`：每个开盘轮次和 15:58 轮次先把「平仓日已过、平仓单没成交」的仓位市价平掉（cid `sa<acct>-<call>-exit-<mmdd>`，同日幂等）。用 10-20 的真实状态预演过：10-21 9:30:20 会卖出 CCK。
+
 ### 6b. 仍未解决
 
 0. **✅ 已解决 — 标签泄漏（walk-forward 重生成完成并上线）**
@@ -594,7 +599,7 @@ ORM `create_all` 建：以上 7 张 + `simulation_config` `simulation_state` `si
 | `run_pulse_scan` | 每 5 分钟（仅工作日 04:00–20:00 ET） |
 | `autopilot_open_0..3` | 工作日 09:30:20、09:30:50、09:31:30、09:32:30（读开盘 → 发方向信号 → 下单） |
 | `autopilot_entries` | 工作日 09:37、09:51 |
-| `autopilot_closes` / `autopilot_flatten` / `autopilot_closes_moomoo` | 工作日 15:44（Alpaca MOC）/ 15:56 / 15:58（moomoo 市价） |
+| `autopilot_closes` / `autopilot_flatten` / `autopilot_closes_late` | 工作日 15:44（只有 Alpaca 实盘走 MOC）/ 15:56 / 15:58:20（模拟盘、moomoo 等一律市价） |
 | `autopilot_reconcile` | 工作日 9–16 点每 5 分钟（成交对账 + 策略 P&L mark） |
 
 Oracle 的 `oracle_worker()` 不在 scheduler 里——它在 `backend` 容器的后台线程里跑（`main.py`），每 `ORACLE_SCAN_SEC`（90）秒一次。各数据源另有 `_due()` 节流（redis `oracle:srcrun:*`，ARK/国会/EDGAR 1 小时）——**手工调试时直接调 `src_*()` 会吃掉这个节流**，worker 一小时内不会再跑它；调完 `redis-cli del oracle:srcrun:<name>`。
