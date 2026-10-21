@@ -565,14 +565,17 @@ def research() -> list[dict[str, Any]]:
     # Single-stock and filing rules that did not hold up (research_equity.py, research_filings.py).
     eq = (_json("research_equity.json") or {}).get("rules", {})
     fl = (_json("research_filings.json") or {}).get("rules", {})
-    for src, key in ((eq, "rsi2_mega"), (eq, "pre_run_ml"), (eq, "momentum"), (fl, "clone_buffett"),
-                     (fl, "clone_ackman"), (fl, "clone_burry")):
+    for src, key in ((eq, "pre_run"), (eq, "sue"), (eq, "rsi2_mega"), (eq, "pre_run_ml"), (eq, "momentum"),
+                     (fl, "clone_buffett"), (fl, "clone_ackman"), (fl, "clone_burry")):
         b = src.get(key)
         if not b:
             continue
         ex, ew = b.get("excess") or {}, b.get("excess_ew") or {}
-        good = (ew.get("t") or ex.get("t") or 0) >= 2 and (ew.get("mean") if ew else ex.get("mean") or 0) > 0
-        out.append({"key": key, "verdict": "weak" if good else "none", "n": ex.get("n"),
+        good = (ew.get("t") or ex.get("t") or 0) >= 2 and ((ew.get("mean") if ew else ex.get("mean")) or 0) > 0
+        # momentum beats the same-stock pool, but its universe is chosen with today's knowledge
+        # (stocks that rose into today's $300M+ list), which no benchmark on that list removes
+        verdict = "biased" if key == "momentum" else ("weak" if good else "none")
+        out.append({"key": "pre_run_exit" if key == "pre_run" else key, "verdict": verdict, "n": ex.get("n"),
                     "since": ((b.get("all") or {}).get("start") or "")[:4],
                     "nums": {"ex": ex.get("mean"), "ex_t": ex.get("t"), "ew": ew.get("mean"), "ew_t": ew.get("t"),
                              "cagr": (b.get("all") or {}).get("cagr"), "spy": (b.get("all") or {}).get("spy_cagr")}})

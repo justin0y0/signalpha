@@ -461,6 +461,22 @@ Justin：导航挤、首页波形图眼花；平台的 ML 预测、AL 回归、�
 10-20 第一个交易日：CCK（buy_flush）9:32:30 市价买入成交 $110，但 15:44 提交的 4 张 `time_in_force=cls` 单（CCK 平仓 + WASH/RBB/COSO 三张 follow_gap 入场）**在 16:00 全部 expired**——Alpaca 模拟盘接受 MOC 单但不撮合。15:56 的 `flatten_late` 只看已失败的单，当时这些单还是 accepted，所以没兜住：CCK 当日单变成隔夜持仓，三张入场全部错过。
 修复：`uses_moc(row)` 只有 Alpaca 实盘用 MOC；其他连接（所有模拟盘、moomoo）在 15:58:20 用市价单（job `autopilot_closes_late`）。新增 `sweep_overdue`：每个开盘轮次和 15:58 轮次先把「平仓日已过、平仓单没成交」的仓位市价平掉（cid `sa<acct>-<call>-exit-<mmdd>`，同日幂等）。用 10-20 的真实状态预演过：10-21 9:30:20 会卖出 CCK。
 
+### 6m. 2026-10-21：十条策略、全部可接的券商、可以对外的站
+
+Justin：至少 10 条有 edge 的可选策略、和站内内容挂钩；接入所有券商、越方便越好；moomoo 授权到底授权什么；整个平台到可以宣传找用户的状态。
+
+**策略引擎 `services/strategies.py`**：`SPECS` 一张表（页面和执行器共用），三类：财报（4 条方向规则 + `pre_run` 财报前 5 天买入持有过财报到反应日收盘 + `sue_gap` EPS 惊喜前 10% 且 gap_x>1 持有 60 天）、申报（`insider_cluster` ≥3 位董事/高管 30 天内公开市场买入，次日开盘买入持有 21 天）、大盘（`rsi2` SPY RSI-2、`trend` 10 个月均线、`sectors` 行业动量）。事件型信号进 `strategy_signals`（id 从 1,000,000 起，和 direction_calls 共用 autotrade_orders.call_id）；目标型进 `strategy_targets`（收盘调仓，`_close_targets`/`_open_targets`）。生成：06:30 `strategy_insider`（EDGAR 每日索引读前一天 Form 4 → `insider_trades`）、15:20 补跑惊喜同步、15:30 `pre_run`、15:32 `sue_gap`、15:35 `targets`（why 存 JSON code，前端 `lib/why.ts` 翻译）。账户里同一只股票不能一多一空；同一策略不重复持有同一只。
+**研究脚本**（结果在 `data/research_*.json`，`research_common.py` 有事件仓位模拟器、按日 mark、等权基准 `ew_index`、Alpaca 日线缓存 `data/bars_cache`）：
+- `research_etf.py`（Yahoo 总回报 1993 起；发表后单独算）：trend 发表后 8.5% vs SPY 10.9%，回撤 −25% vs −55%；rsi2 持有日 vs 空仓日发表后 t 2.1；GEM 发表后失效（7.5% vs 13.7%）；月末、隔夜、议息前漂移发表后不显著。
+- `research_equity.py`（Alpaca SIP 2015-06 起，大+中盘今日名单）：**幸存者偏差很大：同批股票等权 19.5%/年 vs SPY 15%**，所以个股规则一律对等权比。财报前卖出 vs 等权 +0.06% t1.2（淘汰）；**持有过财报 +0.44% t4.2**；sue 单独 t0.9（淘汰）；**sue_gap +2.55% t2.7**；动量 +2.37%/月 t5.4 但名单本身用了今天的信息（标「数据有偏」不提供）；个股 RSI-2 无。
+- `research_filings.py`（SEC 季度 Form 345 数据集 2015Q3 起 + 13F + OpenFIGI）：**insider_cluster 对 SPY +1.96% t2.7，对等权（含小盘 16.9%/年）+1.67% t2.3**；跟投巴菲特 13F 对等权 −1.94% t−3.3、阿克曼 −1.22%、伯瑞无且 2025-11 起不再申报。
+- 推荐（新连接默认开）：fade_spike 25%、buy_flush 25%、pre_run 20%、sue_gap 15%、insider_cluster 15%。站长模拟盘十条全开（12/12/8/5/15/10/10/10/10/8）。
+
+**券商 `services/brokers.py`**：Tradier（粘 token，sandbox 当模拟盘）、tastytrade（粘个人 OAuth client secret + refresh token；cert sandbox 每晚清仓，只适合当日规则）、Robinhood（官方 Trading MCP：`/.well-known` 公开、动态注册、PKCE，scope `internal`，只能交易 agentic 账户，只做多；下单工具参数从 tools/list 的 schema 映射，映射不确定就拒单——**未实测**）、SnapTrade（签名 HMAC-SHA256；E*TRADE/Webull/Public/tastytrade/Wealthsimple/Trading 212；不能做空；**需要 Justin 注册 SnapTrade 填 `SNAPTRADE_CLIENT_ID/SNAPTRADE_CONSUMER_KEY`**，免费档 5 个连接）。IBKR（需第三方供应商审批）、嘉信（商业 API 审批）、富达（无 API）列出原因。broker 列：`snaptrade:<机构名>`。`autotrade_vault` 存每个 holder 的 SnapTrade userSecret（加密）。
+**moomoo 授权**：官方只有 4 个 scope：quote:read、quote:write（管理自选股）、trade:read、trade:write；我们只需要 trade:read + trade:write，页面教用户只勾这两个；没有任何资金划转 scope；令牌 2 小时、刷新令牌 14 天不用失效。
+
+**站点**：Pulse 下线（不再出现在导航，Telegram 推送关闭 `PULSE_ALERTS=0`，页顶说明）；名人台推送只发站长（`ORACLE_PUSH_USERS=0`），页面新增「跟着他们做赚钱吗」三格对照 + 近 30 天内部人买入；市场页加「大盘规则今天怎么说」；首页导流条加 05；定价页/FAQ 改成和 Autopilot 一致（免费含模拟盘，Pro 是实盘 + 推送）；新增 `/legal`（条款、隐私、风险，需律师过目）；index.html 加 description/OG/Twitter 卡片 + `public/og.png`。
+
 ### 6b. 仍未解决
 
 0. **✅ 已解决 — 标签泄漏（walk-forward 重生成完成并上线）**
@@ -601,6 +617,7 @@ ORM `create_all` 建：以上 7 张 + `simulation_config` `simulation_state` `si
 | `autopilot_entries` | 工作日 09:37、09:51 |
 | `autopilot_closes` / `autopilot_flatten` / `autopilot_closes_late` | 工作日 15:44（只有 Alpaca 实盘走 MOC）/ 15:56 / 15:58:20（模拟盘、moomoo 等一律市价） |
 | `autopilot_reconcile` | 工作日 9–16 点每 5 分钟（成交对账 + 策略 P&L mark） |
+| `strategy_insider` / `strategy_pre_run` / `strategy_sue_gap` / `strategy_targets` | 工作日 06:30 / 15:30 / 15:32 / 15:35 |
 
 Oracle 的 `oracle_worker()` 不在 scheduler 里——它在 `backend` 容器的后台线程里跑（`main.py`），每 `ORACLE_SCAN_SEC`（90）秒一次。各数据源另有 `_due()` 节流（redis `oracle:srcrun:*`，ARK/国会/EDGAR 1 小时）——**手工调试时直接调 `src_*()` 会吃掉这个节流**，worker 一小时内不会再跑它；调完 `redis-cli del oracle:srcrun:<name>`。
 

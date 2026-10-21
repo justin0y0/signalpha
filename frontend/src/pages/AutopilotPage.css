@@ -253,3 +253,6 @@
 .ap-connect__body h3 { margin: 0; font-family: var(--font-display); font-size: 1.3rem; font-weight: 440; }
 .ap-connect__body .ap-dim { margin: 0; font-size: 0.8rem; line-height: 1.55; }
 @media (max-width: 900px) { .ap-connect__body { grid-template-columns: 1fr; } }
+
+.ap-bt dd { white-space: nowrap; }
+.ap-bt dd small { margin-left: 0.25rem; }

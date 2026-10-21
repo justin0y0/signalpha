@@ -4,6 +4,7 @@ import { PageHead } from '../components/PageHead'
 import { Candles, type Candle } from '../components/Candles'
 import { EquityLine } from '../components/EquityLine'
 import { useT } from '../i18n'
+import { whyText } from '../lib/why'
 import './AutopilotPage.css'
 
 /**
@@ -33,7 +34,7 @@ type CardStats = {
   span: (string | null)[] | null; trades: number | null; signals: number | null; hit: number | null; avg: number | null
   excess: number | null; excess_t: number | null; excess_ew?: number | null; excess_ew_t?: number | null
   post_cagr?: number | null; post_spy_cagr?: number | null; published?: string | null
-  stress_cagr?: number | null; holdout_cagr?: number | null; basis?: 'replay' | 'backtest'
+  stress_cagr?: number | null; holdout_cagr?: number | null; basis?: 'replay' | 'backtest'; ew_cagr?: number | null
 }
 type LiveCall = { ticker: string; session: string; status: string; entry_price?: number; mark?: number; ret?: number | null; exit_session?: string }
 type Card = {
@@ -46,7 +47,7 @@ type Card = {
     calls: LiveCall[]; candles?: Candle[]; target?: { session: string; weights: Record<string, number>; why: string } | null }
 }
 type Stat = { n: number; mean: number | null; hit: number | null; t: number | null }
-type Research = { key: string; verdict: 'edge' | 'weak' | 'none' | 'pending'; n?: number; since?: string
+type Research = { key: string; verdict: 'edge' | 'weak' | 'none' | 'pending' | 'biased'; n?: number; since?: string
   nums?: Record<string, any>; curve?: Candle[] }
 type Sub = { on: boolean; alloc: number; slots: number }
 type Settings = {
@@ -328,7 +329,12 @@ function StrategyCard({ s, sub, mine, equity, disabled, live, caps, onSave }: {
       ? <EquityLine series={s.alt.series} bench={s.alt.bench} benchLabel={t('ap.bench')} />
       : view === 'signal' ? liveChart
         : <Candles data={mine?.candles ?? []} empty={t('ap.mine.none')} />
-  const beat = b.cagr != null && b.spy_cagr != null && b.cagr > b.spy_cagr
+  // Single-stock rules run on today's (survivor) list: their fair yardstick is an equal-weight
+  // pool of the same stocks, not SPY. Where the research has it, the card uses it.
+  const ewBench = b.ew_cagr != null
+  const benchCagr = ewBench ? b.ew_cagr! : b.spy_cagr
+  const beat = b.cagr != null && benchCagr != null && b.cagr > benchCagr
+  const edge = b.excess_ew != null ? { v: b.excess_ew, t: b.excess_ew_t ?? null, label: t('ap.bt.edgeEw') } : { v: b.excess, t: b.excess_t, label: t('ap.bt.edge') }
   return (
     <article className={`ap-card ${s.side === 'LONG' ? 'is-long' : 'is-short'} ${sub?.on ? 'is-running' : ''}`}>
       <header>
@@ -340,18 +346,18 @@ function StrategyCard({ s, sub, mine, equity, disabled, live, caps, onSave }: {
       <h3>{t(`ap.name.${s.key}` as 'ap.name.pre_run')}</h3>
       <p className="ap-when">{t(`ap.rule.${s.key}` as 'ap.rule.pre_run')}</p>
       <p className="ap-origin">
-        <span>{t('ap.origin')} {s.source}</span>
+        <span>{t('ap.origin')} {s.source === 'SignAlpha' ? t('ap.src.book') : s.source}</span>
         <a href={s.desk}>{t('ap.from')} {t(`ap.desk.${s.desk.replace(/\W/g, '') || 'home'}` as 'ap.desk.home')} →</a>
       </p>
 
       <p className="ap-basis">{b.basis === 'replay' ? t('ap.basis.replay', { y: y0 }) : t('ap.basis.any', { y: y0 })}</p>
       <dl className="ap-bt">
         <div><dt>{t('ap.bt.cagr')}</dt><dd className={tone(b.cagr)}>{pct(b.cagr)}</dd></div>
-        <div><dt>{t('ap.bt.spy')}</dt><dd className={beat ? '' : 'ap-dim'}>{pct(b.spy_cagr)}</dd></div>
+        <div><dt>{ewBench ? t('ap.bt.ewc') : t('ap.bt.spy')}</dt><dd className={beat ? '' : 'ap-dim'}>{pct(benchCagr)}{ewBench && <small> SPY {pct(b.spy_cagr)}</small>}</dd></div>
         <div><dt>{t('ap.bt.dd')}</dt><dd className="is-down">{pct(b.max_dd, 0)}{b.spy_max_dd != null && <small> / {pct(b.spy_max_dd, 0)}</small>}</dd></div>
         {s.kind === 'target'
           ? <div><dt>{t('ap.bt.sharpe')}</dt><dd className={b.sharpe != null && b.spy_sharpe != null && b.sharpe > b.spy_sharpe ? 'is-up' : ''}>{b.sharpe?.toFixed(2) ?? '—'}<small> / {b.spy_sharpe?.toFixed(2) ?? '—'}</small></dd></div>
-          : <div><dt>{t('ap.bt.edge')}</dt><dd className={tone(b.excess)}>{edgeText(b)}</dd></div>}
+          : <div><dt>{edge.label}</dt><dd className={tone(edge.v)}>{edgeText(edge.v, edge.t)}</dd></div>}
       </dl>
       {chart}
       <div className="ap-views" role="tablist">
@@ -368,7 +374,7 @@ function StrategyCard({ s, sub, mine, equity, disabled, live, caps, onSave }: {
             <div><dt>{t('ap.bt.sharpe')}</dt><dd>{b.sharpe?.toFixed(2) ?? '—'}{b.spy_sharpe != null && <small> / {b.spy_sharpe.toFixed(2)}</small>}</dd></div>
             <div><dt>{t('ap.bt.hit')}</dt><dd>{pctAbs(b.hit)}</dd></div>
             <div><dt>{t('ap.bt.avg')}</dt><dd className={tone(b.avg)}>{pct(b.avg, 2)}</dd></div>
-            {b.excess_ew != null && <div><dt>{t('ap.bt.ew')}</dt><dd className={tone(b.excess_ew)}>{pct(b.excess_ew, 2)} · t {b.excess_ew_t?.toFixed(1) ?? '—'}</dd></div>}
+            {b.excess_ew != null && <div><dt>{t('ap.bt.edge')}</dt><dd className={tone(b.excess)}>{edgeText(b.excess, b.excess_t)}</dd></div>}
             {b.post_cagr != null && <div><dt>{t('ap.bt.post', { y: (b.published ?? '').slice(0, 4) })}</dt><dd className={tone(b.post_cagr)}>{pct(b.post_cagr)}<small> / {pct(b.post_spy_cagr ?? null)}</small></dd></div>}
             {b.holdout_cagr != null && <div><dt>{t('ap.bt.holdout')}</dt><dd className={tone(b.holdout_cagr)}>{pct(b.holdout_cagr)}</dd></div>}
             {b.stress_cagr != null && <div><dt>{t('ap.bt.stress')}</dt><dd className={tone(b.stress_cagr)}>{pct(b.stress_cagr)}</dd></div>}
@@ -379,7 +385,7 @@ function StrategyCard({ s, sub, mine, equity, disabled, live, caps, onSave }: {
             <p className="ap-replay">{t('ap.replay.line', { y: pct(s.backtest.replay_summary.same_trades.yahoo.mean, 2),
               f: pct(s.backtest.replay_summary.same_trades.fill.mean, 2), t: s.backtest.replay_summary.realistic.t?.toFixed(1) ?? '—' })}</p>
           )}
-          {s.live.target && <p className="ap-now">{t('ap.now', { d: s.live.target.session, w: Object.entries(s.live.target.weights).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(' · '), why: s.live.target.why })}</p>}
+          {s.live.target && <p className="ap-now">{t('ap.now', { d: s.live.target.session, w: Object.entries(s.live.target.weights).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(' · '), why: whyText(s.live.target.why, t) })}</p>}
           {s.side === 'SHORT' && <p className="ap-cap">{t('ap.shortNote')}</p>}
           {sub && (
             <div className="ap-size">
@@ -400,9 +406,9 @@ function StrategyCard({ s, sub, mine, equity, disabled, live, caps, onSave }: {
   )
 }
 
-function edgeText(b: CardStats): string {
-  if (b.excess == null) return '—'
-  return `${pct(b.excess, 2)}${b.excess_t != null ? ` · t ${b.excess_t.toFixed(1)}` : ''}`
+function edgeText(v: number | null | undefined, tv: number | null | undefined): ReactNode {
+  if (v == null) return '—'
+  return <>{pct(v, 2)}{tv != null && <small> t {tv.toFixed(1)}</small>}</>
 }
 
 function LiveList({ card }: { card: Card }) {

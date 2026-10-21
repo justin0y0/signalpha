@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useT } from '../i18n'
+import { whyText } from '../lib/why'
 
 /**
  * What the three market rules Autopilot runs say about today's tape — the Markets desk's
@@ -41,7 +42,7 @@ export function MarketRules() {
           <div key={c.key}>
             <span className="mk-rules__k">{t(`ap.name.${c.key}` as 'ap.name.trend')}</span>
             <b>{state(c)}</b>
-            <span className="mk-rules__why">{c.live.target?.why ?? t('mk.rules.snapshot')}</span>
+            <span className="mk-rules__why">{c.live.target ? whyText(c.live.target.why, t) : t('mk.rules.snapshot')}</span>
             <span className="mk-rules__bt">{t('mk.rules.bt', { dd: pct(c.backtest.stats.max_dd), sdd: pct(c.backtest.stats.spy_max_dd ?? null), c: pct(c.backtest.stats.cagr, 1), s: pct(c.backtest.stats.spy_cagr, 1) })}</span>
           </div>
         ))}

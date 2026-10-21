@@ -4,7 +4,9 @@ The catalog has three families, each tied to a desk of the site that produces it
 
   earnings  (Calendar, Direction book, Brief)
       the four direction rules (direction_service; executed by autotrade_service as before)
-      pre_run     buy five sessions before a scheduled report, sell at the last close before it
+      pre_run     buy five sessions before a scheduled report, hold through it, sell at the
+                  reaction-session close (the earnings announcement premium; exiting before the
+                  report did not beat an equal-weight pool of the same stocks)
       sue_gap     after a big EPS beat that also gapped up, buy at the reaction close, hold 60
   filings   (Oracle desk)
       insider_cluster  three or more officers/directors buying in the open market within 30
@@ -53,16 +55,16 @@ SEC_UA = {"User-Agent": os.getenv("SEC_USER_AGENT") or "Signalpha-research conta
 # account; `on` is whether a new connection starts with it switched on.
 SPECS: dict[str, dict[str, Any]] = {
     "fade_spike": {"family": "earnings", "kind": "direction", "side": "SHORT", "entry": "open", "slots": 5, "alloc": 25, "on": True,
-                   "source": "SignAlpha direction book (2008–2018 discovery, 2019– holdout)", "desk": "/strategy"},
+                   "source": "SignAlpha", "desk": "/strategy"},
     "buy_flush": {"family": "earnings", "kind": "direction", "side": "LONG", "entry": "open", "slots": 5, "alloc": 25, "on": True,
-                  "source": "SignAlpha direction book (2008–2018 discovery, 2019– holdout)", "desk": "/strategy"},
+                  "source": "SignAlpha", "desk": "/strategy"},
     "follow_gap": {"family": "earnings", "kind": "direction", "side": "LONG", "entry": "close", "slots": 10, "alloc": 15, "on": False,
                    "source": "Earnings-announcement-return drift — Brandt et al. (2008)", "desk": "/strategy"},
     "fade_miss": {"family": "earnings", "kind": "direction", "side": "SHORT", "entry": "open", "slots": 5, "alloc": 10, "on": False,
-                  "source": "SignAlpha direction book", "desk": "/strategy"},
+                  "source": "SignAlpha", "desk": "/strategy"},
     "pre_run": {"family": "earnings", "kind": "event", "side": "LONG", "entry": "close", "exit": "close", "slots": 30, "alloc": 20, "on": True,
-                "hold": 5, "source": "Frazzini & Lamont (2007); Barber, De George, Lehavy & Trueman (2013)", "desk": "/",
-                "research": ("research_equity.json", "pre_run")},
+                "hold": 6, "source": "Frazzini & Lamont (2007); Barber, De George, Lehavy & Trueman (2013)", "desk": "/",
+                "research": ("research_equity.json", "pre_run_through")},
     "sue_gap": {"family": "earnings", "kind": "event", "side": "LONG", "entry": "close", "exit": "close", "slots": 20, "alloc": 15, "on": True,
                 "hold": 60, "source": "Bernard & Thomas (1989); Chan, Jegadeesh & Lakonishok (1996)", "desk": "/brief",
                 "research": ("research_equity.json", "sue_gap")},
@@ -129,7 +131,8 @@ def _emit(db: Session, strategy: str, ticker: str, side: str, session: date, ent
 # ───────────────────────── generators: earnings ─────────────────────────
 
 def gen_pre_run(db: Session, today: date | None = None) -> dict[str, Any]:
-    """Reports whose last pre-announcement close is five sessions from today (large/mid caps)."""
+    """Reports whose last pre-announcement close is five sessions from today (large/mid caps):
+    buy today's close, sell at the reaction session's close."""
     today = today or _now().date()
     cal = sessions(today - timedelta(days=5), today + timedelta(days=30))
     if today not in cal:
@@ -148,10 +151,10 @@ def gen_pre_run(db: Session, today: date | None = None) -> dict[str, Any]:
         {"r": react, "d0": d0}).mappings().all()
     n = 0
     for r in rows:
-        n += _emit(db, "pre_run", r["ticker"], "LONG", today, "close", d0, "close",
+        n += _emit(db, "pre_run", r["ticker"], "LONG", today, "close", react, "close",
                    f"pre_run:{r['ticker']}:{r['earnings_date']}", rank=float(r["prob_move"] or 0),
                    meta={"earnings_date": str(r["earnings_date"]), "report_time": r["report_time"]})
-    return {"reports": len(rows), "new": n, "exit": str(d0)}
+    return {"reports": len(rows), "new": n, "exit": str(react)}
 
 
 def gen_sue_gap(db: Session, today: date | None = None, opens: dict[str, float] | None = None) -> dict[str, Any]:
@@ -320,24 +323,27 @@ def gen_targets(db: Session, today: date | None = None) -> dict[str, Any]:
                               ORDER BY session DESC LIMIT 1"""), {"d": today}).scalar()
     in_spy = bool(held and (held if isinstance(held, dict) else json.loads(held)).get("SPY"))
     r2, s200, s5 = rsi(spy).iloc[-1], spy.rolling(200).mean().iloc[-1], spy.rolling(5).mean().iloc[-1]
+    # `why` is stored as {"code", ...values} so the page can say it in either language.
     if not in_spy and r2 < 10 and spy.iloc[-1] > s200:
-        w, why = {"SPY": 1.0}, f"RSI(2) {r2:.1f} < 10 above the 200-day average — buy"
+        w, why = {"SPY": 1.0}, {"code": "rsi2_buy", "r": round(float(r2), 1)}
     elif in_spy and spy.iloc[-1] > s5:
-        w, why = {CASH: 1.0}, f"closed above the 5-day average — back to T-bills"
+        w, why = {CASH: 1.0}, {"code": "rsi2_exit", "r": round(float(r2), 1)}
     else:
-        w, why = ({"SPY": 1.0} if in_spy else {CASH: 1.0}), f"RSI(2) {r2:.1f} — hold"
+        w, why = ({"SPY": 1.0} if in_spy else {CASH: 1.0}), {"code": "rsi2_hold_in" if in_spy else "rsi2_hold_out", "r": round(float(r2), 1)}
     out["rsi2"] = (w, why)
     if month_end:
         me = spy.groupby([spy.index.year, spy.index.month]).tail(1)
         sma = me.rolling(10).mean().iloc[-1]
-        out["trend"] = ({"SPY": 1.0} if spy.iloc[-1] > sma else {CASH: 1.0},
-                        f"SPY {spy.iloc[-1]:.2f} vs 10-month average {sma:.2f}")
+        up = spy.iloc[-1] > sma
+        out["trend"] = ({"SPY": 1.0} if up else {CASH: 1.0},
+                        {"code": "trend_in" if up else "trend_out", "spy": round(float(spy.iloc[-1]), 2), "sma": round(float(sma), 2)})
         m6 = (C[SECTORS].iloc[-1] / C[SECTORS].iloc[-127] - 1).dropna().sort_values(ascending=False)
-        out["sectors"] = ({t: 1 / 3 for t in m6.index[:3]}, "best 6 months: " + ", ".join(f"{t} {v*100:+.1f}%" for t, v in m6.head(3).items()))
+        out["sectors"] = ({t: 1 / 3 for t in m6.index[:3]},
+                          {"code": "sectors", "top": ", ".join(f"{t} {v*100:+.1f}%" for t, v in m6.head(3).items())})
     for k, (w, why) in out.items():
         db.execute(text("""INSERT INTO strategy_targets (strategy, session, weights, why) VALUES (:s, :d, CAST(:w AS jsonb), :y)
                            ON CONFLICT (strategy, session) DO UPDATE SET weights=EXCLUDED.weights, why=EXCLUDED.why, decided_at=NOW()"""),
-                   {"s": k, "d": today, "w": json.dumps(w), "y": why})
+                   {"s": k, "d": today, "w": json.dumps(w), "y": json.dumps(why)})
     db.commit()
     return {k: v[1] for k, v in out.items()}
 
@@ -378,9 +384,11 @@ def card(key: str) -> dict[str, Any] | None:
     """The page's card for a non-direction strategy, in the same shape as strategy_lab.catalog."""
     spec = SPECS[key]
     f, k = spec["research"]
-    body = (_research(f) or {}).get("rules", {}).get(key)
+    full = _research(f) or {}
+    body = full.get("rules", {}).get(key)
     if not body:
         return None
+    ew_all = full.get("ew_universe") or {}
     a = body.get("all") or {}
     post = body.get("post") or {}
     ex = body.get("excess") or {}
@@ -391,7 +399,8 @@ def card(key: str) -> dict[str, Any] | None:
              "trades": body.get("taken") or body.get("trades"), "signals": body.get("signals"),
              "hit": (body.get("per_trade") or {}).get("hit"), "avg": (body.get("per_trade") or {}).get("mean"),
              "excess": ex.get("mean"), "excess_t": ex.get("t"), "excess_ew": ew.get("mean"), "excess_ew_t": ew.get("t"),
-             "post_cagr": post.get("cagr"), "post_spy_cagr": post.get("spy_cagr"), "published": body.get("published")}
+             "post_cagr": post.get("cagr"), "post_spy_cagr": post.get("spy_cagr"), "published": body.get("published"),
+             "ew_cagr": ew_all.get("cagr")}
     return {"key": key, "family": spec["family"], "kind": spec["kind"], "side": spec["side"], "entry": spec["entry"],
             "hold": spec.get("hold"), "slots": spec["slots"], "alloc": spec["alloc"], "on": spec["on"],
             "source": spec["source"], "desk": spec["desk"],

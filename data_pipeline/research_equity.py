@@ -74,11 +74,11 @@ def main() -> None:
     days = C.index
     spy = C.SPY.pct_change().fillna(0)
     ew = ew_index(C, list(uni.ticker))
-    out["ew_universe"] = summary(ew.pct_change().fillna(0), spy)
-    print(f"EW universe CAGR {out['ew_universe']['cagr']*100:+.1f}% vs SPY {out['ew_universe']['spy_cagr']*100:+.1f}%", flush=True)
     pos = {d: i for i, d in enumerate(days)}
     out: dict = {"generated_at": datetime.now(timezone.utc).isoformat(), "start": START, "cost": COST,
                  "universe": int(len(uni)), "rules": {}}
+    out["ew_universe"] = summary(ew.pct_change().fillna(0), spy)
+    print(f"EW universe CAGR {out['ew_universe']['cagr']*100:+.1f}% vs SPY {out['ew_universe']['spy_cagr']*100:+.1f}%", flush=True)
 
     def record(key: str, trades: pd.DataFrame, slots: int, rank: str | None = None, extra: dict | None = None):
         r, taken = event_sleeve(trades, C, O, slots, COST, rank=rank)
