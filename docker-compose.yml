@@ -29,6 +29,8 @@ services:
       retries: 5
 
   backend:
+    ulimits:
+      nofile: {soft: 65536, hard: 65536}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     build:
@@ -56,6 +58,10 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     command: ["python", "-m", "data_pipeline.scheduler"]
+    # 2026-10-27 the scheduler hit the default 1024 open files after a trading day
+    # ("marks: [Errno 24] Too many open files"); fd_watch in scheduler.py logs what grows.
+    ulimits:
+      nofile: {soft: 65536, hard: 65536}
     env_file:
       - .env
     environment:

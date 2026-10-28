@@ -77,7 +77,10 @@ DEFAULTS: dict[str, Any] = {
     "strategies": {k: {"on": SPECS[k]["on"], "alloc": float(SPECS[k]["alloc"]), "slots": SPECS[k]["slots"]} for k in ORDER},
     "daily_loss_pct": 3.0, "max_gross_pct": 100.0, "min_price": 5.0,
     "allow_short": True, "notify": True, "live_ack_at": None,
+    # strategy-library rules (services/library.py) run on this account: {spec id: {on, alloc}}
+    "library": {},
 }
+MAX_LIBRARY = 12
 
 DDL = [
     """CREATE TABLE IF NOT EXISTS autotrade_accounts (
@@ -188,7 +191,17 @@ def _settings(row) -> dict[str, Any]:
     out = {**DEFAULTS, **{k: v for k, v in body.items() if k in DEFAULTS}}
     strat = body.get("strategies") or {}
     out["strategies"] = {k: {**DEFAULTS["strategies"][k], **(strat.get(k) or {})} for k in ORDER}
+    out["library"] = {k: {"on": bool(v.get("on")), "alloc": float(v.get("alloc") or 0)}
+                      for k, v in (body.get("library") or {}).items() if isinstance(v, dict)}
     return out
+
+
+def _sub(s: dict, key: str) -> dict:
+    """The subscription behind a strategy key: a built-in one, or `lib:<id>` from the library."""
+    if key.startswith("lib:"):
+        x = (s.get("library") or {}).get(key[4:]) or {}
+        return {"on": bool(x.get("on")), "alloc": float(x.get("alloc") or 0), "slots": 1}
+    return s["strategies"].get(key) or {"on": False, "alloc": 0.0, "slots": 1}
 
 
 def _account(db: Session, account_id: int, holder: str | None = None):
@@ -456,18 +469,39 @@ def save_settings(db: Session, holder: str, account_id: int, patch: dict[str, An
                     s["alloc"] = round(min(max(float(sv["alloc"]), 0.0), 100.0), 1)
                 if "slots" in sv:
                     s["slots"] = int(min(max(int(sv["slots"]), 1), 30))
+        elif k == "library":
+            from backend.app.services import library_service
+
+            for sid, sv in (v or {}).items():
+                if sv is None:  # removed from the account
+                    cur["library"].pop(sid, None)
+                    continue
+                if not isinstance(sv, dict):
+                    continue
+                spec = library_service.resolve(db, sid, holder)
+                if spec is None:
+                    raise ValueError(f"No strategy {sid} in the library")
+                if not spec.executable and sv.get("on"):
+                    raise ValueError(f"{sid} can be backtested but Autopilot does not run it yet")
+                x = cur["library"].setdefault(sid, {"on": False, "alloc": 10.0})
+                if "on" in sv:
+                    x["on"] = bool(sv["on"])
+                if "alloc" in sv:
+                    x["alloc"] = round(min(max(float(sv["alloc"]), 0.0), 100.0), 1)
+            if len(cur["library"]) > MAX_LIBRARY:
+                raise ValueError(f"At most {MAX_LIBRARY} library strategies per account")
         elif k in ("enabled", "allow_short", "notify"):
             cur[k] = bool(v)
         else:
             cur[k] = max(0.0, float(v))
-    used = sum(s["alloc"] for s in cur["strategies"].values() if s["on"])
+    used = sum(s["alloc"] for s in list(cur["strategies"].values()) + list(cur["library"].values()) if s["on"])
     if used > 100.0001:
         raise ValueError(f"Strategies add up to {used:.0f}% of the account — keep it at 100% or less")
     cur["max_gross_pct"] = min(cur["max_gross_pct"], 200.0)
     if row["mode"] == "live" and cur["enabled"] and not cur.get("live_ack_at"):
         raise PermissionError("Acknowledge live trading before switching it on")
     _write(db, account_id, cur)
-    on = [k for k, s in cur["strategies"].items() if s["on"]]
+    on = [k for k, s in cur["strategies"].items() if s["on"]] + [f"lib:{k}" for k, s in cur["library"].items() if s["on"]]
     event(db, account_id, "info", "Autopilot " + ("ON" if cur["enabled"] else "off") + " · running: " + (", ".join(on) or "none"))
     return cur
 
@@ -610,7 +644,7 @@ def _place(db: Session, row, s: dict, alp: Alpaca, c, *, tif: str, book: _Book, 
     """One entry for one signal (a direction call, a strategy signal, or a target), inside every limit."""
     from backend.app.services.direction_service import RULES
 
-    st = s["strategies"][c["rule"]]
+    st = _sub(s, c["rule"])
     equity = float(acct.get("equity", 0))
     short = c["side"] == "SHORT"
     side = "sell" if short else "buy"
@@ -833,7 +867,7 @@ def run_closes(db: Session, phase: str = "moc") -> dict[str, Any]:
                 calls = [c for c in db.execute(text("""SELECT * FROM direction_calls WHERE session=:d AND rule='follow_gap'
                                                        ORDER BY abs(gap_x) DESC"""), {"d": now.date()}).mappings()]
                 calls += signals_for(db, now.date(), "close")
-                calls = [c for c in calls if c["id"] not in done and s["strategies"].get(c["rule"], {}).get("on")]
+                calls = [c for c in calls if c["id"] not in done and _sub(s, c["rule"])["on"]]
                 book = _Book(db, row, alp) if calls or _targets_today(db, now) else None
                 if calls:
                     placed += sum(_place(db, row, s, alp, c, tif=tif, book=book, acct=acct) for c in calls)
@@ -860,7 +894,7 @@ def _close_targets(db: Session, row, s: dict, alp, tif: str, now: datetime) -> i
     """Target strategies: sell what today's weights dropped (or everything, if the strategy is off)."""
     n = 0
     for key, w in _targets_today(db, now).items():
-        on = s["strategies"].get(key, {}).get("on") and s["enabled"]
+        on = _sub(s, key)["on"] and s["enabled"]
         for t in _target_trades(db, row["id"], key):
             if on and t["ticker"] in w:
                 continue
@@ -889,8 +923,8 @@ def _open_targets(db: Session, row, s: dict, alp, tif: str, now: datetime, book:
     n = 0
     equity = float(acct.get("equity", 0))
     for key, w in _targets_today(db, now).items():
-        st = s["strategies"].get(key)
-        if not st or not st["on"]:
+        st = _sub(s, key)
+        if not st["on"]:
             continue
         held = {t["ticker"] for t in _target_trades(db, row["id"], key)}
         for ticker, weight in w.items():
@@ -1004,8 +1038,9 @@ def mark(db: Session, row, alp: Alpaca | None = None) -> None:
         alp.saver(alp.b)
     prices = {p["symbol"]: float(p["current_price"]) for p in alp.positions() if p.get("current_price")}
     ledger = _ledger(db, row["id"])
-    for k in ORDER:
-        st = s["strategies"][k]
+    lib_keys = sorted({f"lib:{x}" for x in s.get("library") or {}} | {t["rule"] for t in ledger if t["rule"].startswith("lib:")})
+    for k in list(ORDER) + lib_keys:
+        st = _sub(s, k)
         mine = [t for t in ledger if t["rule"] == k]
         if not st["on"] and not mine:
             continue
@@ -1189,7 +1224,8 @@ def state(db: Session, holder: str, account_id: int) -> dict[str, Any]:
         p["strategy"] = by_ticker_rule.get(p["symbol"])
     body["trades"] = trades[:150]
     body["strategies"] = {}
-    for k in ORDER:
+    lib_keys = sorted({f"lib:{x}" for x in s.get("library") or {}} | {t["rule"] for t in trades if t["rule"].startswith("lib:")})
+    for k in list(ORDER) + lib_keys:
         mine = [t for t in trades if t["rule"] == k]
         closed = [t for t in mine if t["status"] == "closed"]
         body["strategies"][k] = {

@@ -19,9 +19,15 @@ def get_calendar(
     end: date | None = Query(default=None),
     sector: str | None = Query(default=None),
     report_time: str | None = Query(default=None),
+    days_forward: int | None = Query(default=None, ge=0, le=180),
+    days_back: int | None = Query(default=None, ge=0, le=180),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> CalendarResponse:
-    start_date = start or date.today()
-    end_date = end or (start_date + timedelta(days=settings.default_calendar_lookahead_days))
+    # Every caller in the frontend asks with days_forward/days_back; these were ignored
+    # until 2026-10-27, so the calendar's "past" tab was always empty and the tape on every
+    # page downloaded 90 days of reports to show the next three weeks.
+    today = date.today()
+    start_date = start or (today - timedelta(days=days_back or 0))
+    end_date = end or (today + timedelta(days=days_forward if days_forward is not None else settings.default_calendar_lookahead_days))
     return service.list_events(db=db, start=start_date, end=end_date, sector=sector, report_time=report_time)

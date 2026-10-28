@@ -157,6 +157,18 @@ def _spy_monthly() -> pd.Series:
         return pd.Series(dtype=float)
 
 
+def _sharpe_m(mret: pd.Series) -> float | None:
+    """Monthly returns -> annualised Sharpe in excess of the T-bill (compounded per month)."""
+    from data_pipeline.research_common import tbill_daily
+
+    if len(mret) <= 2:
+        return None
+    rf = tbill_daily()
+    rf_m = (1 + rf).resample("ME").prod() - 1 if len(rf) else pd.Series(dtype=float)
+    ex = mret - rf_m.reindex(mret.index).fillna(0)
+    return float(ex.mean() / ex.std() * math.sqrt(12)) if ex.std() > 0 else None
+
+
 def _stats(s: pd.Series, tk: pd.DataFrame) -> dict[str, Any]:
     if len(s) < 2:
         return {}
@@ -176,7 +188,7 @@ def _stats(s: pd.Series, tk: pd.DataFrame) -> dict[str, Any]:
         "total": float(s.iloc[-1] - 1),
         "cagr": float(s.iloc[-1] ** (1 / years) - 1),
         "max_dd": dd,
-        "sharpe": float(mret.mean() / mret.std() * math.sqrt(12)) if len(mret) > 2 and mret.std() > 0 else None,
+        "sharpe": _sharpe_m(mret),
         "months_up": float((mret > 0).mean()) if len(mret) else None,
         "years": [{"y": int(i.year), "ret": float(v)} for i, v in yret.items()],
         "years_up": int((yret > 0).sum()), "years_total": int(len(yret)),

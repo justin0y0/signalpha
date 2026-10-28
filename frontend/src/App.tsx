@@ -9,6 +9,7 @@ import { PricingPage } from './pages/PricingPage'
 import { ModelPage } from './pages/ModelPage'
 import { StrategyPage } from './pages/StrategyPage'
 import { AutopilotPage } from './pages/AutopilotPage'
+import { LibraryPage } from './pages/LibraryPage'
 import { LegalPage } from './pages/LegalPage'
 import { OraclePage } from './pages/OraclePage'
 import { PulsePage } from './pages/PulsePage'
@@ -29,6 +30,7 @@ export default function App() {
         <Route path="/model" element={<ModelPage />} />
         <Route path="/strategy" element={<StrategyPage />} />
         <Route path="/autopilot" element={<AutopilotPage />} />
+        <Route path="/library" element={<LibraryPage />} />
         <Route path="/markets" element={<MarketsPage />} />
         <Route path="/pulse" element={<PulsePage />} />
         <Route path="/oracle" element={<OraclePage />} />

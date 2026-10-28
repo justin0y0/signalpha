@@ -132,6 +132,45 @@ scheduler.add_job(strategy_job, CronTrigger(day_of_week="mon-fri", hour=15, minu
                   args=["sue_gap"], id="strategy_sue_gap", max_instances=1, coalesce=True)
 scheduler.add_job(strategy_job, CronTrigger(day_of_week="mon-fri", hour=15, minute=35, timezone=TZ),
                   args=["targets"], id="strategy_targets", max_instances=1, coalesce=True)
+# Open file descriptors by kind, every 15 minutes: the process ran out of them on
+# 2026-10-27 (1024) and the leak has to be found from the growth.
+def fd_watch() -> None:
+    import collections
+    import os
+
+    try:
+        kinds = collections.Counter()
+        files = collections.Counter()
+        for fd in os.listdir("/proc/self/fd"):
+            try:
+                tgt = os.readlink(f"/proc/self/fd/{fd}")
+            except OSError:
+                continue
+            k = tgt.split(":")[0] if ":" in tgt and not tgt.startswith("/") else "file"
+            kinds[k] += 1
+            if k == "file":
+                files[tgt] += 1
+        n = sum(kinds.values())
+        print(f"fd_watch {n} {dict(kinds)}" + (f" top files {files.most_common(5)}" if n > 200 else ""), flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print("fd_watch failed:", exc, flush=True)
+
+
+scheduler.add_job(fd_watch, CronTrigger(minute="*/15", timezone=TZ), id="fd_watch", max_instances=1, coalesce=True)
+
+
+# The strategy library's backtests and grades (data_pipeline/run_library.py), every Saturday.
+def library_job() -> None:
+    from data_pipeline.run_library import main as run_library
+
+    try:
+        run_library()
+    except Exception as exc:  # noqa: BLE001
+        print("library job failed:", exc, flush=True)
+
+
+scheduler.add_job(library_job, CronTrigger(day_of_week="sat", hour=7, minute=0, timezone=TZ),
+                  id="strategy_library", max_instances=1, coalesce=True)
 # Connections without a working on-close order (paper accounts, moomoo — see uses_moc) close
 # at market at 15:58:20.
 scheduler.add_job(autopilot_job, CronTrigger(day_of_week="mon-fri", hour=15, minute=58, second=20, timezone=TZ),

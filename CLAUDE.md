@@ -569,6 +569,16 @@ HANDOFF.md §5 的 10 个 bug 里：#2/#3/#4/#7/#8 已修。#5（Oracle 不出�
 
 ---
 
+### 6o. 2026-10-27：策略库（/library）、用户自建策略 + LLM brainstorm、全站 audit
+
+- **策略库**：`backend/app/services/library.py` 一份定义同时用于回测和实盘（模板 × 标的；参数一律用原作者公布值，没调参）。490 条 = 15 个单标的模板 × (4 指数 + 20 热门个股) + 5 个日历/VIX 模板 × 4 指数 + 5 个财报模板 × 20 个股 + 10 个资产配置。`data_pipeline/run_library.py` 跑全部（Yahoo 总回报价 1993 起、现金按 ^IRX、ETF 2bp / 个股 5bp、财报日期用 Yahoo `get_earnings_dates(limit=100)`——站内 outcomes 只从 2020 起），写 `data/library.json`、`library_curves.json`、`library_prices.pkl`；每周六 7:00 ET 自动重跑（scheduler `strategy_library`）。
+- **评级口径**：基准 = 持有同一标的（组合用 SPY）；2015 切样本内/外，评级只看 2015 起；A = 夏普高 0.1+、OOS alpha t≥2、全历史 t≥3（HLZ 门槛）；B/C/D/F 见 run_library.py 文档串。另给去偏夏普（DSR，trials=全库条数）。**10-27 结果：A 1（MSFT IBS）、B 56、C 79、D 302、F 52——绝大多数输给买入持有，页面照实写。**
+- **实盘接入**：账户 settings 新增 `library: {spec_id: {on, alloc}}`，key 形如 `lib:<id>`；`strategies.gen_targets`（15:35）调 `library_service.live_targets` 用 Alpaca 日线 + 当日 IEX 快照算当天权重，写 strategy_targets，由原有 `_open_targets/_close_targets` 执行（`autotrade_service._sub()` 统一取订阅）。日历类规则需要「未来交易日」（`extra["future"]`）才知道月末/节前/议息日。**不实盘的模板**（`library.NOT_LIVE`）：vol_target/risk_parity/static（每天微调仓位，而引擎只在进场定一次）、vix_regime（无实时 VIX）、全部财报模板（需提前知道财报日）。
+- **用户自建 + LLM**：`strategy_custom` 表；`POST /autopilot/library/backtest`（手写 spec）、`/library/brainstorm`（Groq gpt-oss-120b 只输出 spec JSON，`library.spec_from_dict` 严格校验参数边界，不执行任何代码；每人每天 40 次）。用户每试一条都计入他自己的 DSR trials（全库 trials + 他试过的条数）。nginx `/api/` 超时改 120s。
+- **moomoo**：授权后若没自动识别出美股账户，`oauth=noaccount` 时页面弹出 `MoomooPick`，任何用户可从 `GET /moomoo/pending` 列出的（脱敏）账户里选一个连接；10-27 时服务器 30h 内没有收到任何 moomoo 回调——Justin 那次授权发生在旧代码时期，token 已丢，需要再扫一次。
+- **audit 修掉的**：① `/calendar` 一直忽略 `days_forward/days_back`（首页「已过去」标签永远空、顶栏每页拉 90 天）→ 后端支持，顶栏改 21 天；② Autopilot 卡片和 lab 的夏普没减国库券（RSI-2 显示 1.14，实际 0.77）→ `research_common.sharpe()` / `strategy_lab._sharpe_m()` 统一扣 ^IRX，研究脚本已重跑；③ 调度器 10-27 撞到 1024 个文件句柄（`marks: [Errno 24]`）→ compose `ulimits nofile 65536` 止血 + `fd_watch` 每 15 分钟打日志找泄漏源（**待查：看 `docker compose logs scheduler | grep fd_watch` 哪类在涨**）；④ 详情面板被顶栏盖住 → portal。
+- 已知未修：`/calendar` 21 天仍有 ~1.3MB（gzip 后 256KB）；track-record 几个接口 2.7–5s；`simulation_service` 的夏普也没扣无风险（页面已下线）。
+
 ## 7. Repo 索引（省 token，别每次全文扫）
 
 已用 **graphify** 建好结构索引：`graphify-out/graph.json`（1005 nodes / 2339 edges）。

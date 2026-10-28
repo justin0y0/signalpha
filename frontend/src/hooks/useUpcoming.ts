@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import type { CalendarEvent } from '../types'
 
 /**
- * Upcoming reports, fetched once and shared by the tape and the command palette.
+ * Reports in the next three weeks (the tape's horizon), fetched once and shared by the
+ * tape and the command palette.
  */
 let cache: Promise<CalendarEvent[]> | null = null
 
 export function loadUpcoming(): Promise<CalendarEvent[]> {
   if (!cache) {
-    cache = fetch('/api/v1/calendar?days_forward=60&days_back=0')
+    cache = fetch('/api/v1/calendar?days_forward=21&days_back=0')
       .then((r) => (r.ok ? r.json() : { items: [] }))
       .then((d) => (d.items ?? []) as CalendarEvent[])
       .catch(() => { cache = null; return [] })

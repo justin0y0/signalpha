@@ -54,6 +54,7 @@ type Sub = { on: boolean; alloc: number; slots: number }
 type Settings = {
   enabled: boolean; strategies: Record<Key, Sub>; daily_loss_pct: number; max_gross_pct: number; min_price: number
   allow_short: boolean; notify: boolean; live_ack_at: string | null
+  library?: Record<string, { on: boolean; alloc: number }>
 }
 type Broker = string
 type Conn = { id: number; broker: Broker; name?: string; mode: 'paper' | 'live'; auth: string; account_hint: string; key_hint: string; settings: Settings }
@@ -140,6 +141,7 @@ export function AutopilotDesk() {
   const [st, setSt] = useState<State | null>(null)
   const [busy, setBusy] = useState(false)
   const [flash, setFlash] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [mmPending, setMmPending] = useState(false)
 
   const setToken = (v: string | null) => { writeToken(v); setTokenState(v) }
   const say = (ok: boolean, msg: string) => { setFlash({ ok, msg }); window.setTimeout(() => setFlash(null), 6000) }
@@ -160,7 +162,8 @@ export function AutopilotDesk() {
   useEffect(() => {
     const c = params.get('connected'), o = params.get('oauth')
     if (c) { say(true, t('ap.flash.connected')); want.current = { mode: c, broker: params.get('broker') ?? 'alpaca' } }
-    if (o) say(false, o === 'denied' ? t('ap.flash.denied') : o === 'noaccount' ? t('ap.flash.noUs') : t('ap.flash.oauthFail'))
+    if (o === 'noaccount') setMmPending(true)
+    else if (o) say(false, o === 'denied' ? t('ap.flash.denied') : t('ap.flash.oauthFail'))
     if (c || o) { const n = new URLSearchParams(params); ['connected', 'oauth', 'broker'].forEach((k) => n.delete(k)); setParams(n, { replace: true }) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -204,7 +207,8 @@ export function AutopilotDesk() {
     catch (e) { say(false, (e as Error).message) } finally { setBusy(false) }
   }
 
-  const totalAlloc = settings ? ORDER.reduce((n, k) => n + (settings.strategies[k]?.on ? settings.strategies[k].alloc : 0), 0) : 0
+  const totalAlloc = settings ? ORDER.reduce((n, k) => n + (settings.strategies[k]?.on ? settings.strategies[k].alloc : 0), 0)
+    + Object.values(settings.library ?? {}).reduce((n, x) => n + (x.on ? x.alloc : 0), 0) : 0
 
   return (
     <div className="ap">
@@ -216,6 +220,11 @@ export function AutopilotDesk() {
         <div className="shimmer" style={{ height: 120 }} />
       ) : (
         <section className="ap-bar">
+          {mmPending && (
+            <MoomooPick token={token} onClose={() => setMmPending(false)}
+              onDone={async (r) => { setMmPending(false); want.current = { mode: r.mode, broker: 'moomoo' }; await loadMe(); say(true, t('ap.flash.connected')) }}
+              onError={(m) => say(false, m)} />
+          )}
           <div className="ap-bar__who">
             <span className="ap-tag">{me.role === 'owner' ? t('ap.role.owner') : me.email}</span>
             <div className="ap-modes" role="tablist">
@@ -257,6 +266,11 @@ export function AutopilotDesk() {
             <div className="shimmer" style={{ height: 90 }} />
           )}
         </section>
+      )}
+
+      {conn && settings && Object.keys(settings.library ?? {}).length > 0 && (
+        <LibRunning lib={settings.library ?? {}} st={st} busy={busy}
+          save={(id, v) => save({ library: { [id]: v } } as unknown as Partial<Settings>)} />
       )}
 
       <section className="ap-strats">
@@ -616,6 +630,80 @@ function SignIn({ onToken }: { onToken: (t: string) => void }) {
 }
 
 type Done = { mode: 'paper' | 'live'; broker: Broker }
+
+/** Strategy-library rules switched on in this account (picked on /library). */
+function LibRunning({ lib, st, busy, save }: { lib: Record<string, { on: boolean; alloc: number }>; st: State | null; busy: boolean
+  save: (id: string, v: { on?: boolean; alloc?: number } | null) => void }) {
+  const { t } = useT()
+  const marks = st?.strategies as Record<string, { open: number; realized: number; unrealized: number }> | undefined
+  return (
+    <section className="ap-lib">
+      <div className="ap-lib__head"><h2>{t('ap.lib.title')}</h2><a href="/library">{t('ap.lib.browse')}</a></div>
+      <ul>
+        {Object.entries(lib).map(([id, x]) => {
+          const m = marks?.[`lib:${id}`]
+          return (
+            <li key={id}>
+              <a href={`/library?s=${encodeURIComponent(id)}`}><b>{id}</b></a>
+              <span className="ap-dim">{m ? t('ap.lib.pnl', { n: m.open, p: usd(m.realized + m.unrealized, true) }) : t('ap.lib.none')}</span>
+              <label>{t('lib.run.alloc')} <input type="number" min={1} max={100} defaultValue={x.alloc} disabled={busy}
+                onBlur={(e) => { const v = Number(e.target.value); if (v && v !== x.alloc) save(id, { alloc: v }) }} />%</label>
+              <button className={`ap-toggle ${x.on ? 'is-on' : ''}`} disabled={busy} onClick={() => save(id, { on: !x.on })}>{x.on ? t('ap.lib.on') : t('ap.lib.off')}</button>
+              <button className="ap-link" disabled={busy} onClick={() => save(id, null)}>{t('ap.lib.remove')}</button>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
+type MmAcct = { mode: 'paper' | 'live'; index: number; hint: string; us: boolean; account_type?: string; acc_type?: string;
+  trd_market?: unknown; market?: unknown; enable_market?: unknown; trdmarket_auth?: unknown; security_firm?: unknown }
+type MmPending = { mode: 'paper' | 'live'; accounts: MmAcct[]; lists: Record<string, { status: number | null; error: string | null; n: number }> }
+
+/** moomoo authorised but no US account was picked out automatically: show every account it
+ *  returned (masked) and let the holder choose, or explain how to open a US paper account. */
+function MoomooPick({ token, onDone, onError, onClose }: { token: string; onDone: (r: { mode: 'paper' | 'live' }) => void;
+  onError: (m: string) => void; onClose: () => void }) {
+  const { t } = useT()
+  const [d, setD] = useState<MmPending | null>(null)
+  const [gone, setGone] = useState(false)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { call<MmPending>('/moomoo/pending', { token }).then(setD).catch(() => setGone(true)) }, [token])
+  const pick = async (a: MmAcct) => {
+    setBusy(true)
+    try { await call('/moomoo/pending', { method: 'POST', body: { mode: a.mode, index: a.index }, token }); onDone({ mode: a.mode }) }
+    catch (x) { onError((x as Error).message) } finally { setBusy(false) }
+  }
+  const mk = (v: unknown) => (Array.isArray(v) ? v.join('/') : v == null ? '' : String(v))
+  return (
+    <div className="ap-mmpick" role="dialog" aria-label={t('ap.mm.title')}>
+      <div className="ap-mmpick__head">
+        <b>{t('ap.mm.title')}</b>
+        <button className="ap-link" onClick={onClose}>{t('ap.mm.close')}</button>
+      </div>
+      {gone ? <p className="ap-dim">{t('ap.mm.expired')}</p> : !d ? <div className="shimmer" style={{ height: 48 }} /> : (
+        <>
+          <p className="ap-dim">{d.accounts.length ? t('ap.mm.lede') : t('ap.mm.none')}</p>
+          {d.accounts.length > 0 && (
+            <ul className="ap-mmpick__list">
+              {d.accounts.map((a) => (
+                <li key={`${a.mode}-${a.index}`}>
+                  <span>{a.mode === 'paper' ? t('ap.mode.paper') : t('ap.mode.live')} · …{a.hint}
+                    <em>{[mk(a.trd_market ?? a.market ?? a.enable_market ?? a.trdmarket_auth), mk(a.account_type ?? a.acc_type), mk(a.security_firm)].filter(Boolean).join(' · ')}</em>
+                    {a.us ? <i className="is-ok">US</i> : <i>{t('ap.mm.notUs')}</i>}</span>
+                  <button className="btn" disabled={busy} onClick={() => pick(a)}>{t('ap.mm.use')}</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="ap-dim ap-mmpick__how">{t('ap.mm.how')}</p>
+        </>
+      )}
+    </div>
+  )
+}
 
 function ConnectPanel({ me, token, onDone, onError }: { me: Me; token: string; onDone: (r: Done) => void; onError: (m: string) => void }) {
   const { t } = useT()

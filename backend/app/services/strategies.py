@@ -34,6 +34,7 @@ or a strategy signal.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import re
@@ -82,6 +83,7 @@ SPECS: dict[str, dict[str, Any]] = {
 }
 ORDER = list(SPECS)
 SECTORS = ["XLB", "XLE", "XLF", "XLI", "XLK", "XLP", "XLU", "XLV", "XLY"]
+log = logging.getLogger(__name__)
 CASH = "BIL"
 
 DDL = [
@@ -333,7 +335,8 @@ def _closes(tickers: list[str], days: int = 420) -> pd.DataFrame:
 
 
 def gen_targets(db: Session, today: date | None = None) -> dict[str, Any]:
-    """At 15:35 ET: today's weights for rsi2 (daily), trend and sectors (last session of the month)."""
+    """At 15:35 ET: today's weights for rsi2 (daily), trend and sectors (last session of the month),
+    and for every strategy-library rule switched on in some account (lib:<id>)."""
     from data_pipeline.research_etf import rsi
 
     today = today or _now().date()
@@ -366,6 +369,13 @@ def gen_targets(db: Session, today: date | None = None) -> dict[str, Any]:
         m6 = (C[SECTORS].iloc[-1] / C[SECTORS].iloc[-127] - 1).dropna().sort_values(ascending=False)
         out["sectors"] = ({t: 1 / 3 for t in m6.index[:3]},
                           {"code": "sectors", "top": ", ".join(f"{t} {v*100:+.1f}%" for t, v in m6.head(3).items())})
+    # the strategy library: every rule someone runs (or still holds), on today's prices so far
+    from backend.app.services import library_service
+
+    try:
+        out.update(library_service.live_targets(db, today, [d for d in cal if d > today]))
+    except Exception as exc:  # noqa: BLE001 - the built-in rules still go out
+        log.warning("library targets failed: %s", exc)
     for k, (w, why) in out.items():
         db.execute(text("""INSERT INTO strategy_targets (strategy, session, weights, why) VALUES (:s, :d, CAST(:w AS jsonb), :y)
                            ON CONFLICT (strategy, session) DO UPDATE SET weights=EXCLUDED.weights, why=EXCLUDED.why, decided_at=NOW()"""),

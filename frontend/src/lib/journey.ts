@@ -19,6 +19,7 @@ export const JOURNEY = [
 // the consolidated tape and lose before costs (Autopilot → strategy lab). The page stays
 // reachable for old links, with that verdict on top.
 export const DESKS = [
+  { to: '/library', nav: 'nav.library' },
   { to: '/markets', nav: 'nav.markets' },
   { to: '/oracle', nav: 'nav.oracle' },
 ] as const

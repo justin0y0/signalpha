@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -106,15 +106,14 @@ def moomoo_callback(code: str = Query(""), state: str = Query(""), error: str = 
     if error or not code:
         return RedirectResponse("/autopilot?oauth=denied", status_code=302)
     log = logging.getLogger(__name__)
-    log = logging.getLogger(__name__)
     try:
         st, bundle = moomoo_rest.oauth_finish(code, state)
         found = moomoo_rest.Moomoo.discover(bundle["access_token"])
         accts = found[st["mode"]]["accounts"]
         us = [a for a in accts if moomoo_rest.Moomoo.is_us(a)]
         if not us:
-            # Keep the authorisation for an hour (encrypted) so the owner can finish the
-            # connection by hand (/moomoo/pending) instead of asking for another scan.
+            # Keep the authorisation for an hour (encrypted) so the holder can pick the
+            # account themselves (/moomoo/pending) instead of scanning again.
             from backend.app.services.ap_auth import _redis
 
             _redis().set(f"ap:mmpending:{st['holder']}", at._fernet().encrypt(json.dumps({**st, "bundle": bundle}).encode()).decode(), ex=3600)
@@ -129,41 +128,58 @@ def moomoo_callback(code: str = Query(""), state: str = Query(""), error: str = 
         return RedirectResponse("/autopilot?oauth=failed", status_code=302)
 
 
+def _mm_pending(h: ap_auth.Holder) -> dict:
+    import json
+
+    from backend.app.services.ap_auth import _redis
+
+    raw = _redis().get(f"ap:mmpending:{h.key}")
+    if not raw:
+        raise HTTPException(404, "No pending moomoo authorisation — connect again from the moomoo button")
+    return json.loads(at._fernet().decrypt(raw.encode()).decode())
+
+
 @router.get("/moomoo/pending")
 def moomoo_pending(h: ap_auth.Holder = Depends(ap_auth.current)):
-    """Owner only: what moomoo returned for an authorisation that found no US account."""
+    """An authorisation that found no US account on its own: every account moomoo returned
+    (both lists), masked, so the holder can pick one or see why there is none."""
+    from backend.app.services import moomoo_rest
+
+    st = _mm_pending(h)
+    found = moomoo_rest.Moomoo.discover(st["bundle"]["access_token"])
+    summ = moomoo_rest.Moomoo.summary(found)
+    out = []
+    for mode, v in found.items():
+        for i, a in enumerate(v["accounts"]):
+            acc = str(a.get("account_id") or a.get("acc_id") or "")
+            out.append({"mode": mode, "index": i, "hint": acc[-4:], "us": moomoo_rest.Moomoo.is_us(a),
+                        **summ[mode]["accounts"][i]})
+    return {"mode": st["mode"], "accounts": out,
+            "lists": {m: {"status": v["status"], "error": v["error"], "n": v["n"]} for m, v in summ.items()}}
+
+
+@router.post("/moomoo/pending")
+def moomoo_pending_connect(mode: str = Body(..., embed=True), index: int = Body(..., embed=True),
+                           h: ap_auth.Holder = Depends(ap_auth.current), db: Session = Depends(get_db)):
+    """Connect the pending authorisation to one of the accounts it lists."""
     import json
 
     from backend.app.services import moomoo_rest
     from backend.app.services.ap_auth import _redis
 
-    if h.role != "owner":
-        raise HTTPException(403, "Owner only")
-    raw = _redis().get(f"ap:mmpending:{h.key}")
-    if not raw:
-        raise HTTPException(404, "No pending moomoo authorisation")
-    st = json.loads(at._fernet().decrypt(raw.encode()).decode())
-    found = moomoo_rest.Moomoo.discover(st["bundle"]["access_token"])
-    return {"mode": st["mode"], "found": moomoo_rest.Moomoo.summary(found),
-            "ids": {m: [str(a.get("account_id") or a.get("acc_id")) for a in v["accounts"]] for m, v in found.items()}}
-
-
-@router.post("/moomoo/pending")
-def moomoo_pending_connect(account_id: str = Body(..., embed=True), mode: str = Body("paper", embed=True),
-                           h: ap_auth.Holder = Depends(ap_auth.current), db: Session = Depends(get_db)):
-    """Owner only: connect the pending moomoo authorisation to a chosen account."""
-    import json
-
-    from backend.app.services.ap_auth import _redis
-
-    if h.role != "owner":
-        raise HTTPException(403, "Owner only")
-    raw = _redis().get(f"ap:mmpending:{h.key}")
-    if not raw:
-        raise HTTPException(404, "No pending moomoo authorisation")
-    st = json.loads(at._fernet().decrypt(raw.encode()).decode())
-    return _guard(lambda: at.connect(db, st["holder"], st["role"], mode, account_id, json.dumps(st["bundle"]),
-                                     auth="oauth", broker="moomoo"))
+    st = _mm_pending(h)
+    if mode not in ("paper", "live"):
+        raise HTTPException(400, "mode must be paper or live")
+    if mode == "live" and not at.live_allowed(h.role):
+        raise HTTPException(403, "Live trading is limited to the owner account for now")
+    accts = moomoo_rest.Moomoo.discover(st["bundle"]["access_token"])[mode]["accounts"]
+    if not 0 <= index < len(accts):
+        raise HTTPException(400, "No such account")
+    acc = str(accts[index].get("account_id") or accts[index].get("acc_id"))
+    r = _guard(lambda: at.connect(db, st["holder"], st["role"], mode, acc, json.dumps(st["bundle"]),
+                                  auth="oauth", broker="moomoo"))
+    _redis().delete(f"ap:mmpending:{h.key}")
+    return r
 
 
 @router.post("/connect/tradier")
@@ -247,3 +263,69 @@ def acknowledge_live(account_id: int, ack: str = Body(..., embed=True),
 def kill(account_id: int, flatten: bool = Body(False, embed=True),
          h: ap_auth.Holder = Depends(ap_auth.current), db: Session = Depends(get_db)):
     return _guard(lambda: at.kill(db, h.key, account_id, flatten))
+
+
+# ───────────────────────── strategy library ─────────────────────────
+
+@router.get("/library")
+def library_table():
+    """Every catalogue strategy, graded (public)."""
+    from backend.app.services import library_service
+
+    return library_service.table()
+
+
+@router.get("/library/mine")
+def library_mine(h: ap_auth.Holder = Depends(ap_auth.current), db: Session = Depends(get_db)):
+    from backend.app.services import library_service
+
+    return {"rows": library_service.mine(db, h.key)}
+
+
+@router.get("/library/{spec_id}")
+def library_detail(spec_id: str, db: Session = Depends(get_db), x_autopilot_token: str = Header(default="")):
+    """One strategy with its curve: a catalogue id, or `u<id>` for one of your own (signed in)."""
+    from backend.app.services import library_service
+
+    if spec_id.startswith("u") and spec_id[1:].isdigit():
+        h = ap_auth.holder_from(x_autopilot_token) if x_autopilot_token else None
+        if h is None:
+            raise HTTPException(401, "Sign in to see your own strategies")
+        d = _guard(lambda: library_service.custom_detail(db, h.key, spec_id))
+    else:
+        d = library_service.detail(spec_id)
+    if d is None:
+        raise HTTPException(404, "No such strategy")
+    return d
+
+
+@router.post("/library/backtest")
+def library_backtest(spec: dict = Body(..., embed=True), name: str = Body("", embed=True),
+                     h: ap_auth.Holder = Depends(ap_auth.current), db: Session = Depends(get_db)):
+    """Backtest a strategy you wrote yourself; it is saved to your list and counts as a trial."""
+    from backend.app.services import library_service
+
+    return _guard(lambda: library_service.save_run(db, h.key, spec, name or spec.get("template", "custom")))
+
+
+@router.post("/library/brainstorm")
+def library_brainstorm(prompt: str = Body(..., embed=True), lang: str = Body("en", embed=True),
+                       base: dict | None = Body(None, embed=True),
+                       h: ap_auth.Holder = Depends(ap_auth.current), db: Session = Depends(get_db)):
+    """Describe an idea; the model writes it as a library rule, which is then backtested."""
+    from backend.app.services import library_service
+
+    try:
+        return _guard(lambda: library_service.brainstorm(db, h.key, prompt, lang, base))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@router.delete("/library/{spec_id}")
+def library_delete(spec_id: str, h: ap_auth.Holder = Depends(ap_auth.current), db: Session = Depends(get_db)):
+    from backend.app.services import library_service
+
+    if not (spec_id.startswith("u") and spec_id[1:].isdigit()):
+        raise HTTPException(400, "Only your own strategies can be deleted")
+    library_service.delete(db, h.key, spec_id)
+    return {"ok": True}

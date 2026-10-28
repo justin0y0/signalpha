@@ -189,6 +189,10 @@ DDL_STATEMENTS += _AUTOTRADE_DDL
 from backend.app.services.strategies import DDL as _STRATEGIES_DDL  # noqa: E402
 
 DDL_STATEMENTS += _STRATEGIES_DDL
+
+from backend.app.services.library_service import DDL as _LIBRARY_DDL  # noqa: E402
+
+DDL_STATEMENTS += _LIBRARY_DDL
 DDL_STATEMENTS += [
     """
     CREATE TABLE IF NOT EXISTS pro_waitlist (

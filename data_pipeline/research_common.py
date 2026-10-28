@@ -26,8 +26,36 @@ import pandas as pd
 NY = "America/New_York"
 
 
+def tbill_daily() -> pd.Series:
+    """The 13-week T-bill as a daily rate (Yahoo ^IRX), cached for a day. Sharpe ratios here
+    are excess over this: until 2026-10-27 they were not, which flattered every rule that
+    sits in cash earning interest (RSI(2) on SPY showed 1.14 instead of 0.77)."""
+    path = os.path.join(os.getenv("DATA_DIR", "/app/data"), "tbill.pkl")
+    if os.path.exists(path) and time.time() - os.path.getmtime(path) < 86400:
+        return pd.read_pickle(path)
+    try:
+        import yfinance as yf
+
+        irx = yf.download("^IRX", start="1990-01-01", auto_adjust=True, progress=False)["Close"]
+        if isinstance(irx, pd.DataFrame):
+            irx = irx.iloc[:, 0]
+        irx.index = pd.to_datetime(irx.index).tz_localize(None)
+        rf = (irx.ffill() / 100 / 252).fillna(0)
+        rf.to_pickle(path)
+        return rf
+    except Exception:  # noqa: BLE001 - stale beats nothing
+        return pd.read_pickle(path) if os.path.exists(path) else pd.Series(dtype=float)
+
+
+def sharpe(r: pd.Series, rf: pd.Series | None = None) -> float | None:
+    """Annualised Sharpe ratio of daily returns, in excess of the T-bill."""
+    rf = tbill_daily() if rf is None else rf
+    ex = r - rf.reindex(r.index).ffill().fillna(0)
+    return float(ex.mean() / ex.std() * math.sqrt(252)) if ex.std() > 0 else None
+
+
 def summary(r: pd.Series, bench: pd.Series | None = None, since: str | None = None) -> dict[str, Any]:
-    """Daily returns -> CAGR, vol, Sharpe, max drawdown, years up, and SPY over the same days."""
+    """Daily returns -> CAGR, vol, Sharpe (over T-bills), max drawdown, years up, and SPY over the same days."""
     r = r.dropna()
     if since:
         r = r[r.index >= pd.Timestamp(since)]
@@ -40,7 +68,7 @@ def summary(r: pd.Series, bench: pd.Series | None = None, since: str | None = No
     yr = (1 + r).groupby(r.index.year).prod() - 1
     out = {"start": str(r.index[0].date()), "end": str(r.index[-1].date()), "n_days": int(len(r)),
            "cagr": float(eq.iloc[-1] ** (1 / years) - 1), "vol": vol,
-           "sharpe": float(r.mean() / r.std() * math.sqrt(252)) if r.std() > 0 else None,
+           "sharpe": sharpe(r),
            "max_dd": dd, "exposure": float((r != 0).mean()),
            "years_up": int((yr > 0).sum()), "years_total": int(len(yr)),
            "years": [{"y": int(y), "ret": float(v)} for y, v in yr.items()]}
@@ -49,7 +77,7 @@ def summary(r: pd.Series, bench: pd.Series | None = None, since: str | None = No
         beq = (1 + b).cumprod()
         out["spy_cagr"] = float(beq.iloc[-1] ** (1 / years) - 1)
         out["spy_max_dd"] = float((beq / beq.cummax() - 1).min())
-        out["spy_sharpe"] = float(b.mean() / b.std() * math.sqrt(252)) if b.std() > 0 else None
+        out["spy_sharpe"] = sharpe(b)
         yb = (1 + b).groupby(b.index.year).prod() - 1
         out["years_beat"] = int((yr > yb.reindex(yr.index)).sum())
     return out
