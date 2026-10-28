@@ -477,6 +477,16 @@ Justin：至少 10 条有 edge 的可选策略、和站内内容挂钩；接入�
 
 **站点**：Pulse 下线（不再出现在导航，Telegram 推送关闭 `PULSE_ALERTS=0`，页顶说明）；名人台推送只发站长（`ORACLE_PUSH_USERS=0`），页面新增「跟着他们做赚钱吗」三格对照 + 近 30 天内部人买入；市场页加「大盘规则今天怎么说」；首页导流条加 05；定价页/FAQ 改成和 Autopilot 一致（免费含模拟盘，Pro 是实盘 + 推送）；新增 `/legal`（条款、隐私、风险，需律师过目）；index.html 加 description/OG/Twitter 卡片 + `public/og.png`。
 
+### 6n. 2026-10-27：实盘一周复盘（10-20..27，站长 Alpaca 模拟盘）
+
+账户 −$586（−0.59%）。按策略：buy_flush 15 笔已平 +$308（+0.66%/笔，胜率 60%，好于回测）；fade_spike 5 笔 −$419（−3.6%/笔，−1.2σ，17.7% 的历史交易日比这更差——正常波动范围）；insider_cluster 5 笔浮亏 −$377；其余≈0。结论：**统计上在预期内，但有 4 个真问题，已修**：
+1. **自身延迟 25–50 秒**：issue_due 现场下载 Yahoo 前收盘。改为 `strategy_lab.prev_closes`（一次 SIP 日线请求；end 必须是带时区的今天 00:00，纯日期会被当成当天结束 → 免费档拒绝）+ `last_trades` 批量现价 + `_asset` 每日缓存。
+2. **Alpaca 模拟盘开盘撮合延迟 30–280 秒**（订单 submitted→filled 实测；社区/员工确认模拟器随机延迟、opg/cls 不是真竞价；文档说 opg/cls 只给 Elite Smart Router）。开盘类实测成交价比官方开盘差 150–235bp。**`research_entry_decay.py`（2023-07 起）：buy_flush 9:31 入场 +0.24% t1.8 → 9:35 −0.04% → 9:45 −0.21% t−2.0；fade_spike 9:31 +0.14% t0.7**。所以模拟盘系统性低估开盘类规则；fade_spike 近 3 年变弱 → 新用户默认关闭。新增 `OPEN_CALL_CUTOFF=9:33`：9:36/9:50 Yahoo 轮次才发现的开盘信号只上公开信号簿、不交易（本周 CTS/PNR 9:51 入场就是这类）。MOC 改为 `ALPACA_MOC=1` 才用。`autotrade_orders.ref_price` 记录下单时价，页面订单表显示滑点。
+3. **insider_cluster 迟到信号**：回填数据后，AGMB 10-07 已成团，10-22 第 4 笔买入又触发 → 晚两周入场。生成器改为与回测 `clusters()` 完全一致（成团当天才发、60 天冷却按数据算）。重放 10-21..27：只发 DX、RAPP、CHCO、STC。
+4. **sue_gap 一周 0 信号**：惊喜同步跑全部三周内财报约 45 分钟，15:20 那轮 16:05 才完，15:32 决策时当天实际值大多没到（10-27 CNC/GLXY/PII/KNSA 本应触发）。`gen_sue_gap` 决策前只同步当天候选（`earnings_timing.sync(tickers=..., stamp=False)`），删掉 15:20 全量轮。
+- **moomoo 连接失败**：Justin 授权成功但回调 `oauth=noaccount`（找美股模拟账户时把错误响应当空列表）。`Moomoo.discover()` 同时查模拟/实盘列表、宽松识别 US、失败时记录脱敏摘要并把令牌加密存 redis 1 小时（`ap:mmpending:<holder>`），站长可用 `GET/POST /api/v1/autopilot/moomoo/pending` 看清 moomoo 返回了什么并手动接上。**需要 Justin 再授权一次。**
+- 新用户默认推荐：buy_flush 20%、pre_run 30%、sue_gap 25%、insider_cluster 25%（fade_spike 关）。站长模拟盘仍十条全开攒数据。
+
 ### 6b. 仍未解决
 
 0. **✅ 已解决 — 标签泄漏（walk-forward 重生成完成并上线）**
@@ -617,7 +627,7 @@ ORM `create_all` 建：以上 7 张 + `simulation_config` `simulation_state` `si
 | `autopilot_entries` | 工作日 09:37、09:51 |
 | `autopilot_closes` / `autopilot_flatten` / `autopilot_closes_late` | 工作日 15:44（只有 Alpaca 实盘走 MOC）/ 15:56 / 15:58:20（模拟盘、moomoo 等一律市价） |
 | `autopilot_reconcile` | 工作日 9–16 点每 5 分钟（成交对账 + 策略 P&L mark） |
-| `strategy_insider` / `strategy_pre_run` / `strategy_sue_gap` / `strategy_targets` | 工作日 06:30 / 15:30 / 15:32 / 15:35 |
+| `strategy_insider` / `strategy_pre_run` / `strategy_sue_gap` / `strategy_targets` | 工作日 06:30 / 15:30 / 15:32（先同步当天候选的惊喜）/ 15:35 |
 
 Oracle 的 `oracle_worker()` 不在 scheduler 里——它在 `backend` 容器的后台线程里跑（`main.py`），每 `ORACLE_SCAN_SEC`（90）秒一次。各数据源另有 `_due()` 节流（redis `oracle:srcrun:*`，ARK/国会/EDGAR 1 小时）——**手工调试时直接调 `src_*()` 会吃掉这个节流**，worker 一小时内不会再跑它；调完 `redis-cli del oracle:srcrun:<name>`。
 

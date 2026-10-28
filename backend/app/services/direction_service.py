@@ -172,12 +172,15 @@ def candidates(db: Session, today: date) -> list[dict[str, Any]]:
         {"today": today, "prev": _sessions_back(today)}).mappings().all()]
 
 
-def issue_due(db: Session, now: datetime | None = None, opens: dict[str, float] | None = None) -> dict[str, Any]:
+def issue_due(db: Session, now: datetime | None = None, opens: dict[str, float] | None = None,
+              closes: dict[str, float] | None = None) -> dict[str, Any]:
     """Run after the open: every report trading today, its gap from the open, its calls.
 
-    `opens` (ticker -> today's opening print, from the broker feed a minute after the bell)
-    lets the calls go out at 9:31 instead of waiting ~15 minutes for Yahoo's daily bar.
-    Tickers missing from it fall back to Yahoo as before."""
+    `opens` (ticker -> today's opening print, from the broker feed seconds after the bell)
+    and `closes` (ticker -> the previous session's consolidated close, one SIP request) let
+    the calls go out within a second or two of the pass. Yahoo is downloaded only for
+    tickers missing from either — that download took 20-40 s and delayed every order
+    (live log 2026-10-20..27: signal 9:31:30, orders 9:31:55-9:32:20)."""
     from zoneinfo import ZoneInfo
 
     from backend.app.services.flat_band import load_flat_bands
@@ -191,26 +194,32 @@ def issue_due(db: Session, now: datetime | None = None, opens: dict[str, float] 
     if not rows:
         return {"issued": 0, "candidates": 0}
     tickers = sorted({r["ticker"] for r in rows})
-    px = bars(tickers, today - timedelta(days=10), ttl=60)
+    have = {t for t in tickers if opens and opens.get(t) and closes and closes.get(t)}
+    slow = [t for t in tickers if t not in have]
+    px = bars(slow, today - timedelta(days=10), ttl=60) if slow else {"Open": pd.DataFrame(), "Close": pd.DataFrame()}
     bands = load_flat_bands(db, tickers)
     issued = 0
     for r in rows:
         t = r["ticker"]
-        o, c = px["Open"].get(t), px["Close"].get(t)
-        if c is None:
-            continue
-        c = c.dropna()
         ts = pd.Timestamp(today)
-        if opens and opens.get(t):
-            first = float(opens[t])
-        elif o is not None and ts in o.dropna().index:
-            first = float(o.dropna().loc[ts])
+        if t in have:
+            first, prev = float(opens[t]), float(closes[t])
         else:
-            continue  # no print yet today
-        before = c[c.index < ts]
-        if before.empty:
-            continue
-        gap = first / float(before.iloc[-1]) - 1
+            o, c = px["Open"].get(t), px["Close"].get(t)
+            if c is None:
+                continue
+            c = c.dropna()
+            if opens and opens.get(t):
+                first = float(opens[t])
+            elif o is not None and ts in o.dropna().index:
+                first = float(o.dropna().loc[ts])
+            else:
+                continue  # no print yet today
+            before = c[c.index < ts]
+            if before.empty:
+                continue
+            prev = float(before.iloc[-1])
+        gap = first / prev - 1
         band = bands.get(t)
         if not band:
             continue

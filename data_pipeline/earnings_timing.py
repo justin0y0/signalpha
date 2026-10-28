@@ -80,9 +80,12 @@ def _tickers(recent: bool) -> list[str]:
         return sorted(t for (t,) in s.execute(q).all())
 
 
-def sync(recent: bool = False) -> dict:
-    """Store timing + surprise rows, then stamp report_time on matching events."""
-    tickers = _tickers(recent)
+def sync(recent: bool = False, tickers: list[str] | None = None, stamp: bool = True) -> dict:
+    """Store timing + surprise rows, then stamp report_time on matching events.
+
+    `tickers` limits the run to those names (a minute or two for a day's reports instead
+    of ~45 minutes for every report within three weeks)."""
+    tickers = sorted(set(tickers)) if tickers is not None else _tickers(recent)
     stored = failed = 0
     for i, t in enumerate(tickers, 1):
         try:
@@ -109,7 +112,7 @@ def sync(recent: bool = False) -> dict:
         time.sleep(0.35)
         if i % 30 == 0:
             log.info("timing [%s/%s] rows=%s failed=%s", i, len(tickers), stored, failed)
-    stamped = stamp_events()
+    stamped = stamp_events() if stamp else {}
     return {"tickers": len(tickers), "rows": stored, "failed": failed, **stamped}
 
 

@@ -43,6 +43,7 @@ type Card = {
   backtest: { stats: CardStats; series: Pt[]; bench: Pt[]; now?: Record<string, any> | null
     replay_summary?: { same_trades: { yahoo: Stat; open: Stat; fill: Stat; late?: Stat }; realistic: Stat; agree: number | null } | null }
   alt?: { basis: 'open'; series: Pt[]; bench: Pt[]; cagr: number | null }
+  decay?: Record<string, { mean: number | null; t: number | null }>
   live: { n: number | null; closed: number | null; right?: number | null; ret?: number | null; mean?: number | null
     calls: LiveCall[]; candles?: Candle[]; target?: { session: string; weights: Record<string, number>; why: string } | null }
 }
@@ -73,7 +74,7 @@ type State = {
   candles?: Candle[]
   strategies: Record<Key, { candles: Candle[]; open: number; closed: number; wins: number; realized: number; unrealized: number }>
   trades: Trade[]
-  orders: { client_order_id: string; rule: string; ticker: string; leg: string; side: string; qty: number; tif: string; status: string
+  orders: { client_order_id: string; rule: string; ticker: string; leg: string; side: string; qty: number; tif: string; status: string; ref_price?: number | null
     submitted_at: string; filled_qty: number | null; filled_avg_price: number | null; error: string | null }[]
   events: { at: string; level: string; message: string }[]
   today: { id: number; rule: Key; ticker: string; side: string; entry: string; gap_x: number; tier: string; called_at: string }[]
@@ -385,6 +386,15 @@ function StrategyCard({ s, sub, mine, equity, disabled, live, caps, onSave }: {
             <p className="ap-replay">{t('ap.replay.line', { y: pct(s.backtest.replay_summary.same_trades.yahoo.mean, 2),
               f: pct(s.backtest.replay_summary.same_trades.fill.mean, 2), t: s.backtest.replay_summary.realistic.t?.toFixed(1) ?? '—' })}</p>
           )}
+          {s.decay && (
+            <div className="ap-decay">
+              <span>{t('ap.decay.h')}</span>
+              {Object.entries(s.decay).map(([m, v]) => (
+                <span key={m} className={tone(v.mean)}><b>{m}</b> {pct(v.mean, 2)}</span>
+              ))}
+              <em>{t('ap.decay.note')}</em>
+            </div>
+          )}
           {s.live.target && <p className="ap-now">{t('ap.now', { d: s.live.target.session, w: Object.entries(s.live.target.weights).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(' · '), why: whyText(s.live.target.why, t) })}</p>}
           {s.side === 'SHORT' && <p className="ap-cap">{t('ap.shortNote')}</p>}
           {sub && (
@@ -503,10 +513,13 @@ function AccountDetail({ st }: { st: State }) {
               <span className={tone(x.pnl)}>{usd(x.pnl, true)} · {pct(x.ret, 2)}</span>])} />
         )}
         {tab === 'orders' && (
-          <Table empty={t('ap.empty.orders')} head={[t('ap.col.time'), t('ap.col.ticker'), t('ap.col.leg'), t('ap.col.side'), t('ap.col.qty'), t('ap.col.status'), t('ap.col.fill')]}
+          <Table empty={t('ap.empty.orders')} head={[t('ap.col.time'), t('ap.col.ticker'), t('ap.col.leg'), t('ap.col.side'), t('ap.col.qty'), t('ap.col.status'), t('ap.col.fill'), t('ap.col.slip')]}
             rows={st.orders.map((o) => [`${md(o.submitted_at)} ${hm(o.submitted_at)}`, o.ticker, `${o.leg} · ${o.tif}`, o.side.toUpperCase(), o.qty || '—',
               <span className={o.status === 'skipped' || o.status === 'failed' ? 'ap-dim' : ''} title={o.error ?? ''}>{o.status}{o.error ? ` — ${o.error}` : ''}</span>,
-              o.filled_avg_price ? usd(o.filled_avg_price) : '—'])} />
+              o.filled_avg_price ? usd(o.filled_avg_price) : '—',
+              // fill vs the last trade when the order went out, signed so positive = paid more than that price
+              o.filled_avg_price && o.ref_price ? <span className={(o.side === 'buy' ? 1 : -1) * (o.filled_avg_price / o.ref_price - 1) > 0.002 ? 'is-down' : ''}>
+                {`${(((o.side === 'buy' ? 1 : -1) * (o.filled_avg_price / o.ref_price - 1)) * 1e4).toFixed(0)} bp`}</span> : '—'])} />
         )}
         {tab === 'log' && (
           <ol className="ap-log">

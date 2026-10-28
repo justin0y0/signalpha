@@ -163,11 +163,44 @@ class Moomoo:
     # ── account
     @staticmethod
     def accounts(token: str, mode: str) -> list[dict]:
-        path = "/api/v1.0/sim-trade/accounts" if mode == "paper" else "/api/v1.0/accounts/authorized_trd_accs"
-        r = httpx.get(BASE + path, timeout=20, headers={"Authorization": f"Bearer {token}"})
-        body = r.json()
-        data = body.get("data") if "ret_code" in body else body.get("d", body)
-        return (data or {}).get("accounts") or []
+        return Moomoo.discover(token)[mode]["accounts"]
+
+    @staticmethod
+    def discover(token: str) -> dict[str, dict]:
+        """Both account lists — simulated and authorised trading accounts — with what moomoo
+        answered, so a failed connection can be diagnosed (no tokens or numbers logged)."""
+        out = {}
+        for mode, path in (("paper", "/api/v1.0/sim-trade/accounts"), ("live", "/api/v1.0/accounts/authorized_trd_accs")):
+            info: dict[str, Any] = {"accounts": [], "status": None, "keys": [], "error": None}
+            try:
+                r = httpx.get(BASE + path, timeout=20, headers={"Authorization": f"Bearer {token}"})
+                info["status"] = r.status_code
+                body = r.json() if r.content else {}
+                info["keys"] = sorted(body.keys()) if isinstance(body, dict) else [type(body).__name__]
+                if isinstance(body, dict) and (body.get("ret_code") not in (None, 0) or body.get("s") == "error"):
+                    info["error"] = str(body.get("ret_msg") or body.get("errmsg") or body.get("errcode") or body.get("ret_code"))[:200]
+                data = (body.get("data") if "ret_code" in body else body.get("d", body)) if isinstance(body, dict) else body
+                accts = data.get("accounts") if isinstance(data, dict) else data
+                info["accounts"] = [a for a in (accts or []) if isinstance(a, dict)]
+            except Exception as exc:  # noqa: BLE001
+                info["error"] = str(exc)[:200]
+            out[mode] = info
+        return out
+
+    @staticmethod
+    def is_us(a: dict) -> bool:
+        """A US account in either list, whatever shape the market field comes in."""
+        vals = [a.get("market_id"), a.get("market"), a.get("trd_market")] + list(a.get("enable_market") or []) \
+            + list(a.get("trdmarket_auth") or [])
+        return any(str(v).upper() in ("2", "US", "TRDMARKET.US", "US_STOCK") for v in vals if v is not None)
+
+    @staticmethod
+    def summary(found: dict[str, dict]) -> dict:
+        """What discover() saw, with ids and card numbers left out."""
+        keep = ("market_id", "market", "trd_market", "enable_market", "trdmarket_auth", "account_type", "acc_type",
+                "account_title", "trd_env", "security_firm", "broker_id")
+        return {m: {"status": v["status"], "keys": v["keys"], "error": v["error"], "n": len(v["accounts"]),
+                    "accounts": [{k: a.get(k) for k in keep if k in a} for a in v["accounts"]]} for m, v in found.items()}
 
     def account(self) -> dict:
         if self._sim:

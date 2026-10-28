@@ -121,12 +121,11 @@ scheduler.add_job(autopilot_job, CronTrigger(day_of_week="mon-fri", hour=15, min
 scheduler.add_job(autopilot_job, CronTrigger(day_of_week="mon-fri", hour=15, minute=56, timezone=TZ),
                   args=["flatten"], id="autopilot_flatten", max_instances=1, coalesce=True)
 # Signals for the other strategies (services/strategies.py), all before the 15:44 closing pass:
-# insider clusters from yesterday's Form 4s before the open; surprises refreshed at 15:20 for
-# the drift rule; the pre-earnings and drift signals and the ETF targets at 15:30–15:35.
+# insider clusters from yesterday's Form 4s before the open; the pre-earnings and drift
+# signals (the drift job refreshes the day's EPS surprises itself) and the ETF targets at
+# 15:30–15:35.
 scheduler.add_job(strategy_job, CronTrigger(day_of_week="mon-fri", hour=6, minute=30, timezone=TZ),
                   args=["insider"], id="strategy_insider", max_instances=1, coalesce=True)
-scheduler.add_job(sync_earnings_timing, CronTrigger(day_of_week="mon-fri", hour=15, minute=20, timezone=TZ),
-                  id="sync_earnings_timing_afternoon", max_instances=1, coalesce=True)
 scheduler.add_job(strategy_job, CronTrigger(day_of_week="mon-fri", hour=15, minute=30, timezone=TZ),
                   args=["pre_run"], id="strategy_pre_run", max_instances=1, coalesce=True)
 scheduler.add_job(strategy_job, CronTrigger(day_of_week="mon-fri", hour=15, minute=32, timezone=TZ),

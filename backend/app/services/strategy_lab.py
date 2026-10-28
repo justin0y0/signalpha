@@ -322,6 +322,36 @@ def opens_today(symbols: list[str], db: Session | None = None) -> dict[str, floa
     return out
 
 
+def prev_closes(symbols: list[str], db: Session | None = None) -> dict[str, float]:
+    """The last consolidated (SIP) close before today for each ticker — one request. SIP is
+    off-limits to the free data plan only for the last 15 minutes, so yesterday's is fine."""
+    h = data_headers(db)
+    if not h or not symbols:
+        return {}
+    today = datetime.now(timezone.utc).astimezone(NY).date()
+    out: dict[str, float] = {}
+    for i in range(0, len(symbols), 100):
+        try:
+            r = httpx.get("https://data.alpaca.markets/v2/stocks/bars", headers=h, timeout=15, params={
+                "symbols": ",".join(to_alpaca(x) for x in symbols[i:i + 100]), "timeframe": "1Day", "feed": "sip",
+                "adjustment": "raw", "start": (today - timedelta(days=10)).isoformat(),
+                # a bare date means the end of that day, which the free plan refuses (last 15 min)
+                "end": datetime.combine(today, datetime.min.time(), tzinfo=NY).isoformat(), "limit": 10000})
+            for sym, rows in ((r.json() or {}).get("bars") or {}).items() if r.status_code == 200 else []:
+                last = [b for b in rows if datetime.fromisoformat(b["t"].replace("Z", "+00:00")).astimezone(NY).date() < today]
+                if last:
+                    out[from_alpaca(sym)] = float(last[-1]["c"])
+        except Exception:  # noqa: BLE001 - Yahoo is the fallback
+            pass
+    return out
+
+
+def last_trades(symbols: list[str], db: Session | None = None) -> dict[str, float]:
+    """Latest trade price per ticker from one snapshot request (IEX)."""
+    return {s: float((v or {}).get("latestTrade", {}).get("p") or 0) for s, v in snapshots(symbols, db).items()
+            if (v or {}).get("latestTrade", {}).get("p")}
+
+
 def intraday(symbols: list[str], start: date, db: Session | None = None) -> dict[str, pd.DataFrame]:
     """30-minute bars, regular session only, per ticker (IEX feed)."""
     h = data_headers(db)
@@ -503,6 +533,9 @@ def direction_card(c: dict[str, Any]) -> dict[str, Any]:
     if real:
         out["alt"] = {"basis": "open", "series": line(bt.get("candles")), "bench": bt.get("bench") or [],
                       "cagr": bt["stats"].get("cagr")}
+    decay = ((_json("research_entry_decay.json") or {}).get("rules") or {}).get(c["key"])
+    if decay:  # per-trade return by entry minute (research_entry_decay.py)
+        out["decay"] = {m: {"mean": v.get("mean"), "t": v.get("t")} for m, v in decay.items()}
     return out
 
 

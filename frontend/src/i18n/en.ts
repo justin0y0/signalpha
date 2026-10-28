@@ -1577,7 +1577,7 @@ export const en = {
   'ap.rule.rsi2': 'SPY above its 200-day average with a 2-day RSI under 10 — a short, sharp scare in an uptrend. Buy at the close, sell once it closes back above its 5-day average; T-bills in between.',
   'ap.rule.trend': 'At each month\'s last close: hold SPY if it is above its 10-month average, T-bills if not. Not built to beat the index — built to sit out the crashes.',
   'ap.rule.sectors': 'At each month\'s last close, hold the three of the nine sector SPDRs with the best six months.',
-  'ap.how.fade_spike': 'The rule was found on 2008–2018 and held up on 2019 on. Headline numbers are the replay on the consolidated tape at the price the bot can actually get seconds after the bell, since 2016.',
+  'ap.how.fade_spike': 'Found on 2008–2018, held up from 2019; headline numbers are the replay at the bot\'s real fill since 2016. It has weakened: since July 2023 an entry at 9:31 earns only a little and is not significant — so it is no longer on by default.',
   'ap.how.buy_flush': 'Same test as Short the spike: found on 2008–2018, held up from 2019, headline numbers at the bot\'s real fill since 2016.',
   'ap.how.follow_gap': 'Enters and exits in the closing auction, so the backtest prices are the fills. Positive per trade, but as a pool it trailed SPY since 2008 — off by default.',
   'ap.how.fade_miss': 'At the bot\'s real fill since 2016 the edge is not significant. Off by default; here for completeness.',
@@ -1754,4 +1754,7 @@ export const en = {
   'ap.lab.sue.name': 'EPS surprise drift alone',
   'ap.lab.sue.what': 'Top tenth of EPS surprises, held 60 sessions, whatever the price did on the day.',
   'ap.lab.sue.res': '{n} trades since {since}: {ex} over SPY (t = {ex_t}), {ew} over the same stocks (t = {ew_t}) — not significant. With the gap confirming it, it is (Double-beat drift).',
+  'ap.col.slip': 'Slippage',
+  'ap.decay.h': 'Per trade by entry time, since July 2023',
+  'ap.decay.note': 'The edge is in the first minute or two. Autopilot only trades signals found by 9:33 New York time. Paper accounts fill opening orders 30 seconds to several minutes late (Alpaca\'s simulator), so paper results for this rule land in the later columns and understate it.',
 } as const

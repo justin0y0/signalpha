@@ -105,21 +105,65 @@ def moomoo_callback(code: str = Query(""), state: str = Query(""), error: str = 
 
     if error or not code:
         return RedirectResponse("/autopilot?oauth=denied", status_code=302)
+    log = logging.getLogger(__name__)
+    log = logging.getLogger(__name__)
     try:
         st, bundle = moomoo_rest.oauth_finish(code, state)
-        accts = moomoo_rest.Moomoo.accounts(bundle["access_token"], st["mode"])
-        if st["mode"] == "paper":
-            us = [a for a in accts if int(a.get("market_id") or 0) == moomoo_rest.US_SIM_MARKET]
-        else:
-            us = [a for a in accts if 2 in [int(m) for m in (a.get("enable_market") or [])]] or accts
+        found = moomoo_rest.Moomoo.discover(bundle["access_token"])
+        accts = found[st["mode"]]["accounts"]
+        us = [a for a in accts if moomoo_rest.Moomoo.is_us(a)]
         if not us:
+            # Keep the authorisation for an hour (encrypted) so the owner can finish the
+            # connection by hand (/moomoo/pending) instead of asking for another scan.
+            from backend.app.services.ap_auth import _redis
+
+            _redis().set(f"ap:mmpending:{st['holder']}", at._fernet().encrypt(json.dumps({**st, "bundle": bundle}).encode()).decode(), ex=3600)
+            log.warning("moomoo connect: no US %s account for %s — moomoo answered %s", st["mode"], st["holder"],
+                        json.dumps(moomoo_rest.Moomoo.summary(found), default=str))
             return RedirectResponse("/autopilot?oauth=noaccount", status_code=302)
-        acc_id = str(us[0].get("account_id"))
+        acc_id = str(us[0].get("account_id") or us[0].get("acc_id"))
         r = at.connect(db, st["holder"], st["role"], st["mode"], acc_id, json.dumps(bundle), auth="oauth", broker="moomoo")
         return RedirectResponse(f"/autopilot?connected={r['mode']}&broker=moomoo", status_code=302)
     except Exception as exc:  # noqa: BLE001 - the page explains; details go to the log
-        logging.getLogger(__name__).warning("moomoo connect failed: %s", exc)
+        log.warning("moomoo connect failed: %s", exc)
         return RedirectResponse("/autopilot?oauth=failed", status_code=302)
+
+
+@router.get("/moomoo/pending")
+def moomoo_pending(h: ap_auth.Holder = Depends(ap_auth.current)):
+    """Owner only: what moomoo returned for an authorisation that found no US account."""
+    import json
+
+    from backend.app.services import moomoo_rest
+    from backend.app.services.ap_auth import _redis
+
+    if h.role != "owner":
+        raise HTTPException(403, "Owner only")
+    raw = _redis().get(f"ap:mmpending:{h.key}")
+    if not raw:
+        raise HTTPException(404, "No pending moomoo authorisation")
+    st = json.loads(at._fernet().decrypt(raw.encode()).decode())
+    found = moomoo_rest.Moomoo.discover(st["bundle"]["access_token"])
+    return {"mode": st["mode"], "found": moomoo_rest.Moomoo.summary(found),
+            "ids": {m: [str(a.get("account_id") or a.get("acc_id")) for a in v["accounts"]] for m, v in found.items()}}
+
+
+@router.post("/moomoo/pending")
+def moomoo_pending_connect(account_id: str = Body(..., embed=True), mode: str = Body("paper", embed=True),
+                           h: ap_auth.Holder = Depends(ap_auth.current), db: Session = Depends(get_db)):
+    """Owner only: connect the pending moomoo authorisation to a chosen account."""
+    import json
+
+    from backend.app.services.ap_auth import _redis
+
+    if h.role != "owner":
+        raise HTTPException(403, "Owner only")
+    raw = _redis().get(f"ap:mmpending:{h.key}")
+    if not raw:
+        raise HTTPException(404, "No pending moomoo authorisation")
+    st = json.loads(at._fernet().decrypt(raw.encode()).decode())
+    return _guard(lambda: at.connect(db, st["holder"], st["role"], mode, account_id, json.dumps(st["bundle"]),
+                                     auth="oauth", broker="moomoo"))
 
 
 @router.post("/connect/tradier")

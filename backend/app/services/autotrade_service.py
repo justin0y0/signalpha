@@ -55,6 +55,12 @@ DATA = "https://data.alpaca.markets"
 LIVE_ACK = "I UNDERSTAND THIS TRADES REAL MONEY"
 SHORT_MIN_EQUITY = 2000.0
 ENTRY_DEADLINE = (10, 0)
+# Open-entry direction rules are traded only if their call went out by this time: the edge
+# lives in the first minutes (data_pipeline/research_entry_decay.py). Calls the Yahoo
+# passes find at 9:36 or 9:50 stay on the public book but are not traded.
+# Since 2023-07: buy_flush entered at 9:31 +0.24% a trade, at 9:35 -0.04%, at 9:45 -0.21%;
+# fade_spike +0.14% / +0.07% / -0.06%. Only the first three broker passes qualify.
+OPEN_CALL_CUTOFF = tuple(int(x) for x in os.getenv("OPEN_CALL_CUTOFF", "9:33").split(":"))
 CLOSE_CUTOFF = (15, 50)
 DEAD = ("skipped", "failed", "rejected", "canceled", "expired", "done_for_day")
 FINAL = sorted({"filled", "canceled", "expired", "rejected", "done_for_day", "replaced", "failed", "skipped"})
@@ -81,6 +87,8 @@ DDL = [
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE (holder, broker, mode))""",
     "ALTER TABLE autotrade_accounts ADD COLUMN IF NOT EXISTS auth TEXT NOT NULL DEFAULT 'key'",
+    # the last trade price when the order went out: fill vs ref is the slippage the page shows
+    "ALTER TABLE autotrade_orders ADD COLUMN IF NOT EXISTS ref_price NUMERIC",
     """CREATE TABLE IF NOT EXISTS autotrade_orders (
         id BIGSERIAL PRIMARY KEY, account_id BIGINT NOT NULL, call_id BIGINT, rule TEXT, ticker TEXT NOT NULL,
         leg TEXT NOT NULL, side TEXT NOT NULL, qty NUMERIC NOT NULL, tif TEXT NOT NULL,
@@ -518,12 +526,13 @@ def _session_after(alp: Alpaca, d: date, n: int) -> date:
 def _record(db: Session, **o) -> None:
     db.execute(text("""
         INSERT INTO autotrade_orders (account_id, call_id, rule, ticker, leg, side, qty, tif, client_order_id,
-                                      broker_order_id, status, exit_session, error)
-        VALUES (:account_id, :call_id, :rule, :ticker, :leg, :side, :qty, :tif, :cid, :boid, :status, :exit_session, :error)
+                                      broker_order_id, status, exit_session, error, ref_price)
+        VALUES (:account_id, :call_id, :rule, :ticker, :leg, :side, :qty, :tif, :cid, :boid, :status, :exit_session, :error, :ref)
         ON CONFLICT (client_order_id) DO NOTHING"""),
         {"account_id": o["account_id"], "call_id": o.get("call_id"), "rule": o.get("rule"), "ticker": o["ticker"],
          "leg": o["leg"], "side": o["side"], "qty": o.get("qty", 0), "tif": o.get("tif", "day"), "cid": o["cid"],
-         "boid": o.get("boid"), "status": o["status"], "exit_session": o.get("exit_session"), "error": o.get("error")})
+         "boid": o.get("boid"), "status": o["status"], "exit_session": o.get("exit_session"), "error": o.get("error"),
+         "ref": o.get("ref")})
     db.commit()
 
 
@@ -585,8 +594,19 @@ class _Book:
         return any(t["rule"] == rule and t["ticker"] == ticker for t in self.trades)
 
 
+_ASSETS: dict[tuple[str, date], dict] = {}
+
+
+def _asset(alp, sym: str) -> dict:
+    """Tradable / shortable / easy-to-borrow flags, fetched once per symbol per day."""
+    key = (sym, _now().date())
+    if key not in _ASSETS:
+        _ASSETS[key] = alp.asset(sym)
+    return _ASSETS[key]
+
+
 def _place(db: Session, row, s: dict, alp: Alpaca, c, *, tif: str, book: _Book, acct: dict,
-           notional: float | None = None) -> bool:
+           notional: float | None = None, hints: dict[str, float] | None = None) -> bool:
     """One entry for one signal (a direction call, a strategy signal, or a target), inside every limit."""
     from backend.app.services.direction_service import RULES
 
@@ -614,14 +634,14 @@ def _place(db: Session, row, s: dict, alp: Alpaca, c, *, tif: str, book: _Book, 
     asset = None
     if not skip:
         try:
-            asset = alp.asset(c["ticker"])
+            asset = _asset(alp, c["ticker"])
         except BrokerError as exc:
             skip = f"asset lookup failed: {exc}"
     if not skip and not asset.get("tradable"):
         skip = "not tradable at this broker"
     if not skip and short and not (asset.get("shortable") and asset.get("easy_to_borrow")):
         skip = "not easy to borrow"
-    px = None if skip else alp.last_price(c["ticker"])
+    px = None if skip else ((hints or {}).get(c["ticker"]) or alp.last_price(c["ticker"]))
     if not skip and (px is None or px < s["min_price"]):
         skip = "no live price" if px is None else f"price ${px:.2f} below the ${s['min_price']:.0f} minimum"
     qty = 0 if skip else int(per // px)
@@ -641,7 +661,7 @@ def _place(db: Session, row, s: dict, alp: Alpaca, c, *, tif: str, book: _Book, 
         event(db, row["id"], "error", f"{c['ticker']} entry failed: {exc}")
         return False
     exit_session = c["exit_session"] if "exit_session" in c else _session_after(alp, c["session"], RULES[c["rule"]]["hold"])
-    _record(db, **base, qty=qty, boid=o["id"], status=o["status"], exit_session=exit_session)
+    _record(db, **base, qty=qty, boid=o["id"], status=o["status"], exit_session=exit_session, ref=px)
     book.gross += qty * px
     book.sides.setdefault(c["ticker"], set()).add("short" if short else "long")
     book.trades.append({"rule": c["rule"], "ticker": c["ticker"], "side": side})
@@ -663,7 +683,10 @@ def uses_moc(row) -> bool:
     """Market-on-close orders only where they fill: Alpaca live. Alpaca's paper simulator
     accepts them and lets every one expire at 16:00 (seen 2026-10-20); moomoo's simulator
     has no such order. Everyone else closes with a market order at 15:58:20."""
-    return (row.get("broker") or "alpaca") == "alpaca" and row["mode"] == "live"
+    # Alpaca documents opening/closing-auction orders as available to Elite Smart Router
+    # accounts only; switch on with ALPACA_MOC=1 for accounts known to have it.
+    return ((row.get("broker") or "alpaca") == "alpaca" and row["mode"] == "live"
+            and os.getenv("ALPACA_MOC", "0") == "1")
 
 
 def sweep_overdue(db: Session, row, alp, now: datetime) -> int:
@@ -709,8 +732,12 @@ def run_open(db: Session) -> dict[str, Any]:
         except Exception as exc:  # noqa: BLE001
             event(db, row["id"], "error", f"overdue sweep: {exc}")
     cands = ds.candidates(db, now.date())
-    opens = opens_today(sorted({c["ticker"] for c in cands}), db) if cands else {}
-    issued = ds.issue_due(db, opens=opens) if cands else {"issued": 0}
+    from backend.app.services.strategy_lab import prev_closes
+
+    names = sorted({c["ticker"] for c in cands})
+    opens = opens_today(names, db) if cands else {}
+    closes = prev_closes(names, db) if cands else {}
+    issued = ds.issue_due(db, opens=opens, closes=closes) if cands else {"issued": 0}
     return {"swept": swept, "candidates": len(cands), "opened": len(opens), "issued": issued, "entries": run_entries(db)}
 
 
@@ -731,6 +758,15 @@ def run_entries(db: Session) -> dict[str, Any]:
             done = {r[0] for r in db.execute(text("SELECT call_id FROM autotrade_orders WHERE account_id=:a AND leg='entry'"),
                                              {"a": row["id"]}).all()}
             todo = [c for c in calls if c["id"] not in done]
+            late = [c for c in todo if c.get("called_at") is not None and c["rule"] in ("fade_spike", "buy_flush", "fade_miss")
+                    and (c["called_at"].astimezone(NY).hour, c["called_at"].astimezone(NY).minute) >= OPEN_CALL_CUTOFF]
+            for c in late:
+                when = c["called_at"].astimezone(NY).strftime("%H:%M")
+                _record(db, account_id=row["id"], call_id=c["id"], rule=c["rule"], ticker=c["ticker"], leg="entry",
+                        side="sell" if c["side"] == "SHORT" else "buy", qty=0, cid=f"sa{row['id']}-{c['id']}-entry",
+                        status="skipped", error=f"signal found at {when}, after the {OPEN_CALL_CUTOFF[0]}:{OPEN_CALL_CUTOFF[1]:02d} cutoff — the opening edge is gone by then")
+                event(db, row["id"], "skip", f"{c['ticker']} {c['rule']} skipped — found at {when}, too late for an opening trade")
+            todo = [c for c in todo if c not in late]
             if not todo:
                 out[row["id"]] = 0
                 continue
@@ -740,7 +776,10 @@ def run_entries(db: Session) -> dict[str, Any]:
                 out[row["id"]] = why
                 continue
             book = _Book(db, row, alp)
-            out[row["id"]] = sum(_place(db, row, s, alp, c, tif="day", book=book, acct=acct) for c in todo)
+            from backend.app.services.strategy_lab import last_trades
+
+            hints = last_trades(sorted({c["ticker"] for c in todo}), db)
+            out[row["id"]] = sum(_place(db, row, s, alp, c, tif="day", book=book, acct=acct, hints=hints) for c in todo)
         except Exception as exc:  # noqa: BLE001 - one broken connection must not stop the others
             event(db, row["id"], "error", f"entries: {exc}")
             out[row["id"]] = f"error: {exc}"
@@ -1162,7 +1201,8 @@ def state(db: Session, holder: str, account_id: int) -> dict[str, Any]:
                        "filled_at": r["filled_at"].isoformat() if r["filled_at"] else None,
                        "exit_session": str(r["exit_session"]) if r["exit_session"] else None, "qty": float(r["qty"]),
                        "filled_qty": float(r["filled_qty"]) if r["filled_qty"] is not None else None,
-                       "filled_avg_price": float(r["filled_avg_price"]) if r["filled_avg_price"] is not None else None}
+                       "filled_avg_price": float(r["filled_avg_price"]) if r["filled_avg_price"] is not None else None,
+                       "ref_price": float(r["ref_price"]) if r.get("ref_price") is not None else None}
                       for r in db.execute(text("""SELECT * FROM autotrade_orders WHERE account_id=:a
                                                   ORDER BY submitted_at DESC LIMIT 80"""), {"a": account_id}).mappings()]
     body["events"] = [{"at": r["at"].isoformat(), "level": r["level"], "message": r["message"]}

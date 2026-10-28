@@ -54,21 +54,23 @@ SEC_UA = {"User-Agent": os.getenv("SEC_USER_AGENT") or "Signalpha-research conta
 # key -> what the page and the executor need to know. `alloc` is the suggested share of the
 # account; `on` is whether a new connection starts with it switched on.
 SPECS: dict[str, dict[str, Any]] = {
-    "fade_spike": {"family": "earnings", "kind": "direction", "side": "SHORT", "entry": "open", "slots": 5, "alloc": 25, "on": True,
+    # fade_spike: holds over 2016-2026 at the bot's fill (t 2.3) but since 2023-07 entered at
+    # 9:31 it earns +0.14% a trade (t 0.7) — no longer recommended by default.
+    "fade_spike": {"family": "earnings", "kind": "direction", "side": "SHORT", "entry": "open", "slots": 5, "alloc": 15, "on": False,
                    "source": "SignAlpha", "desk": "/strategy"},
-    "buy_flush": {"family": "earnings", "kind": "direction", "side": "LONG", "entry": "open", "slots": 5, "alloc": 25, "on": True,
+    "buy_flush": {"family": "earnings", "kind": "direction", "side": "LONG", "entry": "open", "slots": 5, "alloc": 20, "on": True,
                   "source": "SignAlpha", "desk": "/strategy"},
     "follow_gap": {"family": "earnings", "kind": "direction", "side": "LONG", "entry": "close", "slots": 10, "alloc": 15, "on": False,
                    "source": "Earnings-announcement-return drift — Brandt et al. (2008)", "desk": "/strategy"},
     "fade_miss": {"family": "earnings", "kind": "direction", "side": "SHORT", "entry": "open", "slots": 5, "alloc": 10, "on": False,
                   "source": "SignAlpha", "desk": "/strategy"},
-    "pre_run": {"family": "earnings", "kind": "event", "side": "LONG", "entry": "close", "exit": "close", "slots": 30, "alloc": 20, "on": True,
+    "pre_run": {"family": "earnings", "kind": "event", "side": "LONG", "entry": "close", "exit": "close", "slots": 30, "alloc": 30, "on": True,
                 "hold": 6, "source": "Frazzini & Lamont (2007); Barber, De George, Lehavy & Trueman (2013)", "desk": "/",
                 "research": ("research_equity.json", "pre_run_through")},
-    "sue_gap": {"family": "earnings", "kind": "event", "side": "LONG", "entry": "close", "exit": "close", "slots": 20, "alloc": 15, "on": True,
+    "sue_gap": {"family": "earnings", "kind": "event", "side": "LONG", "entry": "close", "exit": "close", "slots": 20, "alloc": 25, "on": True,
                 "hold": 60, "source": "Bernard & Thomas (1989); Chan, Jegadeesh & Lakonishok (1996)", "desk": "/brief",
                 "research": ("research_equity.json", "sue_gap")},
-    "insider_cluster": {"family": "filings", "kind": "event", "side": "LONG", "entry": "open", "exit": "close", "slots": 10, "alloc": 15,
+    "insider_cluster": {"family": "filings", "kind": "event", "side": "LONG", "entry": "open", "exit": "close", "slots": 10, "alloc": 25,
                         "on": True, "hold": 21, "source": "Lakonishok & Lee (2001); Alldredge & Blank (2019)", "desk": "/oracle",
                         "research": ("research_filings.json", "insider_cluster")},
     "rsi2": {"family": "market", "kind": "target", "side": "LONG", "entry": "close", "slots": 2, "alloc": 20, "on": False,
@@ -175,6 +177,15 @@ def gen_sue_gap(db: Session, today: date | None = None, opens: dict[str, float] 
     if thr is None:
         return {"why": "no surprise history"}
     tick = [c["ticker"] for c in cands if c["tier"] in ("core", "large", "mid")]
+    # Today's numbers first: the full surprise sync covers every report within three weeks
+    # and takes ~45 minutes, so on 2026-10-22..27 most of the day's actuals were not in yet
+    # at 15:32 (CNC +497%, GLXY, PII, KNSA cleared the bar but were never seen).
+    try:
+        from data_pipeline.earnings_timing import sync
+
+        sync(tickers=tick, stamp=False)
+    except Exception:  # noqa: BLE001 - decide on what is there
+        pass
     sur = {r["ticker"]: float(r["surprise_pct"]) for r in db.execute(text("""
         SELECT DISTINCT ON (ticker) ticker, surprise_pct FROM earnings_surprises
         WHERE ticker = ANY(:t) AND report_date BETWEEN :a AND :b AND eps_actual IS NOT NULL AND surprise_pct IS NOT NULL
@@ -271,17 +282,32 @@ def gen_insider(db: Session, today: date | None = None) -> dict[str, Any]:
     filed = cal[i - 1]
     got = collect_form4(db, filed)
     exit_s = cal[i + 20] if i + 20 < len(cal) else None
-    rows = db.execute(text("""
-        SELECT t.ticker, count(DISTINCT t.owner_cik) n, sum(t.value) v FROM insider_trades t
+    # The backtest's rule exactly (research_filings.clusters): walking a company's filing
+    # dates in order, a signal is the first date on which three distinct insiders have
+    # bought within the trailing 30 days, then nothing for 60 days. A fourth purchase into a
+    # cluster that formed earlier is not a new signal (AGMB, 2026-10-22: formed 10-07).
+    tickers = [r[0] for r in db.execute(text("""SELECT DISTINCT t.ticker FROM insider_trades t
         JOIN universe u ON u.ticker=t.ticker AND u.tier IN ('core','large','mid','small')
-        WHERE t.filed <= :f AND t.traded >= :f - 30 AND t.value >= 10000
-          AND t.ticker IN (SELECT ticker FROM insider_trades WHERE filed=:f)
-        GROUP BY t.ticker HAVING count(DISTINCT t.owner_cik) >= 3"""), {"f": filed}).mappings().all()
+        WHERE t.filed=:f AND t.value >= 10000"""), {"f": filed}).all()]
+    rows = []
+    for t in tickers:
+        hist = db.execute(text("""SELECT owner_cik, filed, traded, value FROM insider_trades
+                                  WHERE ticker=:t AND value >= 10000 AND filed BETWEEN :a AND :f ORDER BY filed"""),
+                          {"t": t, "a": filed - timedelta(days=120), "f": filed}).mappings().all()
+        last, fired = None, None
+        for f in sorted({h["filed"] for h in hist}):
+            if last is not None and (f - last).days < 60:
+                continue
+            w = [h for h in hist if h["filed"] <= f and h["traded"] and h["traded"] >= f - timedelta(days=30)]
+            if len({h["owner_cik"] for h in w}) >= 3:
+                last = f
+                if f == filed:
+                    fired = {"ticker": t, "n": len({h["owner_cik"] for h in w}), "v": sum(float(h["value"] or 0) for h in w)}
+        if fired:
+            rows.append(fired)
     n = 0
     for r in rows:
-        recent = db.execute(text("""SELECT 1 FROM strategy_signals WHERE strategy='insider_cluster' AND ticker=:t
-                                    AND session > :d - 60"""), {"t": r["ticker"], "d": today}).first()
-        if recent or exit_s is None:
+        if exit_s is None:
             continue
         n += _emit(db, "insider_cluster", r["ticker"], "LONG", today, "open", exit_s, "close",
                    f"insider:{r['ticker']}:{filed}", rank=float(r["v"] or 0),

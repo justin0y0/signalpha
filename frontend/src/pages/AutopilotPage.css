@@ -256,3 +256,8 @@
 
 .ap-bt dd { white-space: nowrap; }
 .ap-bt dd small { margin-left: 0.25rem; }
+
+.ap-decay { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.9rem; padding: 0.5rem 0.6rem; border: 1px solid var(--border); border-radius: var(--radius-sm); font: 500 0.7rem var(--font-mono); color: var(--text-secondary); }
+.ap-decay > span:first-child { width: 100%; font-size: 0.58rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-tertiary); }
+.ap-decay b { color: var(--text-primary); font-weight: 600; }
+.ap-decay em { width: 100%; font-style: normal; font-size: 0.68rem; line-height: 1.5; color: var(--text-tertiary); }
