@@ -426,10 +426,43 @@ def status() -> dict:
         }
 
 
+def resector(min_cap: float = 2e9) -> dict:
+    """Replace NASDAQ's screener sectors with Yahoo's for companies over `min_cap`.
+
+    NASDAQ files Visa and Mastercard under "Business Services" (-> Consumer Cyclical),
+    GE under "Consumer Electronics" (-> Technology), Philip Morris under "Medicinal
+    Chemicals" (-> Healthcare) and Tesla under "Auto Manufacturing" (-> Industrials), so
+    the Markets heatmap put them there. Only `universe` changes: past earnings events keep
+    the sector their features were built with."""
+    import time as _t
+    with SessionLocal() as s:
+        rows = s.execute(text("""SELECT ticker, sector FROM universe WHERE listed AND market_cap >= :m
+                                 ORDER BY market_cap DESC"""), {"m": min_cap}).all()
+        changed, failed = 0, 0
+        for tk, old in rows:
+            try:
+                import yfinance as yf
+                info = yf.Ticker(tk).get_info() or {}
+            except Exception:  # noqa: BLE001
+                failed += 1
+                _t.sleep(2)
+                continue
+            sec = YAHOO_SECTOR.get(info.get("sector"), info.get("sector"))
+            if sec and sec != old:
+                s.execute(text("UPDATE universe SET sector=:s, industry=COALESCE(:i, industry), updated_at=NOW() WHERE ticker=:t"),
+                          {"s": sec, "i": info.get("industry"), "t": tk})
+                changed += 1
+            if changed and changed % 50 == 0:
+                s.commit()
+            _t.sleep(0.15)
+        s.commit()
+    return {"checked": len(rows), "changed": changed, "failed": failed}
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["refresh", "build", "status"])
+    ap.add_argument("cmd", choices=["refresh", "build", "status", "resector"])
     ap.add_argument("--limit", type=int)
     ap.add_argument("--tickers", nargs="*")
     a = ap.parse_args()
@@ -437,5 +470,7 @@ if __name__ == "__main__":
         print(refresh())
     elif a.cmd == "build":
         print(build(a.limit, a.tickers))
+    elif a.cmd == "resector":
+        print(resector())
     else:
         print(status())

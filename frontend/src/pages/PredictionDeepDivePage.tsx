@@ -11,6 +11,7 @@ import { LeanCard } from '../components/LeanCard'
 import { ArenaForReport } from '../components/ArenaForReport'
 import { OnDemandDossier } from '../components/OnDemandDossier'
 import { ReactionHistory } from '../components/ReactionHistory'
+import { EarningsSchedule } from '../components/EarningsSchedule'
 import { useT } from '../i18n'
 import './DossierPage.css'
 
@@ -92,6 +93,8 @@ export function PredictionDeepDivePage() {
         </div>
         <PriceTicker ticker={data.ticker} />
       </header>
+
+      <EarningsSchedule ticker={data.ticker} />
 
       <div className="dossier__calls">
         <section className="card dialcard">

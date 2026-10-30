@@ -579,6 +579,18 @@ HANDOFF.md §5 的 10 个 bug 里：#2/#3/#4/#7/#8 已修。#5（Oracle 不出�
 - **audit 修掉的**：① `/calendar` 一直忽略 `days_forward/days_back`（首页「已过去」标签永远空、顶栏每页拉 90 天）→ 后端支持，顶栏改 21 天；② Autopilot 卡片和 lab 的夏普没减国库券（RSI-2 显示 1.14，实际 0.77）→ `research_common.sharpe()` / `strategy_lab._sharpe_m()` 统一扣 ^IRX，研究脚本已重跑；③ 调度器 10-27 撞到 1024 个文件句柄（`marks: [Errno 24]`）→ compose `ulimits nofile 65536` 止血 + `fd_watch` 每 15 分钟打日志找泄漏源（**待查：看 `docker compose logs scheduler | grep fd_watch` 哪类在涨**）；④ 详情面板被顶栏盖住 → portal。
 - 已知未修：`/calendar` 21 天仍有 ~1.3MB（gzip 后 256KB）；track-record 几个接口 2.7–5s；`simulation_service` 的夏普也没扣无风险（页面已下线）。
 
+### 6p. 2026-10-29：TQQQ/条件规则、同风险年化、财报精确时间、名人台 31 人、第二轮全站 audit
+
+- **条件规则模板 `rule`**（`library.t_rule`）：看任意标的（`signal`）、交易任意标的（`trade`），entry 全部成立、exit 任一成立（无 exit 则 entry 不成立即出），`alt` 空仓时持有、`max_hold`、倍数 `k`；指标表 `library.INDICATORS`。前端 `components/RuleBuilder.tsx` 表单编辑。LLM brainstorm 的 SYSTEM 禁止拿 buy_hold 凑数，表达不了就回 `{"error"}`；和基准完全一样的策略评级 `N`、alpha t 为 None。
+- **杠杆 ETF 合成历史**：`library.LEVERED` + `synthetic()`，L×标的日收益 − (L−1)(国库券+SPREAD 0.35%) − 费率，按真实 TQQQ 校准（年化 42.65% vs 真实 42.0%）。6 条 TQQQ/UPRO/QLD 规则（含 Justin 描述的「QQQ>1.05×MA200 且单日跌 1.5% 买、<0.95×MA200 清」）。2015 起一直持有 TQQQ 最好；全历史持有 ≈ −100%（2000–02），200 日线规则保命。
+- **同风险年化**：`run_library.matched` = rf + (r−rf)·(σ持有/σ策略)，页面一列 + 夏普解释。
+- **Groq 429**：`groq_models.chat` 未钉模型时 429 换下一个模型。
+- **个股页财报时间**：`services/schedule_service.py` + `GET /predict/{t}/schedule` + `components/EarningsSchedule.tsx`。上次 = SEC 8-K Item 2.02 接收时间（秒级）；下次 = Yahoo，15:00/00:00 是占位，标「未公布」+ 惯例时段。
+- **Autopilot**：Alpaca 模拟盘开盘撮合失真（38 笔开盘单 19 笔成交在 SIP 当分钟区间外，合计 −$785 ≥ 账户亏损）→ 开盘单改限价 ±0.6%（`AUTOPILOT_COLLAR`）+ 10 分钟未成交撤单（`AUTOPILOT_LIMIT_TTL_MIN`）。**开盘价改用 9:30 后第一根 IEX 1 分钟 K 线**（`strategy_lab.opens_today`），并用最新成交价复核（`direction_service.confirmed`）：旧版用 IEX 快照日线开盘，10-29 把 KREF（SIP 实际 −1.7%）算成 +6.2% 触发三条规则、BHC（实际 +10.7%）算成 −9%。IEX 对小盘股仍薄，根治要 SIP 实时（Alpaca 付费数据）。
+- **名人台**（`services/oracle_figures.py` 名单 + 照片署名，`oracle_service` 数据源）：31 人分四组（movers/funds/congress/media），去掉 Lisa Su。新源：`f13`（两期 13F 差异，≥1% 组合、新建/清仓/翻倍/减半，OpenFIGI 映射 CUSIP，跨申报实体合并同一季度——Pershing 2026 换了 CIK 2026053）、`congress` 多议员（共享年度索引、金额档写进标题、首轮回看 90 天）、`youtube`（RSS 常 404，可配 `YOUTUBE_API_KEY`）、Burry Substack。规则：自家公司不算（`own`），同人同票同向 14 天一条，新闻 >72h 不算，新闻解读出的代码必须在原文出现（代码或 SEC 公司名，`_named`），每轮最多 8 次 LLM 且 429 即停（与 Arena 共用 Groq 额度），`ORACLE_MODEL=openai/gpt-oss-20b`。旧数据：211 条里 75 条标 `duplicate`、60 条 `own_company`、7 条 `rejected`（只改 status，可恢复）。回填的 13F/PTR 按公开当日收盘定价、不推 Telegram。`POST /oracle/figures`、`/scan-now` 现需 `X-Admin-Token`（之前任何访客可全站关掉某人）。排行榜改按「跑赢 SPY」排序。照片 = Wikimedia Commons 自由许可（`frontend/public/figures/`，页底署名）；无照片用首字母/像素头像。**X 需要 `X_BEARER_TOKEN` 才有一手推文**（Musk/Serenity/Ackman/Burry 等）。
+- **audit 修掉的**：① outcomes 当晚收集用了没收盘的当日 K 线，10-29 存了 293 个 NaN（NaN 能过 `IS NOT NULL`，Brief 说「295 份只有 1 份突破」）→ `outcome_snapshot` 丢弃无收盘价的 K 线，现有 NaN 改 NULL 待重采；`today_service` 取「≥80% 已采到」的最近交易日。② Markets 热力图行业错（V/MA 在可选消费、GE 在科技、PM 在医疗、TSLA 在工业）= 纳斯达克筛选器分类 → `python -m data_pipeline.universe resector` 用 Yahoo 行业改 universe（≥$2B），个股页显示 universe 行业；历史 earnings_events 不改（模型特征用它）。③ Pulse 已退役却仍显示 Telegram 开、星级、$50k 仓位、P(win) → 去掉。④ `/receipts` 12s、`/today` 8s 冷启动 → 后端线程每 4 分钟预热。⑤「vs S&P +3.6%」其实是超额 → 改「比标普多」。
+- **未修/待 Justin 决定**：Arena 里 HDB、IBN 10-17（周六发财报）预测的日期和日历（10-16）对不上，永远挂在待判——要作废还是按 10-19 判需要你同意（改公开记录）；`earnings_events` 行业等下次重训一起改；Groq 免费额度（8k TPM）是 Oracle + Arena + brainstorm 的共同瓶颈。
+
 ## 7. Repo 索引（省 token，别每次全文扫）
 
 已用 **graphify** 建好结构索引：`graphify-out/graph.json`（1005 nodes / 2339 edges）。

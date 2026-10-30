@@ -73,6 +73,25 @@ async def lifespan(_: FastAPI):
             pass
     import threading
     threading.Thread(target=_warm_autopilot, daemon=True).start()
+
+    # /receipts (Model page) and /today (Brief) take 8-12 s cold and cache for five
+    # minutes; refreshing them every four keeps a visitor from ever paying that.
+    def _keep_warm():
+        import time as _t
+        from backend.app.api.routes import receipts as _r
+        from backend.app.db.session import SessionLocal
+        from backend.app.services import today_service
+        while True:
+            try:
+                with SessionLocal() as db:
+                    _r._cache.update(at=0.0)
+                    _r.get_receipts(db)
+                    today_service._cache.update(at=0.0)
+                    today_service.today(db)
+            except Exception:
+                pass
+            _t.sleep(240)
+    threading.Thread(target=_keep_warm, daemon=True).start()
     # The MCP transport keeps a session manager that must be running while requests are
     # served; as a route inside this app it does not get its own lifespan.
     from backend.app.mcp_server import mcp as _mcp

@@ -117,6 +117,9 @@ DDL_STATEMENTS: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_briefs_date ON daily_briefs (brief_date DESC)",
     "ALTER TABLE outcomes ADD COLUMN IF NOT EXISTS flat_band DOUBLE PRECISION",
     "ALTER TABLE predictions ADD COLUMN IF NOT EXISTS prob_move DOUBLE PRECISION",
+    # Oracle: 'news' (read out of an article by the LLM) or 'disclosure' (13F, PTR, ARK)
+    "ALTER TABLE oracle_signals ADD COLUMN IF NOT EXISTS kind TEXT",
+    "CREATE INDEX IF NOT EXISTS idx_oracle_fts ON oracle_signals (figure, ticker, sentiment, detected_at)",
 ]
 
 

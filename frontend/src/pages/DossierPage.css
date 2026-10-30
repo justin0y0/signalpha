@@ -93,3 +93,22 @@
 .od-tier { font: 600 0.6rem var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; padding: 0.12rem 0.4rem; border: 1px solid var(--border-strong); border-radius: 2px; }
 .od-note { margin: 0; padding: 0.7rem 0.9rem; border-left: 2px solid var(--model); font-size: 0.84rem; line-height: 1.55; color: var(--text-secondary); max-width: 90ch; }
 .od-note.is-outside { border-left-color: var(--signal); color: var(--text-primary); }
+
+/* last / next report, to the minute */
+.esched { display: grid; gap: 0.8rem; }
+.esched__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.8rem 1.4rem; }
+.esched__col { display: grid; gap: 0.35rem; align-content: start; }
+.esched__label { font: 600 0.6rem var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-tertiary); }
+.esched__when { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 0.7rem; }
+.esched__when b { font: 500 1.05rem var(--font-display); }
+.esched__when .mono { font: 600 0.95rem var(--font-mono); color: var(--signal); }
+.esched__note { margin: 0; font-size: 0.76rem; color: var(--text-tertiary); }
+.esched__note a { color: var(--text-secondary); }
+.esched__vs { display: flex; flex-wrap: wrap; gap: 0.6rem 1.6rem; align-items: baseline; padding-top: 0.7rem; border-top: 1px solid var(--border); }
+.esched__vs > div { display: grid; gap: 0.15rem; }
+.esched__vs b { font: 600 0.95rem var(--font-mono); }
+.esched__vs b.is-up { color: var(--up); } .esched__vs b.is-down { color: var(--down); }
+.esched__vs em { font-style: normal; font-size: 0.72rem; color: var(--text-tertiary); }
+.esched__dim { color: var(--text-tertiary); font-weight: 400 !important; }
+.esched__others { display: flex !important; flex-wrap: wrap; gap: 0.3rem 0.8rem; font: 500 0.72rem var(--font-mono); color: var(--text-tertiary); align-self: end; }
+.esched__link { margin-left: auto; font: 500 0.78rem var(--font-mono); color: var(--signal); align-self: center; }

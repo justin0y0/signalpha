@@ -165,8 +165,12 @@ def today(db: Session) -> dict[str, Any]:
     day, nxt = _session_days()
     # Reactions land in outcomes after the evening collection; before that, the latest
     # session with reactions is the useful one.
-    last = db.execute(text("""SELECT max(COALESCE(reaction_date, earnings_date)) FROM outcomes
-                              WHERE COALESCE(reaction_date, earnings_date) <= :d"""), {"d": day}).scalar()
+    # The latest session whose reactions are mostly in: right after the close only a few
+    # rows have a close, and "2 reports reacted" would describe a half-collected day.
+    last = db.execute(text("""SELECT d FROM (SELECT COALESCE(reaction_date, earnings_date) d, count(*) n,
+                                     count(actual_t1_close_return) k FROM outcomes
+                              WHERE COALESCE(reaction_date, earnings_date) <= :d GROUP BY 1) x
+                              WHERE k >= 0.8 * n ORDER BY d DESC LIMIT 1"""), {"d": day}).scalar()
     reacted = _reacted(db, last) if last else []
     reporting = _reporting(db, day, nxt)
     market = _market()

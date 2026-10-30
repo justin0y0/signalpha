@@ -320,17 +320,30 @@ def snapshots(symbols: list[str], db: Session | None = None) -> dict[str, dict]:
 
 
 def opens_today(symbols: list[str], db: Session | None = None) -> dict[str, float]:
-    """Today's first print per ticker from the IEX feed, only if it is from today's session."""
-    today = datetime.now(timezone.utc).astimezone(NY).date()
-    out = {}
-    for sym, snap in snapshots(symbols, db).items():
-        bar = (snap or {}).get("dailyBar") or {}
+    """Today's opening print per ticker: the open of the first IEX one-minute bar at or
+    after 9:30 New York time.
+
+    This used the IEX snapshot's daily bar, whose open can be a pre-market trade or a
+    stray first print. On 2026-10-29 it called KREF up 6.2% (5 times its usual move,
+    three rules fired, Autopilot shorted it) when the official open was down 1.7%, and
+    called BHC down 9% when it opened up 10.7%."""
+    h = data_headers(db)
+    if not h or not symbols:
+        return {}
+    now = datetime.now(timezone.utc).astimezone(NY)
+    start = datetime.combine(now.date(), datetime.min.time(), tzinfo=NY).replace(hour=9, minute=30)
+    out: dict[str, float] = {}
+    for i in range(0, len(symbols), 100):
         try:
-            when = datetime.fromisoformat(bar["t"].replace("Z", "+00:00")).astimezone(NY).date()
-        except Exception:  # noqa: BLE001
-            continue
-        if when == today and bar.get("o"):
-            out[sym] = float(bar["o"])
+            r = httpx.get("https://data.alpaca.markets/v2/stocks/bars", headers=h, timeout=15, params={
+                "symbols": ",".join(to_alpaca(x) for x in symbols[i:i + 100]), "timeframe": "1Min", "feed": "iex",
+                "adjustment": "raw", "start": start.isoformat(), "end": (start + timedelta(minutes=10)).isoformat(),
+                "limit": 10000})
+            for sym, rows in ((r.json() or {}).get("bars") or {}).items() if r.status_code == 200 else []:
+                if rows:
+                    out[from_alpaca(sym)] = float(rows[0]["o"])
+        except Exception:  # noqa: BLE001 - Yahoo is the fallback
+            pass
     return out
 
 

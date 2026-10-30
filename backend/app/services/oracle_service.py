@@ -14,40 +14,23 @@ try:
 except Exception:
     _rc = None
 
-FIGURES = {
-  "trump":   {"name":"Donald Trump","emoji":"🇺🇸","type":"policy","why":"Truth Social posts move markets",
-     "sources":[{"type":"truth","handle":"realDonaldTrump"},{"type":"x","handle":"realDonaldTrump"},
-                {"type":"gnews","queries":["Trump stocks company","Trump tariff stock"]}]},
-  "huang":   {"name":"Jensen Huang","emoji":"🟢","type":"tech_ceo","why":"AI/semis comments",
-     "sources":[{"type":"gnews","queries":["Jensen Huang stock company","Nvidia CEO comment stock"]},
-                {"type":"news","queries":["Jensen Huang says stock"]}]},
-  "serenity":{"name":"Serenity","emoji":"🐦","type":"x_trader","why":"X trader",
-     "sources":[{"type":"x","handle":"<SERENITY_X>"},{"type":"rss","url_env":"ORACLE_RSS_SERENITY"},
-                {"type":"gnews","queries":["Serenity trader stock pick"]}]},
-  "musk":    {"name":"Elon Musk","emoji":"🚀","type":"x_mover","why":"X posts, high variance",
-     "sources":[{"type":"x","handle":"elonmusk"},{"type":"gnews","queries":["Elon Musk stock comment"]}]},
-  "su":      {"name":"Lisa Su","emoji":"🔴","type":"tech_ceo","why":"AMD/AI guidance",
-     "sources":[{"type":"gnews","queries":["Lisa Su AMD stock comment"]}]},
-  "wood":    {"name":"Cathie Wood","emoji":"📈","type":"fund","why":"ARK daily trades + X",
-     "sources":[{"type":"ark"},{"type":"x","handle":"CathieDWood"},{"type":"gnews","queries":["Cathie Wood ARK buy stock"]}]},
-  "ackman":  {"name":"Bill Ackman","emoji":"🎯","type":"activist","why":"X theses + 13D",
-     "sources":[{"type":"x","handle":"BillAckman"},{"type":"edgar","cik":"1336528"},{"type":"gnews","queries":["Bill Ackman stock stake"]}]},
-  "pelosi":  {"name":"Nancy Pelosi","emoji":"🏛","type":"congress","why":"Congressional disclosures",
-     "sources":[{"type":"congress","name":"Pelosi"},{"type":"gnews","queries":["Nancy Pelosi stock trade"]}]},
-  "buffett": {"name":"Warren Buffett","emoji":"💰","type":"value","why":"Berkshire 13F/13D",
-     "sources":[{"type":"edgar","cik":"1067983"},{"type":"gnews","queries":["Warren Buffett Berkshire stock buy"]}]},
-  "burry":   {"name":"Michael Burry","emoji":"🐻","type":"contrarian","why":"X (Cassandra) + 13F",
-     "sources":[{"type":"x","handle":"michaeljburry"},{"type":"edgar","cik":"1649339"},{"type":"gnews","queries":["Michael Burry Scion stock"]}]},
-}
+from backend.app.services.oracle_figures import FIGURES, LEGACY
 
 def _enabled():
+    """Figures the scanner polls. Stored as the switched-OFF set: storing the ON set
+    (as before 2026-10-29) left every figure added later silently disabled."""
     if _rc is None: return set(FIGURES)
     try:
-        v=_rc.get("oracle:enabled"); return set(FIGURES) if v is None else set(json.loads(v))
+        off=_rc.get("oracle:disabled")
+        if off is None:
+            on=_rc.get("oracle:enabled")
+            off=json.dumps(sorted(LEGACY-set(json.loads(on)))) if on else "[]"
+            _rc.set("oracle:disabled",off)
+        return set(FIGURES)-set(json.loads(off))
     except Exception: return set(FIGURES)
 def set_enabled(keys):
     if _rc is None: return
-    try: _rc.set("oracle:enabled", json.dumps(sorted(set(keys)&set(FIGURES))))
+    try: _rc.set("oracle:disabled", json.dumps(sorted(set(FIGURES)-set(keys))))
     except Exception: pass
 def _seen_key(fk, uid):
     return "oracle:seen:"+hashlib.md5((fk+"|"+str(uid)).encode()).hexdigest()
@@ -59,8 +42,9 @@ def _mark_seen(fk, uid):
     # Marked only AFTER an item was actually processed. Marking on first sight meant
     # that while the LLM was returning 404 (2026-10), every item was consumed unread
     # and skipped for the next 7 days, so fixing the model recovered nothing.
+    # 30 days: with 7, the same Serenity article was re-read and re-emitted every week.
     if _rc is None or not uid: return
-    try: _rc.setex(_seen_key(fk,uid),604800,"1")
+    try: _rc.setex(_seen_key(fk,uid),2592000,"1")
     except Exception: pass
 def _due(stype, ttl):
     if _rc is None: return True
@@ -69,6 +53,18 @@ def _due(stype, ttl):
         if _rc.exists(k): return False
         _rc.setex(k,ttl,"1"); return True
     except Exception: return True
+
+def _ts(raw):
+    """Feed timestamp → epoch seconds (None when absent or unparseable)."""
+    if not raw: return None
+    try:
+        from email.utils import parsedate_to_datetime
+        return parsedate_to_datetime(raw).timestamp()
+    except Exception: pass
+    try:
+        import datetime as _dt
+        return _dt.datetime.fromisoformat(raw.replace("Z","+00:00")).timestamp()
+    except Exception: return None
 
 def _parse_rss(xml_text, limit=6):
     out=[]
@@ -85,7 +81,11 @@ def _parse_rss(xml_text, limit=6):
                 le=it.find("{http://www.w3.org/2005/Atom}link")
                 link=le.get("href") if le is not None else ""
             desc=g("description") or g("summary") or g("content")
-            if title: out.append({"title":title,"body":re.sub("<[^>]+>","",desc)[:500],"url":link})
+            if not desc:
+                md=it.find(".//{http://search.yahoo.com/mrss/}description")
+                desc=(md.text or "") if md is not None else ""
+            if title: out.append({"title":title,"body":re.sub("<[^>]+>","",desc)[:500],"url":link,
+                                  "ts":_ts(g("pubDate") or g("published") or g("updated"))})
     except Exception: pass
     return out
 
@@ -97,12 +97,13 @@ def _fetch_news(query,n=3):
         except Exception: continue
     return []
 
-def src_gnews(query):
+def src_gnews(query, hl="en-US"):
+    gl,ceid=("CN","CN:zh-Hans") if hl=="zh-CN" else ("US","US:en")
     try:
-        r=httpx.get(f"https://news.google.com/rss/search?q={quote(query)}&hl=en-US&gl=US&ceid=US:en",
+        r=httpx.get(f"https://news.google.com/rss/search?q={quote(query)}+when:3d&hl={hl}&gl={gl}&ceid={ceid}",
                     headers=UA,timeout=15,follow_redirects=True)
         if r.status_code!=200: return []
-        return [{"kind":"news","headline":x["title"],"body":x["body"],"url":x["url"],"uid":x["url"] or x["title"]}
+        return [{"kind":"news","headline":x["title"],"body":x["body"],"url":x["url"],"uid":x["url"] or x["title"],"ts":x["ts"]}
                 for x in _parse_rss(r.text,5)]
     except Exception as e: log.warning(f"gnews: {e}"); return []
 
@@ -111,9 +112,32 @@ def src_rss(url):
     try:
         r=httpx.get(url,headers=UA,timeout=15,follow_redirects=True)
         if r.status_code!=200: return []
-        return [{"kind":"news","headline":x["title"],"body":x["body"],"url":x["url"],"uid":x["url"] or x["title"]}
+        _mark_ok("rss")
+        return [{"kind":"news","headline":x["title"],"body":x["body"],"url":x["url"],"uid":x["url"] or x["title"],"ts":x["ts"]}
                 for x in _parse_rss(r.text,6)]
     except Exception as e: log.warning(f"rss: {e}"); return []
+
+def src_youtube(channel):
+    """A channel's uploads feed — titles and descriptions of the latest videos."""
+    if not channel or not _due(f"yt:{channel}",1800): return []
+    try:
+        r=httpx.get(f"https://www.youtube.com/feeds/videos.xml?channel_id={channel}",headers=UA,timeout=15)
+        if r.status_code!=200:
+            # the public feed 404s for hours at a time (2026-10-29, from everywhere);
+            # the Data API is the fallback when a key is set (1 quota unit per call)
+            key=os.getenv("YOUTUBE_API_KEY","").strip()
+            if not key: log.warning(f"youtube {channel} {r.status_code}"); return []
+            j=httpx.get("https://www.googleapis.com/youtube/v3/playlistItems",timeout=15,params={
+                "part":"snippet","playlistId":"UU"+channel[2:],"maxResults":6,"key":key}).json()
+            _mark_ok("youtube")
+            return [{"kind":"news","headline":"Video: "+it["snippet"]["title"],"body":it["snippet"].get("description","")[:500],
+                     "url":"https://www.youtube.com/watch?v="+it["snippet"]["resourceId"]["videoId"],
+                     "uid":"yt:https://www.youtube.com/watch?v="+it["snippet"]["resourceId"]["videoId"],
+                     "ts":_ts(it["snippet"].get("publishedAt"))} for it in j.get("items",[])]
+        _mark_ok("youtube")
+        return [{"kind":"news","headline":"Video: "+x["title"],"body":x["body"],"url":x["url"],
+                 "uid":"yt:"+(x["url"] or x["title"]),"ts":x["ts"]} for x in _parse_rss(r.text,6)]
+    except Exception as e: log.warning(f"youtube {channel}: {e}"); return []
 
 def _x_uid(handle,bearer):
     if _rc is not None:
@@ -189,54 +213,228 @@ def src_ark():
         return out
     except Exception as e: log.warning(f"ark: {e}"); return []
 
-_PTR_ROW = re.compile(r"\(([A-Z][A-Z.]{0,5})\)\s*\[(ST|OP)\]\s*(P|S(?:\s*\(partial\))?)\s+(\d{2}/\d{2}/\d{4})")
+# "... (NVDA) [OP]  P 07/24/2026 08/06/2026 $1,000,001 - $5,000,000" — ticker, asset type,
+# P/S, trade date, notification date, amount bracket (the bracket can wrap a line)
+_PTR_ROW = re.compile(r"\(([A-Z][A-Z.]{0,5})\)\s*\[(ST|OP)\]\s*(P|S(?:\s*\(partial\))?)\s+(\d{2}/\d{2}/\d{4})"
+                      r"(?:\s*\d{2}/\d{2}/\d{4})?\s*(\$[\d,]+(?:\s*-\s*\$[\d,]+)?|Over \$[\d,]+)?")
+_house: dict = {"at":0.0,"rows":[]}
 
-def src_congress(name):
+def _house_index():
+    """Every PTR in the House Clerk's yearly indexes (this year, plus last year in Jan–Feb),
+    downloaded at most hourly and shared by all members."""
+    import io, zipfile, datetime as _dt
+    if time.time()-_house["at"] < 3600 and _house["rows"]: return _house["rows"]
+    today=_dt.date.today(); rows=[]
+    for y in ([today.year-1] if today.month<=2 else [])+[today.year]:
+        r=httpx.get(f"https://disclosures-clerk.house.gov/public_disc/financial-pdfs/{y}FD.zip",headers=UA,timeout=60)
+        if r.status_code!=200: log.warning(f"congress index {y} {r.status_code}"); continue
+        z=zipfile.ZipFile(io.BytesIO(r.content))
+        for m in ET.fromstring(z.read(next(n for n in z.namelist() if n.endswith(".xml")))):
+            row={c.tag:(c.text or "").strip() for c in m}
+            if row.get("FilingType")!="P": continue
+            try: row["filed"]=_dt.datetime.strptime(row.get("FilingDate",""),"%m/%d/%Y").date()
+            except ValueError: continue
+            rows.append(row)
+    if rows: _house.update(at=time.time(),rows=rows)
+    return _house["rows"]
+
+def _ptr_rows(doc, year):
+    """(ticker, kind, P/S, trade date, amount text) rows of one PTR PDF; cached for good,
+    since a filed report never changes. Scanned paper filings have no text and give []."""
+    k=f"oracle:ptr:{doc}"
+    if _rc is not None:
+        try:
+            hit=_rc.get(k)
+            if hit is not None: return [tuple(x) for x in json.loads(hit)]
+        except Exception: pass
+    import io
+    from pypdf import PdfReader
+    pr=httpx.get(f"https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/{year}/{doc}.pdf",headers=UA,timeout=30)
+    if pr.status_code!=200: return []
+    txt="\n".join(pg.extract_text() or "" for pg in PdfReader(io.BytesIO(pr.content)).pages)
+    rows=[list(x) for x in _PTR_ROW.findall(txt)]
+    if _rc is not None:
+        try: _rc.setex(k,86400*120,json.dumps(rows))
+        except Exception: pass
+    return [tuple(x) for x in rows]
+
+def _amount_top(txt):
+    nums=[int(n.replace(",","")) for n in re.findall(r"\$([\d,]+)",txt or "")]
+    return max(nums) if nums else 0
+
+def src_congress(name, first=""):
     """Periodic Transaction Reports straight from the House Clerk.
 
-    The old feed (house-stock-watcher's S3 dump) now returns 403, so Pelosi had been
-    dark since some time before the 2026 migration with nothing in the logs. The
-    Clerk publishes a free yearly index of every filing; PTRs are FilingType "P", and
-    each links a PDF whose rows read "... (NVDA) [OP]  P 07/24/2026 ...". Only filings
-    from the last ORACLE_CONGRESS_DAYS are turned into items, so first run after an
-    outage does not replay a quarter of stale trades as fresh signals.
+    The old feed (house-stock-watcher's S3 dump) returned 403, so Pelosi had been dark
+    with nothing in the logs. PTRs are FilingType "P" in the Clerk's free yearly index;
+    each links a PDF. Filings from the last ORACLE_CONGRESS_DAYS (90) are read — on a
+    first run those are emitted quietly, priced at the filing day's close. The amount
+    bracket goes into the headline; ORACLE_CONGRESS_MIN_USD can drop the small ones.
     """
-    if not _due("congress",3600): return []
+    if not _due(f"congress:{name}",3600): return []
     try:
-        import io, zipfile, datetime as _dt
-        import xml.etree.ElementTree as ET
-        today=_dt.date.today()
-        r=httpx.get(f"https://disclosures-clerk.house.gov/public_disc/financial-pdfs/{today.year}FD.zip",headers=UA,timeout=30)
-        if r.status_code!=200: log.warning(f"congress index {r.status_code}"); return []
-        z=zipfile.ZipFile(io.BytesIO(r.content))
-        root=ET.fromstring(z.read(next(n for n in z.namelist() if n.endswith(".xml"))))
+        import datetime as _dt
+        rows=_house_index()
         _mark_ok("congress")
-        cutoff=today-_dt.timedelta(days=int(os.getenv("ORACLE_CONGRESS_DAYS","14")))
+        cutoff=_dt.date.today()-_dt.timedelta(days=int(os.getenv("ORACLE_CONGRESS_DAYS","90")))
+        floor=int(os.getenv("ORACLE_CONGRESS_MIN_USD","0"))
         out=[]
-        for m in root:
-            row={c.tag:(c.text or "").strip() for c in m}
-            if row.get("Last","").lower()!=name.lower() or row.get("FilingType")!="P": continue
-            try: filed=_dt.datetime.strptime(row.get("FilingDate",""),"%m/%d/%Y").date()
-            except ValueError: continue
-            if filed<cutoff: continue
-            doc=row.get("DocID","")
-            pdf_url=f"https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/{today.year}/{doc}.pdf"
-            pr=httpx.get(pdf_url,headers=UA,timeout=30)
-            if pr.status_code!=200: continue
-            from pypdf import PdfReader
-            text="\n".join(pg.extract_text() or "" for pg in PdfReader(io.BytesIO(pr.content)).pages)
+        for row in rows:
+            if row.get("Last","").lower()!=name.lower() or row["filed"]<cutoff: continue
+            if first and not row.get("First","").lower().startswith(first.lower()): continue
+            doc=row.get("DocID",""); filed=row["filed"]
+            pdf_url=f"https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/{filed.year}/{doc}.pdf"
             seen=set()
-            for tk,kind,typ,tdate in _PTR_ROW.findall(text):
+            for tk,kind,typ,tdate,amt in _ptr_rows(doc, filed.year):
                 tk=tk.replace(".","-"); side="buy" if typ.startswith("P") else "sell"
-                if (tk,side) in seen: continue
+                top=_amount_top(amt)
+                if (tk,side) in seen or (top and top<floor): continue
                 seen.add((tk,side))
                 what="call options" if kind=="OP" else "shares"
+                size=f" ({' '.join(amt.split())})" if amt else ""
                 out.append({"kind":"trade","ticker":tk,"sentiment":"bullish" if side=="buy" else "bearish",
-                    "headline":f"{name} disclosed a {side} of {tk} {what} (traded {tdate}, filed {filed:%m/%d/%Y})",
-                    "rationale":f"Periodic Transaction Report {doc}: {name} {'bought' if side=='buy' else 'sold'} {tk} {what} on {tdate}.",
-                    "url":pdf_url,"conf":0.7,"uid":f"cong:{doc}:{tk}:{side}"})
+                    "headline":f"{name} disclosed a {side} of {tk} {what}{size} — traded {tdate}, filed {filed:%m/%d/%Y}",
+                    "rationale":f"Periodic Transaction Report {doc}: {name} {'bought' if side=='buy' else 'sold'} {tk} {what} on {tdate}{size}.",
+                    "url":pdf_url,"conf":0.7,"uid":f"cong:{doc}:{tk}:{side}",
+                    "at":_et_ts(filed,16)})
         return out
-    except Exception as e: log.warning(f"congress: {e}"); return []
+    except Exception as e: log.warning(f"congress {name}: {e}"); return []
+
+def _et_ts(d, hour):
+    """Epoch seconds of `hour`:00 New York time on date d."""
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+    return _dt.datetime(d.year,d.month,d.day,hour,0,tzinfo=ZoneInfo("America/New_York")).timestamp()
+
+def _13f_table(cik, acc):
+    """{(cusip, PUT|CALL|''): {"name","value","shares"}} of one 13F-HR, cached for good."""
+    k=f"oracle:13f:{acc}"
+    if _rc is not None:
+        try:
+            hit=_rc.get(k)
+            if hit: return {tuple(x[0]):x[1] for x in json.loads(hit)}
+        except Exception: pass
+    base=f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc.replace('-','')}"
+    idx=httpx.get(f"{base}/index.json",headers=UA,timeout=20).json()
+    names=[i["name"] for i in idx.get("directory",{}).get("item",[]) if i["name"].lower().endswith(".xml")
+           and i["name"].lower()!="primary_doc.xml"]
+    if not names: return {}
+    root=ET.fromstring(httpx.get(f"{base}/{names[0]}",headers=UA,timeout=30).content)
+    loc=lambda e:e.tag.rsplit("}",1)[-1]
+    out={}
+    for it in root.iter():
+        if loc(it)!="infoTable": continue
+        f={loc(c):(c.text or "").strip() for c in it.iter()}
+        key=(f.get("cusip","").upper(),f.get("putCall","").upper())
+        v=out.setdefault(key,{"name":f.get("nameOfIssuer",""),"value":0.0,"shares":0.0})
+        try: v["value"]+=float(f.get("value") or 0); v["shares"]+=float(f.get("sshPrnamt") or 0)
+        except ValueError: pass
+    if _rc is not None and out:
+        try: _rc.setex(k,86400*400,json.dumps([[list(a),b] for a,b in out.items()]))
+        except Exception: pass
+    return out
+
+def _cusip_tickers(cusips):
+    """CUSIP → US ticker through OpenFIGI (free, 25 requests a minute without a key);
+    answers, including "no ticker", are cached for months."""
+    out,need={},[]
+    for c in cusips:
+        hit=_rc.get(f"oracle:cusip:{c}") if _rc is not None else None
+        if hit is not None: out[c]=hit or None
+        else: need.append(c)
+    hdr={"Content-Type":"application/json"}
+    if os.getenv("OPENFIGI_KEY","").strip(): hdr["X-OPENFIGI-APIKEY"]=os.getenv("OPENFIGI_KEY").strip()
+    for i in range(0,len(need),10):
+        chunk=need[i:i+10]
+        try:
+            r=httpx.post("https://api.openfigi.com/v3/mapping",headers=hdr,timeout=20,
+                         json=[{"idType":"ID_CUSIP","idValue":c,"exchCode":"US"} for c in chunk])
+            if r.status_code!=200: log.warning(f"openfigi {r.status_code}"); break
+            for c,res in zip(chunk,r.json()):
+                d=(res.get("data") or [{}])[0]
+                tk=(d.get("ticker") or "").replace("/","-").upper()
+                out[c]=tk or None
+                if _rc is not None: _rc.setex(f"oracle:cusip:{c}",86400*(180 if tk else 30),tk)
+        except Exception as e: log.warning(f"openfigi: {e}"); break
+        if i+10<len(need): time.sleep(2.6)
+    return out
+
+def src_f13(cik, fund, who):
+    """What changed between a manager's last two 13F-HR filings.
+
+    Positions as of quarter end, filed up to 45 days later — a slow signal, but the
+    trades are real. Reported: new positions, exits, and holdings at least doubled or
+    halved, each worth ≥ ORACLE_13F_MIN_W (1%) of the portfolio, largest first, at most
+    four per filing. A put is read as bearish. Only a filing from the last
+    ORACLE_13F_DAYS (100) counts; on first sight it is emitted quietly, priced at the
+    close of the day it became public.
+    """
+    ciks=[int(c) for c in (cik if isinstance(cik,(list,tuple)) else [cik])]
+    if not _due(f"f13:{ciks[0]}",6*3600): return []
+    try:
+        import datetime as _dt
+        from backend.app.services.schedule_service import _cik as _sec_listed
+        fl=[]
+        for c in ciks:   # a manager that moved filer entity (Pershing Square, 2026) spans several
+            r=httpx.get(f"https://data.sec.gov/submissions/CIK{c:010d}.json",headers=UA,timeout=20)
+            if r.status_code!=200: continue
+            rec=r.json().get("filings",{}).get("recent",{})
+            fl+=[(rec["accessionNumber"][i],rec["filingDate"][i],rec["reportDate"][i],rec["acceptanceDateTime"][i],c)
+                 for i,f in enumerate(rec.get("form",[])) if f=="13F-HR"]
+        fl.sort(key=lambda x:x[1],reverse=True)
+        _mark_ok("f13")
+        periods=list(dict.fromkeys(x[2] for x in fl))
+        if len(periods)<2: return []
+        acc,filed,period,accepted,cik=fl[0]
+        if (_dt.date.today()-_dt.date.fromisoformat(filed)).days>int(os.getenv("ORACLE_13F_DAYS","100")): return []
+        def merged(pd_):
+            # one quarter can be split across entities: Pershing's Q1 2026 was HHH on the
+            # new filer and everything else on the old one
+            t={}
+            for a,_,p_,_,c in fl:
+                if p_!=pd_: continue
+                for k,v in _13f_table(c,a).items():
+                    x=t.setdefault(k,{"name":v["name"],"value":0.0,"shares":0.0})
+                    x["value"]+=v["value"]; x["shares"]+=v["shares"]
+            return t
+        cur,old=merged(period),merged(periods[1])
+        tc,tp=sum(v["value"] for v in cur.values()) or 1,sum(v["value"] for v in old.values()) or 1
+        mw=float(os.getenv("ORACLE_13F_MIN_W","0.01"))
+        moves=[]
+        for key in set(cur)|set(old):
+            c,p=cur.get(key),old.get(key); opt=key[1]
+            if c and not p: act,w="new",c["value"]/tc
+            elif p and not c: act,w="exit",p["value"]/tp
+            else:
+                ratio=c["shares"]/p["shares"] if p["shares"] else 1
+                if ratio>=2: act="add"
+                elif ratio<=0.5: act="cut"
+                else: continue
+                w=c["value"]/tc
+            if w<mw or (opt=="PUT" and act in ("exit","cut")): continue
+            up=act in ("new","add")
+            moves.append((w,key,act,(not up) if opt!="PUT" else up,(c or p)["name"]))
+        moves.sort(key=lambda m:-m[0])
+        moves=moves[:8]
+        tick=_cusip_tickers([m[1][0] for m in moves])
+        q=_dt.date.fromisoformat(period); qn=f"Q{(q.month-1)//3+1} {q.year}"
+        verb={"new":"opened a new position in","exit":"sold out of","add":"more than doubled","cut":"cut by half or more"}
+        url=f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc.replace('-','')}/"
+        at=_dt.datetime.fromisoformat(accepted.replace("Z","+00:00")).timestamp()
+        out=[]
+        for w,key,act,bear,name in moves:
+            tk=tick.get(key[0])
+            # SEC-registered listings only: OpenFIGI also maps foreign lines to OTC symbols
+            if not tk or not tk.replace("-","").isalpha() or len(tk)>6 or not _sec_listed(tk): continue
+            what=f" {tk} puts" if key[1]=="PUT" else f" {tk} calls" if key[1]=="CALL" else f" {tk}"
+            out.append({"kind":"trade","ticker":tk,"sentiment":"bearish" if bear else "bullish",
+                "headline":f"{fund} {verb[act]}{what} — {w:.1%} of the portfolio ({qn} 13F, filed {filed})",
+                "rationale":f"{who}'s {fund} 13F for {qn} shows it {verb[act]} {name.title()}{' (puts)' if key[1]=='PUT' else ''}, "
+                            f"{w:.1%} of reported holdings. 13F positions are as of quarter end.",
+                "url":url,"conf":0.7,"uid":f"13f:{acc}:{tk}:{act}{key[1]}","at":at})
+            if len(out)>=4: break
+        return out
+    except Exception as e: log.warning(f"f13 {cik}: {e}"); return []
 
 def src_edgar(cik,name):
     if not _due(f"edgar:{cik}",3600): return []
@@ -269,7 +467,7 @@ def _domain_ok(url):
     except Exception:
         return True
 
-PRIMARY_SOURCES={"truth","trumparchive","x","nitter","ark","congress","edgar","rss"}
+PRIMARY_SOURCES={"truth","trumparchive","x","nitter","ark","congress","edgar","rss","f13","youtube"}
 
 def _note_source(fk, st, n):
     """Remember when each (figure, source) was last confirmed working.
@@ -318,7 +516,7 @@ def _gather(fk,fig):
                             "body":it.get("body","") or it.get("excerpt",""),
                             "url":it.get("url") or it.get("link",""),"uid":it.get("url") or it.get("title","")})
             elif st=="gnews":
-                for q in src.get("queries",[]): items+=src_gnews(q)
+                for q in src.get("queries",[]): items+=src_gnews(q,src.get("hl","en-US"))
             elif st=="rss":
                 items+=src_rss(os.getenv(src.get("url_env",""),"") if src.get("url_env") else src.get("url",""))
             elif st=="x": items+=src_x(src.get("handle",""))
@@ -327,11 +525,17 @@ def _gather(fk,fig):
             elif st=="trumparchive": items+=src_truth_cnn()
             elif st=="marketaux": items+=src_marketaux(fig["name"])
             elif st=="ark": items+=src_ark()
-            elif st=="congress": items+=src_congress(src.get("name",""))
+            elif st=="congress": items+=src_congress(src.get("name",""),src.get("first",""))
             elif st=="edgar": items+=src_edgar(src.get("cik",""),fig["name"])
+            elif st=="f13": items+=src_f13(src.get("cik"),src.get("fund",""),fig["name"])
+            elif st=="youtube": items+=src_youtube(src.get("channel",""))
         except Exception as e: log.warning(f"gather {st} {fk}: {e}")
         _note_source(fk, st, max(len(items)-before, 1 if _OK_NOW else 0))
-    return [it for it in items if _domain_ok(it.get("url",""))]
+    # News older than ORACLE_NEWS_MAX_AGE_H is not a signal any more: priced at today's
+    # quote it would be logged as fresh (Buffett's Lennar buy was logged twice that way).
+    old=time.time()-3600*float(os.getenv("ORACLE_NEWS_MAX_AGE_H","72"))
+    return [it for it in items if _domain_ok(it.get("url",""))
+            and not (it.get("kind")=="news" and it.get("ts") and it["ts"]<old)]
 
 def _llm_analyze(fn,headline,body):
     key=os.getenv("GROQ_API_KEY","").strip()
@@ -423,9 +627,43 @@ def _push(m):
         except Exception: pass
 
 
-def _emit(fk,fig,sig,headline,url):
+def _close_on(tk, ts):
+    """Close of the first session on/after epoch ts — the price a follower could get."""
+    try:
+        import yfinance as yf, datetime as _dt
+        d=_dt.datetime.utcfromtimestamp(ts).date()
+        h=yf.Ticker(tk).history(start=d.isoformat(),end=(d+_dt.timedelta(days=7)).isoformat(),auto_adjust=False)
+        return float(h["Close"].iloc[0]) if not h.empty else 0
+    except Exception: return 0
+
+_GENERIC={"inc","corp","corporation","co","company","holdings","holding","group","ltd","plc","sa","nv","ag","the",
+          "class","common","stock","shares","ordinary","technologies","technology","international","financial",
+          "capital","systems","global","energy","pharmaceuticals","therapeutics","bancorp","trust","partners","lp",
+          "industries","enterprises","brands","resources","services","solutions","entertainment","de","new"}
+
+def _named(tk, text_):
+    """Does the article actually name this company — its ticker or a distinctive word of
+    its SEC name? The LLM picked Sanofi (SNY) for 'a $5 billion cybersecurity company'
+    and Hudson Pacific (HPP) for a Howard Hughes story; neither name was in the text."""
+    t=(text_ or "").lower()
+    if re.search(r"(?<![a-z0-9])\$?"+re.escape(tk.lower())+r"(?![a-z0-9])",t): return True
+    try:
+        from backend.app.services.schedule_service import sec_title
+        title=sec_title(tk)
+    except Exception: title=None
+    if not title: return False
+    words=[w for w in re.split(r"[^a-z0-9]+",title.lower()) if len(w)>=4 and w not in _GENERIC]
+    return any(w in t for w in words)
+
+def _emit(fk,fig,sig,headline,url,at=None,quiet=False,derived=True,context=""):
+    """Store (and push) one signal. `derived` = read out of news by the LLM, as opposed
+    to a disclosed trade. `at`/`quiet` replay an older disclosure: dated and priced when
+    it became public, and not pushed."""
     tk=(sig.get("ticker") or "").upper().strip()
-    if not tk.isalpha() or len(tk)>5: return False
+    if not tk.replace("-","").isalpha() or len(tk)>6: return False
+    if derived and tk in fig.get("own",()): return False   # a CEO praising their own company
+    if derived and not _named(tk,headline+" "+(context or "")): 
+        log.info(f"oracle {fk} {tk}: not named in the article — dropped"); return False
     try: conf=float(sig.get("confidence",0))
     except Exception: conf=0
     if conf<float(os.getenv("ORACLE_MIN_CONF","0.55")): return False
@@ -434,22 +672,34 @@ def _emit(fk,fig,sig,headline,url):
             if _rc.exists(f"oracle:cd:{fk}:{tk}"): return False
         except Exception: pass
     price,mcap=_quote(tk)
+    if at and time.time()-at>86400: price=_close_on(tk,at) or 0
     if price<=0: return False
     pulse=_pulse_score(tk); size=float(os.getenv("ORACLE_SIZE_USD","200"))
     try:
         from backend.app.db.session import SessionLocal
         from sqlalchemy import text
         db=SessionLocal()
-        _cd=int(os.getenv("ORACLE_CD_SEC","21600"))
-        if db.execute(text("SELECT 1 FROM oracle_signals WHERE figure=:f AND ticker=:t AND sentiment=:s AND detected_at > now() - make_interval(secs=>:cd) LIMIT 1"),{"f":fk,"t":tk,"s":sig.get("sentiment"),"cd":_cd}).fetchone():
+        # One call per person, stock and direction per ORACLE_REPEAT_DAYS: the same take
+        # re-reported by ten outlets is one signal (Huang/NVDA had been logged 40 times).
+        days=int(os.getenv("ORACLE_REPEAT_DAYS","14"))
+        if db.execute(text("""SELECT 1 FROM oracle_signals WHERE figure=:f AND ticker=:t AND sentiment=:s
+                AND status NOT IN ('duplicate','own_company','rejected')
+                AND detected_at > COALESCE(to_timestamp(:at), now()) - make_interval(days=>:d)
+                AND detected_at < COALESCE(to_timestamp(:at), now()) + make_interval(days=>:d) LIMIT 1"""),
+                {"f":fk,"t":tk,"s":sig.get("sentiment"),"d":days,"at":at}).fetchone():
             db.close(); return False
         db.execute(text("""INSERT INTO oracle_signals(figure,figure_name,source_url,headline,ticker,
-            sentiment,confidence,rationale,price,market_cap,suggested_size,pulse_score,status)
-            VALUES(:f,:fn,:u,:h,:t,:s,:c,:r,:p,:mc,:sz,:ps,'new')"""),
+            sentiment,confidence,rationale,price,market_cap,suggested_size,pulse_score,status,detected_at,kind)
+            VALUES(:f,:fn,:u,:h,:t,:s,:c,:r,:p,:mc,:sz,:ps,'new',COALESCE(to_timestamp(:at),now()),:k)"""),
             {"f":fk,"fn":fig["name"],"u":url,"h":headline[:500],"t":tk,"s":sig.get("sentiment"),
-             "c":conf,"r":(sig.get("rationale","") or "")[:300],"p":price,"mc":mcap,"sz":size,"ps":pulse})
+             "c":conf,"r":(sig.get("rationale","") or "")[:300],"p":price,"mc":mcap,"sz":size,"ps":pulse,
+             "at":at,"k":"news" if derived else "disclosure"})
         db.commit(); db.close()
-    except Exception as e: log.warning(f"db: {e}")
+    except Exception as e:
+        log.warning(f"db: {e}"); return False
+    if quiet:
+        log.info(f"oracle {fk} {tk} {sig.get('sentiment')} (backfill)")
+        return True
     bull=sig.get("sentiment")=="bullish"; mc=f"${mcap/1e9:.1f}B" if mcap else "—"
     ps=f"{pulse:+.2f}" if pulse is not None else "—"
     _push(f"🔮 *ORACLE · {fig['name']}* {fig['emoji']}\n\n{'🟢↑ BULLISH' if bull else '🔴↓ BEARISH'}  "
@@ -467,7 +717,12 @@ def _emit(fk,fig,sig,headline,url):
     return True
 
 def scan_once():
-    new=0
+    """One pass over every enabled figure. News items need an LLM read; at most
+    ORACLE_LLM_PER_SCAN of them per pass (the rest wait, unseen, for the next one), and
+    none after Groq says it is out of quota — the free tier's per-minute limit is shared
+    with the Arena's sealed LLM forecasts, and the 31-figure roster's first scan used it
+    all up within a minute (2026-10-30)."""
+    new=0; budget=int(os.getenv("ORACLE_LLM_PER_SCAN","8"))
     for fk in _enabled():
         fig=FIGURES.get(fk)
         if not fig: continue
@@ -476,17 +731,29 @@ def scan_once():
             if _is_seen(fk,uid): continue
             k=item.get("kind")
             if k=="trade":
+                at=item.get("at")
                 if _emit(fk,fig,{"ticker":item["ticker"],"sentiment":item["sentiment"],
                     "confidence":item.get("conf",0.75),"rationale":item.get("rationale","")},
-                    item["headline"],item.get("url","")): new+=1
+                    item["headline"],item.get("url",""),at=at,quiet=bool(at and time.time()-at>2*86400),
+                    derived=False): new+=1
             elif k=="filing":
                 _push(f"🔮 *ORACLE · {fig['name']}* {fig['emoji']}\n\n📄 {item['headline']}\n[filing]({item['url']})")
             else:
+                if budget<=0: continue   # leave unseen for the next scan
+                budget-=1
                 sigs=_llm_analyze(fig["name"],item["headline"],item.get("body",""))
                 if sigs is None:
-                    continue  # LLM unavailable: leave unseen so the next scan retries it
+                    # LLM unavailable: leave unseen so the next scan retries it — but an
+                    # item the model keeps failing on (invalid JSON) is dropped after 3
+                    # tries, or it would stall the queue at the front of every pass
+                    budget=0
+                    try:
+                        if _rc is not None and _rc.incr(_seen_key(fk,uid)+":fail")>=3: _mark_seen(fk,uid)
+                        elif _rc is not None: _rc.expire(_seen_key(fk,uid)+":fail",86400)
+                    except Exception: pass
+                    continue
                 for sig in sigs:
-                    if _emit(fk,fig,sig,item["headline"],item.get("url","")): new+=1
+                    if _emit(fk,fig,sig,item["headline"],item.get("url",""),context=item.get("body","")): new+=1
             _mark_seen(fk,uid)
             time.sleep(0.2)
     return new
@@ -526,13 +793,9 @@ def src_nitter(handle):
             log.warning(f"nitter {base} {handle}: {e}")
     return []
 
-# Insert nitter as PRIMARY source for X-based figures (free real posts)
-_NITTER_HANDLES = {"trump":"realDonaldTrump","musk":"elonmusk","burry":"michaeljburry",
-                   "ackman":"BillAckman","wood":"CathieDWood",
-                   "serenity":os.getenv("ORACLE_X_SERENITY","<SERENITY_X>")}
-for _fk,_h in _NITTER_HANDLES.items():
-    if _fk in FIGURES and not any(s.get("type")=="nitter" for s in FIGURES[_fk]["sources"]):
-        FIGURES[_fk]["sources"].insert(0, {"type":"nitter","handle":_h})
+# Nitter mirrors (xcancel 451, nitter.net 410, poast unreachable) and Marketaux (no
+# signal in a month) were inserted into every X figure here; both are dead from this
+# server, so they are no longer added. The functions stay for a working instance/key.
 
 # ── Trump via CNN public Truth-Social archive (datacenter-friendly, 5-min fresh) ──
 def src_truth_cnn():
@@ -576,10 +839,3 @@ def src_marketaux(name):
                     "uid":f"mktx:{art.get('uuid')}:{tk}"})
         return out
     except Exception as e: log.warning(f"mktx {name}: {e}"); return []
-
-# wire datacenter-friendly sources to the front
-for _fk in ("huang","su","musk","ackman","burry","serenity","wood"):
-    if _fk in FIGURES and not any(s.get("type")=="marketaux" for s in FIGURES[_fk]["sources"]):
-        FIGURES[_fk]["sources"].insert(0, {"type":"marketaux"})
-if "trump" in FIGURES and not any(s.get("type")=="trumparchive" for s in FIGURES["trump"]["sources"]):
-    FIGURES["trump"]["sources"].insert(0, {"type":"trumparchive"})

@@ -378,6 +378,155 @@ EARN: dict[str, Callable] = {"earn_runup": e_runup, "earn_avoid": e_avoid, "earn
                              "earn_gap_down": e_gap_fade_down, "earn_double_beat": e_double_beat}
 
 
+# ───────────────────────── condition rules ─────────────────────────
+# The general form, for ideas the templates above cannot say: watch one or more tickers,
+# trade another. A rule enters when ALL its entry conditions are true at a close and
+# leaves when ANY exit condition is (or after max_hold sessions); with no exit conditions
+# it simply holds while the entry conditions are true. Optionally it holds `alt` (say TLT
+# or BIL) while out. Example — buy TQQQ when QQQ is 5% above its 200-day average and fell
+# 1.5% today, sell everything when QQQ drops below 95% of that average:
+#   {"trade": "TQQQ", "entry": [{"a": {"f": "close", "t": "QQQ"}, "op": ">", "b": {"f": "sma", "n": 200, "t": "QQQ"}, "k": 1.05},
+#                               {"a": {"f": "ret", "n": 1, "t": "QQQ"}, "op": "<", "b": -0.015}],
+#    "exit": [{"a": {"f": "close", "t": "QQQ"}, "op": "<", "b": {"f": "sma", "n": 200, "t": "QQQ"}, "k": 0.95}]}
+
+INDICATORS = {
+    "close": "the close", "open": "the open", "sma": "n-day simple average of closes", "ema": "n-day exponential average",
+    "ret": "return over the last n sessions (0.01 = 1%)", "rsi": "RSI over n sessions (0-100)",
+    "high": "highest close of the last n sessions", "low": "lowest close of the last n sessions",
+    "drawdown": "close / highest close of the last n sessions - 1 (0 to -1)", "vol": "annualised volatility of daily returns over n sessions",
+    "ibs": "where the close sits in the day's range (0 = low, 1 = high)", "gap": "today's open / yesterday's close - 1",
+    "down_days": "consecutive down closes", "up_days": "consecutive up closes",
+}
+OPS = {">": np.greater, "<": np.less, ">=": np.greater_equal, "<=": np.less_equal}
+
+
+def _ind(spec: dict, F: dict[str, pd.DataFrame], default: str) -> pd.Series:
+    f = F[spec.get("t") or default]
+    k, n = spec["f"], int(spec.get("n") or 1)
+    c = f.c
+    if k == "close":
+        return c
+    if k == "open":
+        return f.o
+    if k == "sma":
+        return sma(c, n)
+    if k == "ema":
+        return c.ewm(span=n, adjust=False, min_periods=n).mean()
+    if k == "ret":
+        return c / c.shift(n) - 1
+    if k == "rsi":
+        return rsi(c, n)
+    if k == "high":
+        return c.rolling(n, min_periods=n).max()
+    if k == "low":
+        return c.rolling(n, min_periods=n).min()
+    if k == "drawdown":
+        return c / c.rolling(n, min_periods=1).max() - 1
+    if k == "vol":
+        return c.pct_change().rolling(n, min_periods=n).std() * math.sqrt(252)
+    if k == "ibs":
+        return (c - f.l) / (f.h - f.l).replace(0, np.nan)
+    if k == "gap":
+        return f.o / c.shift(1) - 1
+    if k in ("down_days", "up_days"):
+        mv = (c < c.shift(1)) if k == "down_days" else (c > c.shift(1))
+        mv = mv.astype(int)
+        return mv.groupby((mv == 0).cumsum()).cumsum().astype(float)
+    raise ValueError(f"unknown indicator {k}")
+
+
+def _cond(cd: dict, F: dict[str, pd.DataFrame], default: str, idx: pd.DatetimeIndex) -> pd.Series:
+    a = _ind(cd["a"], F, default).reindex(idx).ffill()
+    b = cd["b"]
+    b = _ind(b, F, default).reindex(idx).ffill() if isinstance(b, dict) else pd.Series(float(b), index=idx)
+    b = b * float(cd.get("k", 1) or 1)
+    return pd.Series(OPS[cd["op"]](a.to_numpy(), b.to_numpy()), index=idx) & a.notna() & b.notna()
+
+
+def t_rule(F: dict[str, pd.DataFrame], p: dict) -> pd.DataFrame:
+    trade, alt = p["trade"], p.get("alt")
+    idx = F[trade].index
+    sig = p.get("signal") or trade
+    en = pd.Series(True, index=idx)
+    for cd in p["entry"]:
+        en &= _cond(cd, F, sig, idx)
+    has_exit = bool(p.get("exit"))
+    ex = pd.Series(False, index=idx)
+    for cd in p.get("exit") or []:
+        ex |= _cond(cd, F, sig, idx)
+    e, x, mh = en.to_numpy(), ex.to_numpy(), int(p.get("max_hold") or 0)
+    pos = np.zeros(len(idx))
+    on, run, armed = False, 0, True
+    for i in range(len(idx)):
+        if on:
+            run += 1
+            timed_out = bool(mh) and run >= mh
+            if (x[i] if has_exit else not e[i]) or timed_out:
+                on = False
+                armed = not timed_out  # after a timed exit, wait for the entry to reset
+        elif e[i] and armed:
+            on, run = True, 0
+        if not e[i]:
+            armed = True
+        pos[i] = 1.0 if on else 0.0
+    pos = pd.Series(pos, index=idx)
+    w = pd.DataFrame({trade: pos * float(p.get("weight") or 1.0)})
+    if alt:
+        w[alt] = (pos == 0).astype(float)
+    return w
+
+
+def rule_tickers(p: dict) -> list[str]:
+    out = [p["trade"]] + ([p["alt"]] if p.get("alt") else []) + ([p["signal"]] if p.get("signal") else [])
+    for cd in list(p.get("entry") or []) + list(p.get("exit") or []):
+        for side in ("a", "b"):
+            if isinstance(cd.get(side), dict) and cd[side].get("t"):
+                out.append(cd[side]["t"])
+    return list(dict.fromkeys(out))
+
+
+# Leveraged ETFs, extended before their launch by simulating the fund: L x the underlying's
+# daily return, minus the cost of borrowing (L-1) x the T-bill and the expense ratio. That
+# is how TQQQ would have done in 2000-02 and 2008, which its own history never saw.
+LEVERED = {"TQQQ": ("QQQ", 3, 0.0086), "QLD": ("QQQ", 2, 0.0095), "UPRO": ("SPY", 3, 0.0091),
+           "SSO": ("SPY", 2, 0.0089), "SPXL": ("SPY", 3, 0.0087), "SOXL": ("SOXX", 3, 0.0076),
+           "TECL": ("XLK", 3, 0.0085)}
+# What the funds pay for leverage above the T-bill (swap spreads): fitted so simulated TQQQ
+# matches the real fund's 2010-2026 compound return (42.0% a year; daily tracking error 18 bp).
+SPREAD = 0.0035
+
+
+def synthetic(t: str, real: pd.DataFrame | None, under: pd.DataFrame, cash: pd.Series) -> pd.DataFrame:
+    """Daily OHLC for leveraged ETF `t` back to its underlying's start: simulated before the
+    fund's first day, the real fund after. Returns the frame with attrs["synthetic_until"]."""
+    _, lev, fee = LEVERED[t]
+    u = under
+    cr = cash.reindex(u.index).ffill().fillna(0.0)
+    r = lev * u.c.pct_change() - (lev - 1) * (cr + SPREAD / 252) - fee / 252
+    start = real.index[0] if real is not None and len(real) else None
+    sim_idx = u.index if start is None else u.index[u.index < start]
+    if len(sim_idx) < 2:
+        return real
+    # chain backwards from the real first close (or 100) so the two pieces join
+    anchor = float(real.c.iloc[0]) if start is not None else 100.0
+    rr = r.reindex(sim_idx).fillna(0.0)
+    growth = (1 + rr).cumprod()
+    if start is not None:
+        nxt = r.reindex([start]).fillna(0.0).iloc[0]
+        c = anchor / (1 + nxt) * growth / growth.iloc[-1]
+    else:
+        c = anchor * growth
+    prev = c.shift(1).fillna(c.iloc[0])
+    sc = lambda x: prev * (1 + lev * (x.reindex(sim_idx) / u.c.shift(1).reindex(sim_idx) - 1))
+    sim = pd.DataFrame({"o": sc(u.o), "h": sc(u.h), "l": sc(u.l), "c": c})
+    sim["h"] = sim[["o", "h", "l", "c"]].max(axis=1)
+    sim["l"] = sim[["o", "h", "l", "c"]].min(axis=1)
+    out = pd.concat([sim, real]) if start is not None else sim
+    out = out[~out.index.duplicated(keep="last")].sort_index()
+    out.attrs["synthetic_until"] = str(start.date()) if start is not None else "all"
+    return out
+
+
 # ───────────────────────── the catalog ─────────────────────────
 
 SINGLE_SPECS = [
@@ -430,6 +579,28 @@ ALLOC_SPECS = [
 ]
 
 
+_Q = lambda f, **kw: {"f": f, "t": "QQQ", **kw}
+_S = lambda f, **kw: {"f": f, "t": "SPY", **kw}
+RULE_SPECS = [
+    # id, rule params, family, source, year
+    ("tqqq_qqq200", {"trade": "TQQQ", "entry": [{"a": _Q("close"), "op": ">", "b": _Q("sma", n=200)}]},
+     "trend", "TQQQ while QQQ is above its 200-day average (r/LETFs folklore; Faber-style filter)", None),
+    ("tqqq_200_5_3", {"trade": "TQQQ", "entry": [{"a": _Q("close"), "op": ">", "b": _Q("sma", n=200), "k": 1.05}],
+                      "exit": [{"a": _Q("close"), "op": "<", "b": _Q("sma", n=200), "k": 0.97}]},
+     "trend", "TQQQ 200-SMA +5% entry / -3% exit (TradingView community script)", None),
+    ("tqqq_spy200_4_3", {"trade": "TQQQ", "entry": [{"a": _S("close"), "op": ">", "b": _S("sma", n=200), "k": 1.04}],
+                         "exit": [{"a": _S("close"), "op": "<", "b": _S("sma", n=200), "k": 0.97}]},
+     "trend", "SPY 200-SMA +4% / -3%, trading TQQQ (TradingView community script)", None),
+    ("tqqq_dip_5_95", {"trade": "TQQQ", "entry": [{"a": _Q("close"), "op": ">", "b": _Q("sma", n=200), "k": 1.05},
+                                                 {"a": _Q("ret", n=1), "op": "<", "b": -0.015}],
+                       "exit": [{"a": _Q("close"), "op": "<", "b": _Q("sma", n=200), "k": 0.95}]},
+     "trend", "Buy the 1.5% dip in TQQQ while QQQ is 5% above its 200-day; out below 95% of it", None),
+    ("upro_spy200", {"trade": "UPRO", "entry": [{"a": _S("close"), "op": ">", "b": _S("sma", n=200)}]},
+     "trend", "UPRO while SPY is above its 200-day average", None),
+    ("qld_qqq200", {"trade": "QLD", "entry": [{"a": _Q("close"), "op": ">", "b": _Q("sma", n=200)}]},
+     "trend", "QLD (2x) while QQQ is above its 200-day average", None),
+]
+
 # Templates Autopilot does not run yet: fractional weights that need re-sizing every day
 # (it sizes a position once, on entry), the VIX (no broker feed) and the earnings rules
 # (they need each stock's next report date in advance).
@@ -456,6 +627,10 @@ def build_specs() -> list[Spec]:
                               note="lib.note.earnings"))
     for sid, tpl, params, assets, src, yr in ALLOC_SPECS:
         specs.append(Spec(sid, "allocation", tpl, params, assets, "SPY", f"lib.t.{sid}", src, yr))
+    for sid, p, fam, src, yr in RULE_SPECS:
+        # benchmark: holding the leveraged fund itself (the honest comparison for a timing rule)
+        specs.append(Spec(sid, fam, "rule", p, [p["trade"]] + ([p["alt"]] if p.get("alt") else []), p["trade"],
+                          f"lib.t.{sid}", src, yr))
     for sp in specs:
         sp.executable = sp.template not in NOT_LIVE
         sp.note = NOT_LIVE.get(sp.template, "")
@@ -502,6 +677,9 @@ def weights(spec: Spec, O: dict[str, pd.DataFrame], extra: dict[str, Any] | None
         for flt in spec.extra.get("filters") or []:
             w = w * _single(flt["template"], f, flt.get("params") or {}, extra).clip(0, 1)
         return w.rename(a).to_frame()
+    if spec.template == "rule":
+        F = {t: _extend(O[t], fut) for t in rule_tickers(spec.params)}
+        return t_rule(F, spec.params)
     if spec.template in EARN:
         a = spec.assets[0]
         ev = (extra.get("events") or {}).get(a)
@@ -534,9 +712,79 @@ FIXED_ASSETS = {"dual_momentum": ["SPY", "EFA", "AGG", "BIL"], "adm": ["SPY", "S
 TICKER_OK = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-^"
 
 
+def _ticker(x: Any) -> str:
+    t = str(x or "").upper().strip()
+    if not t or len(t) > 10 or not all(ch in TICKER_OK for ch in t):
+        raise ValueError(f"Bad ticker {x!r}")
+    return t
+
+
+def rule_from_dict(raw: dict) -> dict:
+    """Validate a condition rule (see t_rule)."""
+    p: dict[str, Any] = {"trade": _ticker(raw.get("trade"))}
+    if raw.get("alt"):
+        p["alt"] = _ticker(raw["alt"])
+    if raw.get("signal"):
+        p["signal"] = _ticker(raw["signal"])
+
+    def ind(x: Any) -> dict:
+        if not isinstance(x, dict) or x.get("f") not in INDICATORS:
+            raise ValueError(f"Indicator must be one of {', '.join(INDICATORS)}")
+        out = {"f": x["f"]}
+        if x["f"] not in ("close", "open", "ibs", "gap", "down_days", "up_days"):
+            n = int(x.get("n") or 0)
+            if not 1 <= n <= 504:
+                raise ValueError(f"{x['f']} needs n between 1 and 504")
+            out["n"] = n
+        if x.get("t"):
+            out["t"] = _ticker(x["t"])
+        return out
+
+    def cond(c: Any) -> dict:
+        if not isinstance(c, dict) or c.get("op") not in OPS:
+            raise ValueError("Each condition needs a, op (> < >= <=) and b")
+        b = c.get("b")
+        if isinstance(b, dict):
+            b = ind(b)
+        else:
+            b = float(b)
+            if not -1000 <= b <= 100000:
+                raise ValueError("Condition number out of range")
+        k = float(c.get("k", 1) or 1)
+        if not 0.2 <= k <= 5:
+            raise ValueError("Multiplier k must be between 0.2 and 5")
+        out = {"a": ind(c.get("a")), "op": c["op"], "b": b}
+        if k != 1:
+            out["k"] = round(k, 4)
+        return out
+    entry = [cond(c) for c in (raw.get("entry") or [])]
+    if not 1 <= len(entry) <= 5:
+        raise ValueError("A rule needs 1 to 5 entry conditions")
+    p["entry"] = entry
+    ex = [cond(c) for c in (raw.get("exit") or [])]
+    if len(ex) > 5:
+        raise ValueError("At most 5 exit conditions")
+    if ex:
+        p["exit"] = ex
+    if raw.get("max_hold"):
+        mh = int(raw["max_hold"])
+        if not 1 <= mh <= 504:
+            raise ValueError("max_hold must be between 1 and 504 sessions")
+        p["max_hold"] = mh
+    if len(rule_tickers(p)) > 5:
+        raise ValueError("A rule can use at most 5 tickers")
+    return p
+
+
 def spec_from_dict(d: dict, sid: str = "custom") -> Spec:
     """Validate a user strategy; raises ValueError with a reason a person can act on."""
     tpl = str(d.get("template") or "")
+    if tpl == "rule":
+        p = rule_from_dict(d.get("params") or d)
+        sp = Spec(sid, "trend", "rule", p, [p["trade"]] + ([p["alt"]] if p.get("alt") else []), p["trade"],
+                  "lib.t.rule", "custom")
+        sp.executable = True
+        return sp
     if tpl not in BOUNDS:
         raise ValueError(f"Unknown template {tpl!r}")
     assets = [str(a).upper().strip() for a in (d.get("assets") or [])][:12]
@@ -589,6 +837,14 @@ def spec_to_dict(sp: Spec) -> dict:
             "filters": sp.extra.get("filters") or []}
 
 
+def data_tickers(spec: Spec) -> list[str]:
+    """Every instrument a spec needs prices for: what it trades, what it watches, its benchmark."""
+    out = list(spec.assets) + ([spec.bench] if spec.bench else [])
+    if spec.template == "rule":
+        out += rule_tickers(spec.params)
+    return list(dict.fromkeys(out))
+
+
 def returns(spec: Spec, O: dict[str, pd.DataFrame], cash: pd.Series, extra: dict[str, Any] | None = None) -> pd.Series:
     return backtest(spec, O, cash, extra)[0]
 
@@ -604,7 +860,7 @@ def backtest(spec: Spec, O: dict[str, pd.DataFrame], cash: pd.Series,
     gross = (w * r.fillna(0)).sum(axis=1)
     invested = w.sum(axis=1).clip(upper=1.0)
     cash_r = cash.reindex(r.index).ffill().fillna(0.0)
-    cost_bp = 0.0002 if all(a in INDEXES + SECTORS + CROSS for a in w.columns) else 0.0005
+    cost_bp = 0.0002 if all(a in INDEXES + SECTORS + CROSS + list(LEVERED) for a in w.columns) else 0.0005
     turnover = w.diff().abs().sum(axis=1).fillna(w.abs().sum(axis=1))
     net = gross + (1 - invested) * cash_r - turnover * cost_bp
     # shift so each return is booked on the day it is earned

@@ -166,7 +166,10 @@ class YFinanceClient:
         """
         if history.empty:
             return {}
-        full = history.copy().sort_values("date").reset_index(drop=True)
+        # Today's bar, fetched in the evening, can carry an Open and no Close yet; using
+        # it stored NaN for 293 reactions on 2026-10-29, and NaN passes "IS NOT NULL", so
+        # the Brief read them as reports that did not move. An unfinished bar is not data.
+        full = history.dropna(subset=["Open", "Close"]).sort_values("date").reset_index(drop=True)
         after = full.index[full["date"] >= pd.Timestamp(earnings_date)]
         if len(after) == 0:
             return {}

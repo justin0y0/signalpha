@@ -46,7 +46,8 @@ DATA = Path(os.getenv("DATA_DIR", "/app/data"))
 def load_prices() -> tuple[dict[str, pd.DataFrame], pd.Series, pd.Series]:
     import yfinance as yf
 
-    tick = sorted(set(L.INDEXES + L.STOCKS + L.SECTORS + L.CROSS))
+    rule_t = {t for _, p, *_ in L.RULE_SPECS for t in L.rule_tickers(p)}
+    tick = sorted(set(L.INDEXES + L.STOCKS + L.SECTORS + L.CROSS) | rule_t | {u for u, _, _ in L.LEVERED.values()})
     raw = yf.download(tick + ["^IRX", "^VIX"], start="1993-01-01", auto_adjust=True, progress=False,
                       group_by="ticker", threads=True)
     O = {}
@@ -65,6 +66,9 @@ def load_prices() -> tuple[dict[str, pd.DataFrame], pd.Series, pd.Series]:
     cash = (irx.ffill() / 100 / 252).fillna(0)
     vix = raw["^VIX"]["Close"]
     vix.index = pd.to_datetime(vix.index).tz_localize(None)
+    for t, (u, _, _) in L.LEVERED.items():
+        if u in O and (t in O or t in rule_t):
+            O[t] = L.synthetic(t, O.get(t), O[u], cash)
     return O, cash, vix
 
 
@@ -133,14 +137,16 @@ def stats(r: pd.Series, cash: pd.Series) -> dict:
 
 def alpha(r: pd.Series, b: pd.Series, cash: pd.Series) -> dict:
     df = pd.concat([r, b], axis=1, join="inner").dropna()
-    if len(df) < 250:
-        return {}
+    if len(df) < 250 or (df.iloc[:, 0] - df.iloc[:, 1]).abs().max() < 1e-9:
+        return {}  # too short, or the strategy is its own benchmark
     c = cash.reindex(df.index).fillna(0)
     y, x = df.iloc[:, 0] - c, df.iloc[:, 1] - c
     X = np.column_stack([np.ones(len(x)), x.values])
     beta, *_ = np.linalg.lstsq(X, y.values, rcond=None)
     res = y.values - X @ beta
     s2 = res.var(ddof=2)
+    if s2 < 1e-14:
+        return {"alpha": float(beta[0] * 252), "alpha_t": None, "beta": float(beta[1])}
     cov = s2 * np.linalg.inv(X.T @ X)
     return {"alpha": float(beta[0] * 252), "alpha_t": float(beta[0] / math.sqrt(cov[0, 0])), "beta": float(beta[1])}
 
@@ -198,6 +204,23 @@ def trim(s: L.Spec, r: pd.Series, w: pd.DataFrame, events: dict) -> pd.Series | 
     return r
 
 
+def matched(r: pd.Series, b: pd.Series, cash: pd.Series) -> float | None:
+    """CAGR the strategy would have had at the benchmark's volatility: its excess return over
+    T-bills scaled up (or down) to the same risk, T-bills added back. Borrowing at the T-bill
+    rate is assumed, so it flatters leverage a little; it answers "per unit of risk"."""
+    df = pd.concat([r, b], axis=1, join="inner").dropna()
+    if len(df) < 250:
+        return None
+    c = cash.reindex(df.index).fillna(0)
+    sv, bv = (df.iloc[:, 0] - c).std(), (df.iloc[:, 1] - c).std()
+    if not sv or not bv:
+        return None
+    m = c + (df.iloc[:, 0] - c) * (bv / sv)
+    yrs = (m.index[-1] - m.index[0]).days / 365.25
+    eq = float((1 + m).prod())
+    return float(eq ** (1 / yrs) - 1) if eq > 0 else -1.0
+
+
 def score(s: L.Spec, r: pd.Series, w: pd.DataFrame, b: pd.Series, cash: pd.Series, trials: int, sr_var: float) -> dict:
     b = b.reindex(r.index)
     full, bfull = stats(r, cash), stats(b, cash)
@@ -217,10 +240,14 @@ def score(s: L.Spec, r: pd.Series, w: pd.DataFrame, b: pd.Series, cash: pd.Serie
     # a strategy with less than three years from 2015 is graded on what it has
     go, gob = (o, ob) if o.get("cagr") is not None else (full, bfull)
     ga = a_oos if o.get("cagr") is not None else a_full
+    same = bool((r - b).abs().max() < 1e-9)  # e.g. a "rule" that is just buy-and-hold
+    ro, bo = r[r.index >= SPLIT], b[b.index >= SPLIT]
+    syn = (getattr(s, "_synthetic", None) or None)
     return {"id": s.id, "family": s.family, "template": s.template, "params": s.params, "assets": s.assets,
             "filters": s.extra.get("filters") or [], "bench": s.bench, "source": s.source, "published": s.published,
-            "executable": s.executable, "note": s.note, "grade": grade(go, gob, ga.get("alpha_t"), a_full.get("alpha_t")),
-            "dsr": d, "full": full, "bench_full": bfull, "oos": o, "bench_oos": ob, "is": i, "bench_is": ib,
+            "executable": s.executable, "note": s.note, "grade": "N" if same else grade(go, gob, ga.get("alpha_t"), a_full.get("alpha_t")),
+            "same_as_bench": same, "matched_full": matched(r, b, cash), "matched_oos": matched(ro, bo, cash),
+            "synthetic_until": syn, "dsr": d, "full": full, "bench_full": bfull, "oos": o, "bench_oos": ob, "is": i, "bench_is": ib,
             "alpha": a_full, "alpha_oos": a_oos, "alpha_is": a_is, "post": post, "activity": activity(w, r)}
 
 
@@ -239,7 +266,9 @@ def main() -> None:
     extra = {"vix": vix, "fomc": fomc, "events": events}
     with open(DATA / "library_prices.pkl", "wb") as fh:
         pickle.dump({"O": O, "cash": cash, "vix": vix, "fomc": fomc, "events": events}, fh)
-    specs = [s for s in L.build_specs() if all(a in O for a in s.assets)]
+    specs = [s for s in L.build_specs() if all(a in O for a in L.data_tickers(s))]
+    for s in specs:  # leveraged funds simulated before launch: say so on the page
+        s._synthetic = next((O[a].attrs.get("synthetic_until") for a in s.assets if a in L.LEVERED and a in O), None)
     print(f"{len(specs)} strategies over {len(O)} instruments", flush=True)
     bench_r: dict[str, pd.Series] = {}
     rets: dict[str, tuple[pd.Series, pd.DataFrame]] = {}

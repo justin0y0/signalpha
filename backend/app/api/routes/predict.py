@@ -21,8 +21,25 @@ def get_prediction(
 ) -> PredictionResponse:
     service = PredictionService(settings)
     try:
-        return service.get_prediction(db, ticker=ticker, earnings_date=earnings_date)
+        res = service.get_prediction(db, ticker=ticker, earnings_date=earnings_date)
+        # Shown sector: the universe's (Yahoo-corrected) one. The event keeps the sector its
+        # features were built with, which for some companies is NASDAQ's screener guess
+        # (TSLA "Industrials", Visa "Consumer Cyclical").
+        from sqlalchemy import text
+        sec = db.execute(text("SELECT sector FROM universe WHERE ticker=:t"), {"t": ticker.upper()}).scalar()
+        if sec and getattr(res, "sector", None) is not None and sec != res.sector:
+            res.sector = sec
+        return res
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail="Model artifacts are missing; run monthly retraining first.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/{ticker}/schedule")
+def get_schedule(ticker: str, db: Session = Depends(get_db)):
+    """Last and next earnings, to the minute where knowable (SEC 8-K acceptance time), with the
+    last report's sealed calls against what happened."""
+    from backend.app.services.schedule_service import schedule
+
+    return schedule(db, ticker)

@@ -91,3 +91,15 @@
 }
 .lib .ap-link, .lib-panel .ap-link { background: none; border: 0; padding: 0; color: var(--text-tertiary); font: 500 0.72rem var(--font-mono); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .lib .ap-link:hover, .lib-panel .ap-link:hover { color: var(--text-primary); }
+.lib-matched { margin: 0; font-size: 0.86rem; color: var(--text-secondary); }
+/* condition-rule editor */
+.rb { grid-column: 1 / -1; display: grid; gap: 0.7rem; padding: 0.7rem; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); }
+.rb-top { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 0.5rem; }
+.rb-top label, .rb-label { display: grid; gap: 0.25rem; font: 600 0.62rem var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary); }
+.rb input, .rb select { padding: 0.35rem 0.45rem; border-radius: 5px; background: var(--bg-0); border: 1px solid var(--border-strong); color: var(--text-primary); font: 0.8rem var(--font-mono); min-width: 0; }
+.rb-list { display: grid; gap: 0.35rem; }
+.rb-cond { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; font: 0.8rem var(--font-mono); }
+.rb-ind { display: inline-flex; gap: 0.25rem; align-items: center; }
+.rb-t { width: 4.6rem; } .rb-n { width: 3.6rem; } .rb-k { width: 3.8rem; } .rb-num { width: 5rem; } .rb-op { width: 3.4rem; }
+.rb-del { color: var(--down) !important; font-size: 1rem !important; text-decoration: none !important; }
+.rb-say { margin: 0; font-size: 0.82rem; color: var(--text-secondary); }

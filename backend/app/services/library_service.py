@@ -74,7 +74,9 @@ def _brief(r: dict) -> dict:
             "bench_oos": {k: ob.get(k) for k in ("cagr", "sharpe", "max_dd")},
             "full": {k: (r.get("full") or {}).get(k) for k in ("cagr", "sharpe", "max_dd", "start")},
             "alpha_t": a.get("alpha_t"), "alpha_t_oos": (r.get("alpha_oos") or {}).get("alpha_t"),
-            "exposure": (r.get("activity") or {}).get("exposure"), "entries_yr": (r.get("activity") or {}).get("entries_yr")}
+            "exposure": (r.get("activity") or {}).get("exposure"), "entries_yr": (r.get("activity") or {}).get("entries_yr"),
+            "matched_oos": r.get("matched_oos"), "same_as_bench": r.get("same_as_bench"),
+            "synthetic_until": r.get("synthetic_until")}
 
 
 def table() -> dict:
@@ -133,10 +135,23 @@ def _prices() -> dict:
 
 
 def _frame(t: str) -> pd.DataFrame | None:
-    """Daily OHLC for any ticker: the library's own, else Yahoo (cached for a day)."""
+    """Daily OHLC for any ticker: the library's own, else Yahoo (cached for a day). Leveraged
+    ETFs come back extended before their launch (library.synthetic)."""
     base = _prices()["O"]
     if t in base:
         return base[t]
+    if t in L.LEVERED:
+        under = _frame(L.LEVERED[t][0])
+        real = _yahoo(t)
+        if under is None:
+            return real
+        fr = L.synthetic(t, real, under, _prices()["cash"])
+        base[t] = fr
+        return fr
+    return _yahoo(t)
+
+
+def _yahoo(t: str) -> pd.DataFrame | None:
     cache = DATA / "lib_px"
     cache.mkdir(exist_ok=True)
     f = cache / f"{t.replace('^', '_')}.pkl"
@@ -164,7 +179,7 @@ def run(spec: L.Spec, trials_extra: int = 0) -> dict:
 
     px = _prices()
     O = {}
-    for a in set(spec.assets) | {spec.bench}:
+    for a in L.data_tickers(spec):
         f = _frame(a)
         if f is None:
             raise ValueError(f"No price history for {a} (or under a year of it)")
@@ -176,6 +191,7 @@ def run(spec: L.Spec, trials_extra: int = 0) -> dict:
             raise ValueError(f"No earnings history for {spec.assets[0]}")
         events[spec.assets[0]] = g
     extra = {"vix": px["vix"], "fomc": px["fomc"], "events": events}
+    spec._synthetic = next((O[a].attrs.get("synthetic_until") for a in spec.assets if a in L.LEVERED), None)
     r, w = L.backtest(spec, O, px["cash"], extra)
     r = trim(spec, r, w, events)
     if r is None or len(r) < 250:
@@ -260,29 +276,41 @@ def _menu() -> str:
 
 
 SYSTEM = """You turn a trader's idea into ONE backtestable rule in a fixed strategy language, then explain it.
-The language (template: what it does). Weights are decided at each close and held to the next close; long only;
-cash earns T-bills; costs are charged.
+Weights are decided at each close and held to the next close; long only; cash earns T-bills; costs are charged.
+
+PREFER the general "rule" template — it can say almost anything about prices:
+{{"template": "rule", "params": {{
+   "trade": "TQQQ",              # what is bought (one ticker)
+   "signal": "QQQ",              # default ticker the conditions look at (optional; default = trade)
+   "alt": "TLT",                 # optional: held while out of the trade (omit to sit in cash)
+   "entry": [conditions],        # ALL must be true at a close to enter (1-5)
+   "exit": [conditions],         # ANY true at a close exits (0-5). With no exit list it holds while entry is true
+   "max_hold": 20}}}}             # optional: leave after this many sessions
+A condition: {{"a": indicator, "op": ">"|"<"|">="|"<=", "b": indicator or number, "k": multiplier on b (0.2-5, optional)}}
+An indicator: {{"f": name, "n": sessions (when needed), "t": ticker (optional, default = signal)}} with name one of:
+{indicators}
+Example — "buy TQQQ when QQQ is 5% above its 200-day average and fell 1.5% today; sell all when QQQ drops below 95%
+of that average":
+{{"template": "rule", "params": {{"trade": "TQQQ", "signal": "QQQ",
+  "entry": [{{"a": {{"f": "close"}}, "op": ">", "b": {{"f": "sma", "n": 200}}, "k": 1.05}}, {{"a": {{"f": "ret", "n": 1}}, "op": "<", "b": -0.015}}],
+  "exit": [{{"a": {{"f": "close"}}, "op": "<", "b": {{"f": "sma", "n": 200}}, "k": 0.95}}]}}}}
+Percentages are fractions (1.5% = 0.015). RSI thresholds are 0-100.
+
+Use a named template only when the idea IS that template:
 {menu}
-Extra notes: sma_trend holds while the close is above its n-day average. sma_monthly checks at month-end vs the
-n-month average. donchian buys a close above the prior `entry`-day high and exits below the prior `exit`-day low.
-high52 buys a new 52-week high and exits below the `exit`-day average. tsmom holds while the n-day return is positive.
-rsi2 buys RSI(2) < lo while above the 200-day average, exits on a close above the 5-day average. ibs holds one day
-after a close in the bottom `lo` of the day's range. down_streak buys after n down closes, exits on an up close.
-vol_target scales exposure to target/realised 20-day volatility (max 100%). static holds fixed weights given as
-params.w = {{ticker: weight}} (weights add up to 1 or less). top_momentum holds the k best of the tickers by n-day
-return, monthly. gtaa holds each ticker 1/n while above its 10-month average. dual_momentum and adm use fixed
-tickers. earn_* rules use the stock's own earnings reports (US stocks only): earn_runup buys 5 sessions before the
-report and sells at the reaction close; earn_avoid holds the stock except across reports; earn_gap_follow buys
-after a gap up larger than k x the stock's usual report move and holds `hold` sessions; earn_gap_down buys after a
-gap down larger than k x usual; earn_double_beat buys an EPS beat that also gapped up beyond the usual move.
-Single-ticker rules can take up to two "filters" (other single-ticker templates, combined with AND), e.g. rsi2 with
-a filter sma_trend n=200.
-Tickers: US-listed stocks and ETFs, as on Yahoo (BRK-B, not BRK.B).
-If the idea cannot be expressed exactly, pick the closest rule and say plainly what differs. Never promise returns.
-Reply with JSON only:
+earn_* rules use the stock's own earnings reports (US stocks only): earn_runup buys 5 sessions before the report and
+sells at the reaction close; earn_avoid holds except across reports; earn_gap_follow / earn_gap_down buy after a gap
+larger than k x the stock's usual report move and hold `hold` sessions; earn_double_beat buys an EPS beat that also
+gapped up beyond the usual move. static holds params.w = {{ticker: weight}}; top_momentum holds the k best of the
+tickers by n-day return, monthly.
+Tickers: US-listed stocks and ETFs as on Yahoo (BRK-B, not BRK.B). Leveraged ETFs (TQQQ, UPRO, SOXL...) are fine.
+
+NEVER answer with buy_hold unless the person literally asks to buy and hold. If the idea cannot be written in this
+language at all (it needs news, options, fundamentals, intraday bars or shorting), reply {{"error": "<why, in {lang}>"}}.
+Never promise returns. Reply with JSON only:
 {{"name": short name, "thesis": 2-4 sentences in {lang} on why this might work and what would break it,
   "differs": one sentence in {lang} on what the rule does NOT capture from the idea ("" if nothing),
-  "spec": {{"template": ..., "params": {{...}}, "assets": [...], "filters": [{{"template": ..., "params": {{...}}}}]}}}}"""
+  "spec": {{...}}}}"""
 
 
 def brainstorm(db: Session, holder: str, prompt: str, lang: str = "en", base: dict | None = None) -> dict:
@@ -297,7 +325,8 @@ def brainstorm(db: Session, holder: str, prompt: str, lang: str = "en", base: di
     _redis().expire(k, 90000)
     if n > DAILY_BRAINSTORMS:
         raise PermissionError(f"{DAILY_BRAINSTORMS} brainstorms a day — try again tomorrow")
-    msgs = [{"role": "system", "content": SYSTEM.format(menu=_menu(), lang="Chinese" if lang == "zh" else "English")}]
+    msgs = [{"role": "system", "content": SYSTEM.format(menu=_menu(), lang="Chinese" if lang == "zh" else "English",
+                                                         indicators="\n".join(f"  {k}: {v}" for k, v in L.INDICATORS.items()))}]
     if base:
         msgs.append({"role": "user", "content": "Current rule: " + json.dumps(base)[:1500]})
     msgs.append({"role": "user", "content": prompt[:1500]})
@@ -308,8 +337,14 @@ def brainstorm(db: Session, holder: str, prompt: str, lang: str = "en", base: di
             raise RuntimeError("The model did not answer — try again in a minute")
         try:
             d = json.loads(out)
+            if d.get("error"):
+                raise LookupError(str(d["error"])[:400])
             spec = L.spec_from_dict(d.get("spec") or {})
+            if spec.template == "buy_hold" and not any(w in prompt.lower() for w in ("buy and hold", "buy-and-hold", "持有不动", "买入持有")):
+                raise ValueError("buy_hold is not the idea — write it as a rule with entry/exit conditions")
             break
+        except LookupError as exc:
+            raise ValueError(f"This idea cannot be backtested here: {exc}") from exc
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             last_err = str(exc)
             msgs += [{"role": "assistant", "content": out[:2000]},
@@ -398,7 +433,7 @@ def live_targets(db: Session, today: date, future: list[date]) -> dict[str, tupl
                 break
         if sp is not None and sp.executable:
             specs[sid] = sp
-    tick = sorted({a for sp in specs.values() for a in sp.assets})
+    tick = sorted({a for sp in specs.values() for a in L.data_tickers(sp)})
     if not tick:
         return {}
     O = _ohlc(tick)

@@ -81,6 +81,8 @@ DEFAULTS: dict[str, Any] = {
     "library": {},
 }
 MAX_LIBRARY = 12
+ENTRY_COLLAR = float(os.getenv("AUTOPILOT_COLLAR", "0.006"))
+LIMIT_TTL_MIN = int(os.getenv("AUTOPILOT_LIMIT_TTL_MIN", "10"))
 
 DDL = [
     """CREATE TABLE IF NOT EXISTS autotrade_accounts (
@@ -92,6 +94,7 @@ DDL = [
     "ALTER TABLE autotrade_accounts ADD COLUMN IF NOT EXISTS auth TEXT NOT NULL DEFAULT 'key'",
     # the last trade price when the order went out: fill vs ref is the slippage the page shows
     "ALTER TABLE autotrade_orders ADD COLUMN IF NOT EXISTS ref_price NUMERIC",
+    "ALTER TABLE autotrade_orders ADD COLUMN IF NOT EXISTS limit_price NUMERIC",
     """CREATE TABLE IF NOT EXISTS autotrade_orders (
         id BIGSERIAL PRIMARY KEY, account_id BIGINT NOT NULL, call_id BIGINT, rule TEXT, ticker TEXT NOT NULL,
         leg TEXT NOT NULL, side TEXT NOT NULL, qty NUMERIC NOT NULL, tif TEXT NOT NULL,
@@ -165,9 +168,15 @@ class Alpaca:
         except Exception:  # noqa: BLE001
             return None
 
-    def submit(self, sym: str, qty: int, side: str, tif: str, cid: str) -> dict:
-        return self._req("POST", "/v2/orders", json={"symbol": to_alpaca(sym), "qty": str(qty), "side": side, "type": "market",
-                                                     "time_in_force": tif, "client_order_id": cid})
+    def submit(self, sym: str, qty: int, side: str, tif: str, cid: str, limit: float | None = None) -> dict:
+        body = {"symbol": to_alpaca(sym), "qty": str(qty), "side": side, "type": "market",
+                "time_in_force": tif, "client_order_id": cid}
+        if limit:
+            body.update(type="limit", limit_price=f"{limit:.2f}" if limit >= 1 else f"{limit:.4f}")
+        return self._req("POST", "/v2/orders", json=body)
+
+    def cancel(self, boid: str) -> None:
+        self._req("DELETE", f"/v2/orders/{boid}")
 
 
 # ───────────────────────────── connections ─────────────────────────────
@@ -560,13 +569,13 @@ def _session_after(alp: Alpaca, d: date, n: int) -> date:
 def _record(db: Session, **o) -> None:
     db.execute(text("""
         INSERT INTO autotrade_orders (account_id, call_id, rule, ticker, leg, side, qty, tif, client_order_id,
-                                      broker_order_id, status, exit_session, error, ref_price)
-        VALUES (:account_id, :call_id, :rule, :ticker, :leg, :side, :qty, :tif, :cid, :boid, :status, :exit_session, :error, :ref)
+                                      broker_order_id, status, exit_session, error, ref_price, limit_price)
+        VALUES (:account_id, :call_id, :rule, :ticker, :leg, :side, :qty, :tif, :cid, :boid, :status, :exit_session, :error, :ref, :lim)
         ON CONFLICT (client_order_id) DO NOTHING"""),
         {"account_id": o["account_id"], "call_id": o.get("call_id"), "rule": o.get("rule"), "ticker": o["ticker"],
          "leg": o["leg"], "side": o["side"], "qty": o.get("qty", 0), "tif": o.get("tif", "day"), "cid": o["cid"],
          "boid": o.get("boid"), "status": o["status"], "exit_session": o.get("exit_session"), "error": o.get("error"),
-         "ref": o.get("ref")})
+         "ref": o.get("ref"), "lim": o.get("limit")})
     db.commit()
 
 
@@ -688,14 +697,23 @@ def _place(db: Session, row, s: dict, alp: Alpaca, c, *, tif: str, book: _Book, 
         _record(db, **base, qty=0, status="skipped", error=skip)
         event(db, row["id"], "skip", f"{c['ticker']} {c['rule']} skipped — {skip}")
         return False
+    # Opening entries on Alpaca go in as marketable limits, ENTRY_COLLAR past the price we
+    # saw: 2026-10-20..29, 19 of 38 opening market orders on the paper account filled at
+    # prices that never traded on the consolidated tape that minute (mean 1.06% worse than
+    # the tape when sent, $785 in all — more than the account's whole drawdown). Live, the
+    # collar guards against a bad opening print the same way. Unfilled after
+    # LIMIT_TTL_MIN minutes, reconcile() cancels it: the edge is gone by then anyway.
+    lim = None
+    if isinstance(alp, Alpaca) and tif == "day" and _now().hour < 11 and ENTRY_COLLAR > 0:
+        lim = px * (1 + ENTRY_COLLAR) if side == "buy" else px * (1 - ENTRY_COLLAR)
     try:
-        o = alp.submit(c["ticker"], qty, side, tif, cid)
+        o = alp.submit(c["ticker"], qty, side, tif, cid, limit=lim) if lim else alp.submit(c["ticker"], qty, side, tif, cid)
     except BrokerError as exc:
         _record(db, **base, qty=qty, status="failed", error=str(exc))
         event(db, row["id"], "error", f"{c['ticker']} entry failed: {exc}")
         return False
     exit_session = c["exit_session"] if "exit_session" in c else _session_after(alp, c["session"], RULES[c["rule"]]["hold"])
-    _record(db, **base, qty=qty, boid=o["id"], status=o["status"], exit_session=exit_session, ref=px)
+    _record(db, **base, qty=qty, boid=o["id"], status=o["status"], exit_session=exit_session, ref=px, limit=lim)
     book.gross += qty * px
     book.sides.setdefault(c["ticker"], set()).add("short" if short else "long")
     book.trades.append({"rule": c["rule"], "ticker": c["ticker"], "side": side})
@@ -769,9 +787,11 @@ def run_open(db: Session) -> dict[str, Any]:
     from backend.app.services.strategy_lab import prev_closes
 
     names = sorted({c["ticker"] for c in cands})
+    from backend.app.services.strategy_lab import last_trades
     opens = opens_today(names, db) if cands else {}
     closes = prev_closes(names, db) if cands else {}
-    issued = ds.issue_due(db, opens=opens, closes=closes) if cands else {"issued": 0}
+    lasts = last_trades(names, db) if cands else {}
+    issued = ds.issue_due(db, opens=opens, closes=closes, lasts=lasts) if cands else {"issued": 0}
     return {"swept": swept, "candidates": len(cands), "opened": len(opens), "issued": issued, "entries": run_entries(db)}
 
 
@@ -983,6 +1003,14 @@ def reconcile(db: Session) -> dict[str, Any]:
                 continue
             fq = float(r.get("filled_qty") or 0)
             price = float(r["filled_avg_price"]) if r.get("filled_avg_price") else None
+            if (o.get("limit_price") is not None and o["leg"] == "entry" and r["status"] in ("new", "accepted", "partially_filled")
+                    and o["submitted_at"] < datetime.now(timezone.utc) - timedelta(minutes=LIMIT_TTL_MIN) and hasattr(alp, "cancel")):
+                try:
+                    alp.cancel(o["broker_order_id"])
+                    event(db, row["id"], "info", f"{o['ticker']} entry limit ${float(o['limit_price']):.2f} not filled in "
+                                                 f"{LIMIT_TTL_MIN} min — canceled" + (f" ({int(fq)} filled)" if fq else ""))
+                except BrokerError:
+                    pass
             if r["status"] == o["status"] and fq == float(o["filled_qty"] or 0):
                 continue
             db.execute(text("""UPDATE autotrade_orders SET status=:s, filled_qty=:q, filled_avg_price=:p,

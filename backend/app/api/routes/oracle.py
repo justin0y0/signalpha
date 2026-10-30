@@ -1,8 +1,9 @@
 """Oracle API + background scan worker."""
-import asyncio, logging
-from fastapi import APIRouter
+import asyncio, logging, os, time
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from backend.app.services import oracle_service as O
+from backend.app.services.oracle_figures import portrait
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/oracle", tags=["oracle"])
@@ -21,81 +22,155 @@ def _price_now(tk):
         except Exception: pass
     return px or 0
 
+def _prices_now(tickers):
+    """Latest price for many tickers in one download (10-min cache): the leaderboard
+    covers ~150 tickers and fetching them one by one took most of a minute."""
+    out, need = {}, []
+    for tk in set(t for t in tickers if t):
+        hit = O._rc.get(f"oracle:pxnow:{tk}") if O._rc is not None else None
+        if hit is not None: out[tk] = float(hit)
+        else: need.append(tk)
+    if need:
+        try:
+            import yfinance as yf
+            h = yf.download(need, period="5d", progress=False, auto_adjust=False, threads=True)["Close"]
+            if not hasattr(h, "columns"): h = h.to_frame(need[0])
+            for tk in need:
+                col = h[tk].dropna() if tk in h.columns else []
+                if len(col):
+                    out[tk] = float(col.iloc[-1])
+                    if O._rc is not None: O._rc.setex(f"oracle:pxnow:{tk}", 600, str(out[tk]))
+        except Exception as e:
+            log.warning(f"oracle prices: {e}")
+        for tk in need:
+            if tk not in out: out[tk] = _price_now(tk)
+    return out
+
+_spy = {"at": 0.0, "s": None}
+def _spy_on(ts):
+    """SPY close on the session of `ts` (or the one before) — the benchmark a signal is held against."""
+    import pandas as pd
+    if _spy["s"] is None or time.time() - _spy["at"] > 3600:
+        try:
+            import yfinance as yf
+            c = yf.Ticker("SPY").history(period="2y", auto_adjust=False)["Close"]
+            c.index = c.index.tz_localize(None).normalize()
+            _spy.update(s=c, at=time.time())
+        except Exception as e:
+            log.warning(f"oracle spy: {e}")
+            return None
+    s = _spy["s"]
+    if s is None or s.empty: return None
+    d = pd.Timestamp(ts).tz_convert("America/New_York").tz_localize(None).normalize()
+    s = s[s.index <= d]
+    return float(s.iloc[-1]) if len(s) else None
+
+def _scored(rows):
+    """Return since each signal, signed by direction, and the same against SPY."""
+    px = _prices_now([r["ticker"] for r in rows] + ["SPY"])
+    spy_now = px.get("SPY")
+    for d in rows:
+        entry, pn = d.get("price"), px.get(d.get("ticker"))
+        sign = -1 if d.get("sentiment") == "bearish" else 1
+        d["price_now"] = round(pn, 2) if pn else None
+        d["return_since"] = d["excess_since"] = None
+        if entry and pn and entry > 0:
+            r = (pn - entry) / entry
+            d["return_since"] = round(sign * r * 100, 2)
+            s0 = _spy_on(d["detected_at"])
+            if s0 and spy_now:
+                d["excess_since"] = round(sign * (r - (spy_now - s0) / s0) * 100, 2)
+    return rows
+
+_LIVE = "status NOT IN ('duplicate','own_company','rejected') AND figure = ANY(:figs)"
+
+def _admin(tok):
+    want = os.getenv("ADMIN_TOKEN", "").strip()
+    if not want or tok != want:
+        raise HTTPException(status_code=401, detail="unauthorized")
+
 class ToggleReq(BaseModel):
     keys: list[str]
 
 @router.get("/figures")
 def figures():
+    from backend.app.db.session import SessionLocal
+    from sqlalchemy import text
     en = O._enabled()
-    return {"figures":[{"key":k,**v,"enabled":k in en,"health":O.figure_health(k)} for k,v in O.FIGURES.items()]}
+    with SessionLocal() as db:
+        st = {r.figure: r for r in db.execute(text(f"""SELECT figure, count(*) FILTER (WHERE detected_at > now() - interval '30 days') n30,
+                count(*) n, max(detected_at) last FROM oracle_signals WHERE {_LIVE} GROUP BY figure"""),
+                {"figs": list(O.FIGURES)}).fetchall()}
+    out = []
+    for k, v in O.FIGURES.items():
+        r = st.get(k)
+        out.append({"key": k, **{f: v.get(f) for f in ("name", "zh", "group", "type", "emoji", "why", "why_zh", "cadence")},
+                    "sources": sorted({s["type"] for s in v["sources"]}), "portrait": portrait(k),
+                    "enabled": k in en, "health": O.figure_health(k),
+                    "signals_30d": r.n30 if r else 0, "signals": r.n if r else 0,
+                    "last_signal": r.last.isoformat() if r and r.last else None})
+    return {"figures": out}
 
 @router.post("/figures")
-def toggle(req: ToggleReq):
+def toggle(req: ToggleReq, x_admin_token: str = Header(default="")):
+    # Was open to anyone: one visitor could switch a figure off for the whole site.
+    _admin(x_admin_token)
     O.set_enabled(req.keys)
     return {"enabled": sorted(O._enabled())}
 
 @router.get("/signals")
-def signals(limit: int = 50):
+def signals(limit: int = 50, figure: str = ""):
     from backend.app.db.session import SessionLocal
     from sqlalchemy import text
-    db = SessionLocal()
-    try:
-        rows = db.execute(text("""SELECT figure,figure_name,source_url,headline,ticker,
-            sentiment,confidence,rationale,price,market_cap,suggested_size,pulse_score,detected_at
-            FROM oracle_signals ORDER BY detected_at DESC LIMIT :l"""), {"l": limit}).fetchall()
-        out = []; pxc = {}
-        for r in rows:
-            d = dict(r._mapping); tk = d.get("ticker"); entry = d.get("price")
-            if tk and tk not in pxc: pxc[tk] = _price_now(tk)
-            pn = pxc.get(tk, 0)
-            d["price_now"] = round(pn, 2) if pn else None
-            if entry and pn and entry > 0:
-                rs = (pn - entry) / entry * 100.0
-                if d.get("sentiment") == "bearish": rs = -rs
-                d["return_since"] = round(rs, 2)
-            else:
-                d["return_since"] = None
-            out.append(d)
-        return {"signals": out}
-    finally:
-        db.close()
+    with SessionLocal() as db:
+        rows = db.execute(text(f"""SELECT figure,figure_name,source_url,headline,ticker,
+            sentiment,confidence,rationale,price,market_cap,suggested_size,pulse_score,detected_at,kind
+            FROM oracle_signals WHERE {_LIVE} AND (:fig = '' OR figure = :fig)
+            ORDER BY detected_at DESC LIMIT :l"""), {"l": min(limit, 200), "figs": list(O.FIGURES), "fig": figure}).fetchall()
+    return {"signals": _scored([dict(r._mapping) for r in rows])}
 
 @router.get("/leaderboard")
 def leaderboard():
+    """Per figure: calls in the last 120 days, hit rate and average return since each call,
+    and the same against SPY over the same days — the column that says whether following
+    them beat just holding the index."""
     from backend.app.db.session import SessionLocal
     from sqlalchemy import text
-    db = SessionLocal()
-    try:
-        rows = db.execute(text("""SELECT figure,figure_name,ticker,sentiment,price
-            FROM oracle_signals ORDER BY detected_at DESC LIMIT 400""")).fetchall()
-    finally:
-        db.close()
-    pxc = {}; agg = {}
-    for r in rows:
-        m = r._mapping; tk = m["ticker"]; entry = m["price"]
-        if not tk or not entry or entry <= 0: continue
-        if tk not in pxc: pxc[tk] = _price_now(tk)
-        pn = pxc[tk]
-        if not pn: continue
-        rs = (pn - entry) / entry * 100.0
-        if m["sentiment"] == "bearish": rs = -rs
-        fig = O.FIGURES.get(m["figure"], {})
-        a = agg.setdefault(m["figure"], {"figure_name": m["figure_name"],
-            "emoji": fig.get("emoji", "\U0001F52E"), "type": fig.get("type", ""), "rets": []})
-        a["rets"].append(rs)
+    hit = O._rc.get("oracle:lb") if O._rc is not None else None
+    if hit:
+        import json
+        return json.loads(hit)
+    with SessionLocal() as db:
+        rows = [dict(r._mapping) for r in db.execute(text(f"""SELECT figure,figure_name,ticker,sentiment,price,detected_at
+            FROM oracle_signals WHERE {_LIVE} AND detected_at > now() - interval '120 days'
+            ORDER BY detected_at DESC LIMIT 1500"""), {"figs": list(O.FIGURES)}).fetchall()]
+    agg = {}
+    for d in _scored(rows):
+        if d["return_since"] is None: continue
+        a = agg.setdefault(d["figure"], {"figure_name": d["figure_name"], "rets": [], "ex": []})
+        a["rets"].append(d["return_since"])
+        if d["excess_since"] is not None: a["ex"].append(d["excess_since"])
     board = []
     for k, a in agg.items():
-        rets = a["rets"]; nn = len(rets)
-        if not nn: continue
-        wins = sum(1 for x in rets if x > 0)
-        board.append({"figure": k, "figure_name": a["figure_name"], "emoji": a["emoji"],
-            "type": a["type"], "calls": nn, "hit_rate": round(wins / nn * 100),
-            "avg_return": round(sum(rets) / nn, 2), "best": round(max(rets), 2), "worst": round(min(rets), 2)})
-    board.sort(key=lambda x: x["avg_return"], reverse=True)
-    return {"leaderboard": board}
+        rets, ex = a["rets"], a["ex"]; nn = len(rets)
+        fig = O.FIGURES.get(k, {})
+        board.append({"figure": k, "figure_name": a["figure_name"], "emoji": fig.get("emoji", "\U0001F52E"),
+            "type": fig.get("type", ""), "portrait": portrait(k), "calls": nn,
+            "hit_rate": round(sum(1 for x in rets if x > 0) / nn * 100),
+            "avg_return": round(sum(rets) / nn, 2), "best": round(max(rets), 2), "worst": round(min(rets), 2),
+            "avg_excess": round(sum(ex) / len(ex), 2) if ex else None,
+            "beat_spy": round(sum(1 for x in ex if x > 0) / len(ex) * 100) if ex else None})
+    board.sort(key=lambda x: (x["avg_excess"] if x["avg_excess"] is not None else -999), reverse=True)
+    body = {"leaderboard": board}
+    if O._rc is not None:
+        import json
+        O._rc.setex("oracle:lb", 600, json.dumps(body))
+    return body
 
 @router.post("/scan-now")
-def scan_now():
+def scan_now(x_admin_token: str = Header(default="")):
+    # The worker scans every 90 s; a public button only let anyone spend the LLM quota.
+    _admin(x_admin_token)
     n = O.scan_once()
     return {"new_signals": n}
 

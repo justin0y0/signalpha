@@ -112,14 +112,13 @@ export function PulsePage() {
   return (
     <div className="mc-page">
       <PulseHero data={data} now={now} highConv={highConv.length} />
-      <NotifBanner status={data.notifications} sent={data.signals.filter(s => s.notified).length} />
       <MarketGauges data={data} />
       {highConv.length > 0 && (
         <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <div className="mc-panel__title">
-            <Star size={14} /> HIGH CONVICTION SIGNALS
+            <Star size={14} /> {t('pulse.most')}
             <span className="mc-panel__sub">
-              |score| ≥ {data.thresholds.notify} · sent to Telegram if configured
+              |score| ≥ {data.thresholds.notify} · {t('pulse.notCall')}
             </span>
           </div>
           <div className="pulse-hi">
@@ -130,8 +129,8 @@ export function PulsePage() {
       {medConv.length > 0 && (
         <motion.div className="mc-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
           <div className="mc-panel__title">
-            <Zap size={14} /> ACTIVE SIGNALS
-            <span className="mc-panel__sub">|score| ≥ {data.thresholds.signal} · traded but not notified</span>
+            <Zap size={14} /> {t('pulse.stretched')}
+            <span className="mc-panel__sub">|score| ≥ {data.thresholds.signal} · {t('pulse.notCall')}</span>
           </div>
           <div className="pulse-signals">
             {medConv.map((s, i) => <SignalCard key={i} sig={s} onClick={() => setSelectedTicker(s.ticker)} />)}
@@ -301,24 +300,6 @@ function ResearchDisclaimer() {
   )
 }
 
-function NotifBanner({ status, sent }: { status: PulseData['notifications']; sent: number }) {
-  const { t } = useT()
-  if (status.configured) return (
-    <div className="pulse-notif pulse-notif--on">
-      <Bell size={14} />
-      <span><b>{t('pulse.tgOn')}</b> · {sent} sent this scan · {status.sent_last_hour} in last hour</span>
-    </div>
-  )
-  return (
-    <div className="pulse-notif pulse-notif--off">
-      <BellOff size={14} />
-      <span>
-        <b>{t('pulse.noPhone')}</b> Set <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code> in server <code>.env</code> to receive high-conviction signals.
-      </span>
-    </div>
-  )
-}
-
 function MarketGauges({ data }: { data: PulseData }) {
   const m = data.market as any
   return (
@@ -352,7 +333,6 @@ function Gauge({ label, value, accent, sub }: { label: string; value: string; ac
 }
 
 function HighConvCard({ sig, onClick }: { sig: Signal; onClick?: () => void }) {
-  const stars = Math.min(5, Math.max(1, Math.round(Math.abs(sig.score) * 6)))
   const color = sig.side === 'LONG' ? '#63e6a8' : '#ff7d6b'
   const engineLabel: { [k: string]: string } = {
     AL_REVERSION: 'Avellaneda-Lee',
@@ -365,11 +345,9 @@ function HighConvCard({ sig, onClick }: { sig: Signal; onClick?: () => void }) {
       onClick={onClick}
       style={{ borderColor: color, boxShadow: `0 0 32px -10px ${color}` }}>
       <div className="pulse-hi-card__top">
-        <div className="pulse-hi-card__stars">{'★'.repeat(stars)}{'☆'.repeat(5 - stars)}</div>
         {sig.session !== 'market' && (
           <div className="pulse-hi-card__session">{sig.session.replace('_', '-').toUpperCase()}</div>
         )}
-        {sig.notified && <div className="pulse-hi-card__notif"><Bell size={10} /> SENT</div>}
       </div>
       <div className="pulse-hi-card__id">
         <StockLogo ticker={sig.ticker} size={30} />
@@ -395,11 +373,9 @@ function HighConvCard({ sig, onClick }: { sig: Signal; onClick?: () => void }) {
         <span style={{ color, fontWeight: 800, fontSize: '1rem' }}>
           {sig.side === 'LONG' ? <TrendingUp size={14} /> : <TrendingDown size={14} />} {sig.side}
         </span>
-        <span className="mono pulse-hi-card__size">${sig.suggested_size.toLocaleString()}</span>
       </div>
       <div className="pulse-hi-card__exit mono">
-        target {sig.exit_clock} · est P(win) {(sig.estimated_prob * 100).toFixed(0)}%
-        <span style={{ float: 'right', color: 'var(--text-tertiary)' }}>±1σ barriers</span>
+        <span style={{ color: 'var(--text-tertiary)' }}>±1σ barriers · {sig.exit_clock}</span>
       </div>
       <div className="pulse-hi-card__factors">
         <div className="pulse-hi-card__factors-l">FACTORS</div>
@@ -466,7 +442,7 @@ function SignalCard({ sig, onClick }: { sig: Signal; onClick?: () => void }) {
       <div className="pulse-signal__price mono">${sig.price.toFixed(2)} · intraday {sig.intraday_ret >= 0 ? '+' : ''}{(sig.intraday_ret * 100).toFixed(2)}%</div>
       <div className="pulse-signal__action">
         <span style={{ color, fontWeight: 700 }}>
-          {sig.side === 'LONG' ? '↑' : '↓'} {sig.side} · ${sig.suggested_size.toLocaleString()}
+          {sig.side === 'LONG' ? '↑' : '↓'} {sig.side}
         </span>
       </div>
       <div className="pulse-signal__factors-mini">

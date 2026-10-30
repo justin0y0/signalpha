@@ -60,14 +60,14 @@ def _available(force: bool = False) -> list[str]:
     return models
 
 
-def resolve(preferred_env: str | None = None, force: bool = False) -> str | None:
+def resolve(preferred_env: str | None = None, force: bool = False, skip: tuple[str, ...] = ()) -> str | None:
     """First usable model: the env override if Groq still lists it, then PREFERENCE."""
     available = _available(force=force)
     wanted = [os.getenv(preferred_env, "").strip()] if preferred_env else []
     for name in [*wanted, *PREFERENCE]:
-        if name and (not available or name in available):
+        if name and name not in skip and (not available or name in available):
             return name
-    chat = [m for m in available if not any(t in m for t in _NOT_CHAT)]
+    chat = [m for m in available if not any(t in m for t in _NOT_CHAT) and m not in skip]
     return chat[0] if chat else None
 
 
@@ -82,8 +82,9 @@ def chat(messages: list[dict], *, preferred_env: str | None = None, json_mode: b
     """
     if not _key():
         return None
-    for attempt in (0, 1):
-        chosen = model or resolve(preferred_env, force=attempt == 1)
+    busy: tuple[str, ...] = ()
+    for attempt in (0, 1, 2):
+        chosen = model or resolve(preferred_env, force=attempt == 1 and not busy, skip=busy)
         if not chosen:
             return None
         body: dict[str, Any] = {"model": chosen, "messages": messages, "temperature": temperature,
@@ -101,6 +102,11 @@ def chat(messages: list[dict], *, preferred_env: str | None = None, json_mode: b
             return None
         if r.status_code == 404 and attempt == 0 and not model:
             log.warning("groq model %s is gone (404) — re-resolving", chosen)
+            continue
+        if r.status_code == 429 and not model:
+            # the free tier's per-minute token limit is per model: the next one usually has room
+            log.warning("groq %s rate-limited — trying the next model", chosen)
+            busy += (chosen,)
             continue
         if r.status_code != 200:
             log.warning("groq %s HTTP %s: %s", chosen, r.status_code, r.text[:200])

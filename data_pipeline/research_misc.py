@@ -42,7 +42,9 @@ def stats(v) -> dict:
 
 
 def oracle(db) -> dict:
-    sig = pd.read_sql(text("SELECT figure, sentiment, ticker, detected_at FROM oracle_signals ORDER BY detected_at"), db.bind)
+    # repeats of the same call and CEOs praising their own company are not separate trades
+    sig = pd.read_sql(text("""SELECT figure, sentiment, ticker, detected_at, COALESCE(kind, 'news') kind FROM oracle_signals
+                              WHERE status NOT IN ('duplicate', 'own_company', 'rejected') ORDER BY detected_at"""), db.bind)
     if sig.empty:
         return {}
     h = data_headers(db)
@@ -74,10 +76,11 @@ def oracle(db) -> dict:
             if len(after) > hold and after.index[hold] in spy.index:
                 r = after.iloc[hold] / after.iloc[0] - 1
                 m = spy.loc[after.index[hold]] / spy.loc[after.index[0]] - 1
-                rows.append({"figure": x.figure, "hold": hold, "ret": sgn * r, "excess": sgn * (r - m)})
+                rows.append({"figure": x.figure, "kind": x.kind, "hold": hold, "ret": sgn * r, "excess": sgn * (r - m)})
     t = pd.DataFrame(rows)
     return {"since": str(pd.Timestamp(sig.detected_at.min()).date()), "signals": int(len(sig)),
             "h1": stats(t[t.hold == 1].excess), "h5": stats(t[t.hold == 5].excess),
+            "by_kind": {k: stats(g[g.hold == 5].excess) for k, g in t.groupby("kind")},
             "by_figure": {f: stats(g[g.hold == 1].excess) for f, g in t.groupby("figure") if (g.hold == 1).sum() >= 5}}
 
 

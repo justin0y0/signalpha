@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { PageHead } from '../components/PageHead'
 import { EquityLine } from '../components/EquityLine'
 import { useT } from '../i18n'
+import { RuleBuilder, TQQQ_EXAMPLE, useRuleText, type Rule } from '../components/RuleBuilder'
 import './LibraryPage.css'
 
 /**
@@ -29,6 +30,7 @@ type Row = {
   id: string; family: Fam; template: string; params: Record<string, any>; assets: string[]; filters?: Filter[]; bench: string
   source: string; published: number | null; executable: boolean; note: string; grade: Grade; dsr: number | null
   oos: W; bench_oos: W; full: W; alpha_t: number | null; alpha_t_oos: number | null; exposure: number | null; entries_yr: number | null
+  matched_oos?: number | null; same_as_bench?: boolean; synthetic_until?: string | null
 }
 type Stats = { cagr?: number; sharpe?: number | null; max_dd?: number; vol?: number; start?: string; end?: string; years_up?: number; years_total?: number; cash_cagr?: number }
 type Alpha = { alpha?: number; alpha_t?: number; beta?: number }
@@ -37,6 +39,7 @@ type Detail = Row & {
   alpha: Alpha; alpha_oos: Alpha; alpha_is: Alpha; post: (Stats & { from: string; bench: Stats; alpha: Alpha }) | null
   activity: { exposure: number; entries_yr: number; turnover_yr: number; avg_hold: number | null }
   curve?: { s: { t: string; v: number }[]; b: { t: string; v: number }[] } | null; trials?: number; now?: Record<string, number>
+  matched_full?: number | null
 }
 type Tpl = { t: string; kind: 'single' | 'multi' | 'earnings'; bounds: Record<string, [number, number]>; live: boolean; fixed: string[] | null }
 type Table = { generated_at?: string; split?: string; trials?: number; count: number; grades?: Record<string, number>; rows: Row[]; templates: Tpl[] }
@@ -71,14 +74,16 @@ const tone = (v: number | null | undefined) => (v == null ? '' : v > 0 ? 'is-up'
 
 export function useRuleName() {
   const { t } = useT()
+  const text = useRuleText()
   return useCallback((r: { id: string; family?: string; template: string; params: Record<string, any>; filters?: Filter[] }, name?: string) => {
     if (name) return name
+    if (r.template === 'rule') return r.id.startsWith('u') ? text(r.params as Rule) : t(`lib.t.${r.id}` as 'lib.t.rsi2')
     const key = (r.family === 'allocation' && !r.id.startsWith('u') ? `lib.t.${r.id}` : `lib.t.${r.template}`) as 'lib.t.rsi2'
     const base = t(key)
     const ps = r.template === 'static' ? '' : Object.entries(r.params || {}).map(([k, v]) => `${k}=${v}`).join(' ')
     const f = (r.filters || []).map((x) => ` + ${t(`lib.t.${x.template}` as 'lib.t.rsi2')}${Object.keys(x.params).length ? ` (${Object.entries(x.params).map(([k, v]) => `${k}=${v}`).join(' ')})` : ''}`).join('')
     return `${base}${ps && r.family !== 'allocation' ? ` (${ps})` : ''}${f}`
-  }, [t])
+  }, [t, text])
 }
 
 export function LibraryPage() {
@@ -91,7 +96,7 @@ export function LibraryPage() {
   const [kind, setKind] = useState<'all' | 'index' | 'stock' | 'portfolio'>('all')
   const [liveOnly, setLiveOnly] = useState(false)
   const [q, setQ] = useState('')
-  const [sort, setSort] = useState<'grade' | 'alpha' | 'cagr' | 'sharpe' | 'dd'>('grade')
+  const [sort, setSort] = useState<'grade' | 'alpha' | 'cagr' | 'sharpe' | 'dd' | 'matched'>('grade')
   const [mine, setMine] = useState<Mine[] | null>(null)
   const open = params.get('s')
   const setOpen = (id: string | null) => { const n = new URLSearchParams(params); if (id) n.set('s', id); else n.delete('s'); setParams(n, { replace: true }) }
@@ -110,7 +115,7 @@ export function LibraryPage() {
       && (kind === 'all' || (kind === 'portfolio' ? r.assets.length > 1 : kind === 'index' ? r.assets.length === 1 && ['SPY', 'QQQ', 'IWM', 'DIA'].includes(r.assets[0]) : r.assets.length === 1 && !['SPY', 'QQQ', 'IWM', 'DIA'].includes(r.assets[0])))
       && (!ql || r.assets.some((a) => a.includes(ql)) || r.id.toUpperCase().includes(ql) || name(r).toUpperCase().includes(ql)))
     const k = (r: Row) => sort === 'grade' ? order[r.grade] * 100 - (r.alpha_t ?? 0) : sort === 'alpha' ? -(r.alpha_t ?? -99)
-      : sort === 'cagr' ? -(r.oos.cagr ?? -9) : sort === 'sharpe' ? -((r.oos.sharpe ?? -9) - (r.bench_oos.sharpe ?? 0)) : -(r.oos.max_dd ?? -9)
+      : sort === 'cagr' ? -(r.oos.cagr ?? -9) : sort === 'matched' ? -((r.matched_oos ?? -9) - (r.bench_oos.cagr ?? 0)) : sort === 'sharpe' ? -((r.oos.sharpe ?? -9) - (r.bench_oos.sharpe ?? 0)) : -(r.oos.max_dd ?? -9)
     return out.sort((a, b) => k(a) - k(b))
   }, [tab, fam, grade, kind, liveOnly, q, sort, name])
 
@@ -130,10 +135,10 @@ export function LibraryPage() {
         ) : null}
       </PageHead>
 
-      <details className="lib-how">
+      <details className="lib-how" open>
         <summary>{t('lib.how.title')}</summary>
         <ul>
-          <li>{t('lib.how.1')}</li><li>{t('lib.how.2', { trials: tab?.trials ?? '…' })}</li><li>{t('lib.how.3')}</li>
+          <li>{t('lib.how.0')}</li><li>{t('lib.how.1')}</li><li>{t('lib.how.2', { trials: tab?.trials ?? '…' })}</li><li>{t('lib.how.3')}</li>
           <li>{t('lib.how.4')}</li><li>{t('lib.how.5')}</li>
         </ul>
         <p className="lib-dim">{t('lib.how.grades')}</p>
@@ -179,6 +184,7 @@ export function LibraryPage() {
                 <th>{t('lib.c.rule')}</th><th>{t('lib.c.on')}</th>
                 <th className="is-sort" onClick={() => setSort('grade')}>{t('lib.c.grade')}{sort === 'grade' ? ' ↓' : ''}</th>
                 <th className="is-sort is-num" onClick={() => setSort('cagr')}>{t('lib.c.cagr')}{sort === 'cagr' ? ' ↓' : ''}</th>
+                <th className="is-sort is-num" onClick={() => setSort('matched')} title={t('lib.c.matchedTip')}>{t('lib.c.matched')}{sort === 'matched' ? ' ↓' : ''}</th>
                 <th className="is-sort is-num" onClick={() => setSort('sharpe')}>{t('lib.c.sharpe')}{sort === 'sharpe' ? ' ↓' : ''}</th>
                 <th className="is-sort is-num" onClick={() => setSort('dd')}>{t('lib.c.dd')}{sort === 'dd' ? ' ↓' : ''}</th>
                 <th className="is-sort is-num" onClick={() => setSort('alpha')}>{t('lib.c.alpha')}{sort === 'alpha' ? ' ↓' : ''}</th>
@@ -192,6 +198,7 @@ export function LibraryPage() {
                   <td>{r.assets.length > 3 ? `${r.assets.slice(0, 3).join(', ')} +${r.assets.length - 3}` : r.assets.join(', ')}</td>
                   <td><span className={`lib-badge lib-g--${r.grade}`}>{r.grade}</span></td>
                   <td className="is-num">{pct(r.oos.cagr)} <span className="lib-dim">/ {pct(r.bench_oos.cagr)}</span></td>
+                  <td className={`is-num ${tone(r.matched_oos != null && r.bench_oos.cagr != null ? r.matched_oos - r.bench_oos.cagr : null)}`}>{pct(r.matched_oos)}</td>
                   <td className={`is-num ${tone((r.oos.sharpe ?? 0) - (r.bench_oos.sharpe ?? 0))}`}>{num(r.oos.sharpe)} <span className="lib-dim">/ {num(r.bench_oos.sharpe)}</span></td>
                   <td className="is-num">{pctAbs(r.oos.max_dd)} <span className="lib-dim">/ {pctAbs(r.bench_oos.max_dd)}</span></td>
                   <td className={`is-num ${tone(r.alpha_t)}`}>{num(r.alpha_t, 1)}</td>
@@ -241,7 +248,7 @@ function DetailPanel({ id, mine, trials, onClose, onDeleted }: { id: string; min
       <td className="is-num">{pct(s.cagr)}<span className="lib-dim">{pct(b?.cagr)}</span></td>
       <td className={`is-num ${tone((s.sharpe ?? 0) - (b?.sharpe ?? 0))}`}>{num(s.sharpe)}<span className="lib-dim">{num(b?.sharpe)}</span></td>
       <td className="is-num">{pctAbs(s.max_dd)}<span className="lib-dim">{pctAbs(b?.max_dd)}</span></td>
-      <td className={`is-num ${tone(a?.alpha)}`}>{pct(a?.alpha)}<span className="lib-dim">t {num(a?.alpha_t, 1)}</span></td>
+      <td className={`is-num ${tone(a?.alpha)}`}>{a?.alpha_t == null ? '—' : pct(a?.alpha)}<span className="lib-dim">{a?.alpha_t == null ? '' : `t ${num(a.alpha_t, 1)}`}</span></td>
     </tr>
   )
   return (
@@ -258,7 +265,11 @@ function DetailPanel({ id, mine, trials, onClose, onDeleted }: { id: string; min
                 <p className="lib-dim">{d.assets.join(', ')} · {t('lib.d.vs', { b: d.family === 'allocation' ? 'SPY' : t('lib.d.holding', { b: d.bench }) })}</p>
               </div>
             </div>
-            <p className="lib-grade-say">{t(`lib.g.${d.grade}` as 'lib.g.A')}</p>
+            <p className="lib-grade-say">{d.same_as_bench ? t('lib.g.same') : t(`lib.g.${d.grade}` as 'lib.g.A')}</p>
+            {d.matched_oos != null && d.bench_oos?.cagr != null && !d.same_as_bench && (
+              <p className="lib-matched">{t('lib.d.matched', { m: pct(d.matched_oos), h: pct(d.bench_oos.cagr), s: pct(d.oos?.cagr) })}</p>
+            )}
+            {d.synthetic_until && <p className="lib-note">{t('lib.d.synthetic', { d: d.synthetic_until })}</p>}
             {meta?.thesis && <p className="lib-thesis">{meta.thesis}</p>}
             {d.curve?.s?.length ? <EquityLine series={d.curve.s} bench={d.curve.b} benchLabel={d.family === 'allocation' ? 'SPY' : d.bench} /> : null}
             <table className="lib-win">
@@ -345,9 +356,10 @@ function Brainstorm({ templates, onSaved }: { templates: Tpl[]; onSaved: (s: Sav
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [last, setLast] = useState<Saved | null>(null)
-  const [tpl, setTpl] = useState('rsi2')
+  const [tpl, setTpl] = useState('rule')
   const [assets, setAssets] = useState('SPY')
   const [ps, setPs] = useState<Record<string, number>>({ lo: 10 })
+  const [rule, setRule] = useState<Rule>(TQQQ_EXAMPLE)
   const [flt, setFlt] = useState('')
   const [fps, setFps] = useState<Record<string, number>>({})
   const name = useRuleName()
@@ -371,6 +383,7 @@ function Brainstorm({ templates, onSaved }: { templates: Tpl[]; onSaved: (s: Sav
     try {
       const s = mode === 'llm'
         ? await call<Saved>('/library/brainstorm', { method: 'POST', body: { prompt, lang: locale, base: last?.spec ?? null } })
+        : tpl === 'rule' ? await call<Saved>('/library/backtest', { method: 'POST', body: { spec: { template: 'rule', params: rule }, name: '' } })
         : await call<Saved>('/library/backtest', { method: 'POST', body: {
             spec: { template: tpl, params: tpl === 'static' ? { w: Object.fromEntries(assets.split(',').map((a) => a.trim().split(':')).filter((x) => x[0]).map(([a, w]) => [a.toUpperCase(), Number(w) || 0])) } : ps,
               assets: assets.split(',').map((a) => a.trim().split(':')[0]).filter(Boolean), filters: flt ? [{ template: flt, params: fps }] : [] },
@@ -404,12 +417,16 @@ function Brainstorm({ templates, onSaved }: { templates: Tpl[]; onSaved: (s: Sav
         <div className="lib-lab__form">
           <label>{t('lib.lab.tpl')}
             <select value={tpl} onChange={(e) => pickTpl(e.target.value)}>
+              <option value="rule">{t('lib.t.rule')}</option>
               {templates.map((x) => <option key={x.t} value={x.t}>{t(`lib.t.${x.t}` as 'lib.t.rsi2')}{x.live ? '' : ` · ${t('lib.notLive')}`}</option>)}
             </select>
           </label>
+          {tpl === 'rule' && <RuleBuilder rule={rule} onChange={setRule} />}
+          {tpl !== 'rule' && (
           <label>{tpl === 'static' ? t('lib.lab.weights') : T?.kind === 'multi' ? t('lib.lab.assets') : t('lib.lab.asset')}
-            <input value={assets} onChange={(e) => setAssets(e.target.value.toUpperCase())} disabled={!!T?.fixed} placeholder={tpl === 'static' ? 'SPY:0.6, TLT:0.4' : 'NVDA'} />
-          </label>
+              <input value={assets} onChange={(e) => setAssets(e.target.value.toUpperCase())} disabled={!!T?.fixed} placeholder={tpl === 'static' ? 'SPY:0.6, TLT:0.4' : 'NVDA'} />
+            </label>
+          )}
           {Object.entries(T?.bounds ?? {}).map(([k, [lo, hi]]) => (
             <label key={k}>{k} <span className="lib-dim">{lo}–{hi}</span>
               <input type="number" step="any" value={ps[k] ?? ''} onChange={(e) => setPs({ ...ps, [k]: Number(e.target.value) })} />

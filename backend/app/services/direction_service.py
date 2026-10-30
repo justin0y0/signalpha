@@ -172,8 +172,21 @@ def candidates(db: Session, today: date) -> list[dict[str, Any]]:
         {"today": today, "prev": _sessions_back(today)}).mappings().all()]
 
 
+THRESHOLD = {"follow_gap": 2, "fade_spike": 3, "buy_flush": -2, "fade_miss": 1}
+
+
+def confirmed(key: str, gap: float, band: float, check: float | None) -> bool:
+    """A second price (the latest trade) has to tell the same story as the opening print:
+    same direction and at least half the rule's threshold. One odd print must not fire a
+    trade — see strategy_lab.opens_today for the KREF and BHC calls of 2026-10-29."""
+    if check is None:
+        return True
+    k = THRESHOLD[key]
+    return (check > 0) == (gap > 0) and abs(check / band) >= 0.5 * abs(k)
+
+
 def issue_due(db: Session, now: datetime | None = None, opens: dict[str, float] | None = None,
-              closes: dict[str, float] | None = None) -> dict[str, Any]:
+              closes: dict[str, float] | None = None, lasts: dict[str, float] | None = None) -> dict[str, Any]:
     """Run after the open: every report trading today, its gap from the open, its calls.
 
     `opens` (ticker -> today's opening print, from the broker feed seconds after the bell)
@@ -229,8 +242,11 @@ def issue_due(db: Session, now: datetime | None = None, opens: dict[str, float] 
                          {"t": t, "d": r["earnings_date"], "a": r["earnings_date"] - timedelta(days=3),
                           "b": r["earnings_date"] + timedelta(days=3)}).scalar()
         tier = "large" if (r["tier"] or "core") in ("core", "large") else r["tier"]
+        check = (float(lasts[t]) / prev - 1) if lasts and lasts.get(t) else None
         for key, rule in RULES.items():
             if today < rule["live_from"] or tier not in rule["tiers"] or not matches(key, gap / band, _num(sur)):
+                continue
+            if not confirmed(key, gap, band, check):
                 continue
             res = db.execute(text("""
                 INSERT INTO direction_calls (rule, ticker, earnings_date, session, side, entry, hold, gap, band,
