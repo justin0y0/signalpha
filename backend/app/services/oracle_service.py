@@ -117,6 +117,54 @@ def src_rss(url):
                 for x in _parse_rss(r.text,6)]
     except Exception as e: log.warning(f"rss: {e}"); return []
 
+_BROWSER={"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36"}
+
+def src_tg(channel, skip=None):
+    """A public Telegram channel's web preview (t.me/s/<channel>) — no API, no login.
+
+    X's API is paid and every Nitter mirror is dead or behind a bot wall (checked
+    2026-11-01), but fan-run bots repost some accounts to Telegram within minutes:
+    @ElonMusk_posts carries Musk's posts and replies."""
+    if not channel or not _due(f"tg:{channel}",300): return []
+    try:
+        r=httpx.get(f"https://t.me/s/{channel}",headers=_BROWSER,timeout=15,follow_redirects=True)
+        if r.status_code!=200: log.warning(f"tg {channel} {r.status_code}"); return []
+        out=[]
+        for block in r.text.split('class="tgme_widget_message_wrap')[1:]:
+            post=re.search(r'data-post="([^"]+)"',block); when=re.search(r'<time datetime="([^"]+)"',block)
+            body=re.search(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',block,re.S)
+            if not (post and body): continue
+            if skip and re.search(skip, body.group(1)): continue   # e.g. plain reposts of other people
+            import html as _html
+            txt=_html.unescape(re.sub(r"<br\s*/?>","\n",body.group(1))); txt=re.sub("<[^>]+>","",txt).strip()
+            link=re.search(r'href="(https://(?:x|twitter)\.com/[^"]+/status/\d+)"',block)
+            out.append({"kind":"news","headline":txt.replace("\n"," ")[:140],"body":txt[:600],
+                        "url":link.group(1) if link else f"https://t.me/{post.group(1)}",
+                        "uid":"tg:"+post.group(1),"ts":_ts(when.group(1)) if when else None})
+        if out: _mark_ok("tg")
+        return out[-8:]
+    except Exception as e: log.warning(f"tg {channel}: {e}"); return []
+
+# Chinese crypto/markets flash-news feeds that report what X accounts post ("Serenity
+# 发推称…"). Fetched once per ten minutes for every figure that asks, kept by keyword.
+KW_FEEDS=("https://rss.odaily.news/rss/newsflash","https://www.panewslab.com/rss.xml?lang=zh&type=NEWS",
+          "https://www.chaincatcher.com/rss/clist","https://www.techflowpost.com/rss.aspx")
+_kw: dict = {"at":0.0,"items":[]}
+
+def src_kwfeed(keys):
+    if time.time()-_kw["at"]>600:
+        items=[]
+        for u in KW_FEEDS:
+            try:
+                r=httpx.get(u,headers=_BROWSER,timeout=15,follow_redirects=True)
+                if r.status_code==200: items+=_parse_rss(r.text,120)
+            except Exception: pass
+        _kw.update(at=time.time(),items=items)
+        if items: _mark_ok("kwfeed")
+    pat=re.compile("|".join(re.escape(k) for k in keys),re.I)
+    return [{"kind":"news","headline":x["title"],"body":x["body"],"url":x["url"],"uid":x["url"] or x["title"],"ts":x["ts"]}
+            for x in _kw["items"] if pat.search(x["title"]+" "+x["body"])]
+
 def src_youtube(channel):
     """A channel's uploads feed — titles and descriptions of the latest videos."""
     if not channel or not _due(f"yt:{channel}",1800): return []
@@ -467,7 +515,7 @@ def _domain_ok(url):
     except Exception:
         return True
 
-PRIMARY_SOURCES={"truth","trumparchive","x","nitter","ark","congress","edgar","rss","f13","youtube"}
+PRIMARY_SOURCES={"truth","trumparchive","x","nitter","ark","congress","edgar","rss","f13","youtube","tg"}
 
 def _note_source(fk, st, n):
     """Remember when each (figure, source) was last confirmed working.
@@ -529,6 +577,8 @@ def _gather(fk,fig):
             elif st=="edgar": items+=src_edgar(src.get("cik",""),fig["name"])
             elif st=="f13": items+=src_f13(src.get("cik"),src.get("fund",""),fig["name"])
             elif st=="youtube": items+=src_youtube(src.get("channel",""))
+            elif st=="tg": items+=src_tg(src.get("channel",""),src.get("skip"))
+            elif st=="kwfeed": items+=src_kwfeed(src.get("keys",[]))
         except Exception as e: log.warning(f"gather {st} {fk}: {e}")
         _note_source(fk, st, max(len(items)-before, 1 if _OK_NOW else 0))
     # News older than ORACLE_NEWS_MAX_AGE_H is not a signal any more: priced at today's

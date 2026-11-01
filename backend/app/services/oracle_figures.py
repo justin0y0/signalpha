@@ -10,7 +10,9 @@ Chosen 2026-10-29 for a primary source that reaches this server, not for fame al
               McCaul file scanned images (no text), so they cannot be followed here.
   * media   — TV and online voices with large followings, via news and YouTube.
 X itself is not reachable without a paid API key (`X_BEARER_TOKEN`); the x sources stay
-configured and switch on when one is set.
+configured and switch on when one is set. Free stand-ins (checked 2026-11-01): Musk's
+posts via the fan-run Telegram mirror @ElonMusk_posts; Serenity via Chinese flash-news
+feeds that quote him. Nitter mirrors and the Bluesky copies of these accounts are dead.
 
 Dropped: Lisa Su — after removing AMD (her own company) she had two calls in a month.
 
@@ -65,7 +67,8 @@ FIGURES: dict[str, dict] = {
     "musk": {"name": "Elon Musk", "zh": "马斯克", "group": "movers", "type": "x_mover", "emoji": "🚀", "cadence": "live",
              "why": "Companies he names or deals with (not Tesla itself)", "why_zh": "他点名或合作的公司（不含特斯拉本身）",
              "own": ["TSLA"],
-             "sources": [{"type": "x", "handle": "elonmusk"}, _gn("Elon Musk says stock", "Musk xAI deal stock")]},
+             "sources": [{"type": "tg", "channel": "ElonMusk_posts", "skip": "Reposted"}, {"type": "x", "handle": "elonmusk"},
+                         _gn("Elon Musk says stock", "Musk xAI deal stock")]},
     "huang": {"name": "Jensen Huang", "zh": "黄仁勋", "group": "movers", "type": "tech_ceo", "emoji": "🟢", "cadence": "live",
               "why": "Partners and suppliers he names (not Nvidia itself)", "why_zh": "他点名的合作伙伴与供应商（不含英伟达本身）",
               "own": ["NVDA"],
@@ -159,6 +162,7 @@ FIGURES: dict[str, dict] = {
     "serenity": {"name": "Serenity", "zh": "白毛股神 Serenity", "group": "media", "type": "x_trader", "emoji": "🐦", "cadence": "live",
                  "why": "@aleabitoreddit — AI supply-chain 'bottleneck' picks", "why_zh": "@aleabitoreddit，AI 供应链「瓶颈股」",
                  "sources": [{"type": "x", "handle": "aleabitoreddit"}, _gn("Serenity aleabitoreddit"),
+                             {"type": "kwfeed", "keys": ["aleabitoreddit", "Serenity", "白毛股神", "白发股神"]},
                              _gn("白毛股神 Serenity", "Serenity 美股 推荐", hl="zh-CN")]},
     "tomnash": {"name": "Tom Nash", "zh": "Tom Nash", "group": "media", "type": "creator", "emoji": "▶️", "cadence": "live",
                 "why": "YouTube growth-stock picks", "why_zh": "YouTube 成长股推荐",

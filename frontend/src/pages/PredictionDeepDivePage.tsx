@@ -12,6 +12,7 @@ import { ArenaForReport } from '../components/ArenaForReport'
 import { OnDemandDossier } from '../components/OnDemandDossier'
 import { ReactionHistory } from '../components/ReactionHistory'
 import { EarningsSchedule } from '../components/EarningsSchedule'
+import { CompanyFinancials } from '../components/CompanyFinancials'
 import { useT } from '../i18n'
 import './DossierPage.css'
 
@@ -116,6 +117,8 @@ export function PredictionDeepDivePage() {
       <ArenaForReport ticker={data.ticker} date={data.earnings_date} />
 
       <ReactionHistory history={history} band={band} />
+
+      <CompanyFinancials ticker={data.ticker} />
 
       {data.similar_cases.length > 0 && (
         <details className="dossier__more">

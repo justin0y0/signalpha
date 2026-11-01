@@ -42,6 +42,12 @@ def configure_logging() -> None:
     # collection run. Warnings and errors still come through.
     for noisy in ("httpx", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+    # The sector ensembles were fitted on arrays and are scored with DataFrames, so
+    # scikit-learn warned once per tree per prediction: 11 GB of scheduler log in 2.7
+    # days (2026-11-01) and much of run_predictions' hour. Both messages are harmless.
+    import warnings
+    warnings.filterwarnings("ignore", message="X has feature names, but", category=UserWarning)
+    warnings.filterwarnings("ignore", message="Skipping features without any observed values", category=UserWarning)
 
 
 def get_logger(name: str) -> logging.Logger:

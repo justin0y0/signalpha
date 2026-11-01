@@ -50,6 +50,8 @@ def _cached(key: str, ttl: int, fn):
         return hit[1]
     val = fn()
     _cache[key] = (time.time(), val)
+    for k in sorted(_cache, key=lambda k: _cache[k][0])[:-200]:
+        del _cache[k]
     return val
 
 

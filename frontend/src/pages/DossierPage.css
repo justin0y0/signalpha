@@ -112,3 +112,30 @@
 .esched__dim { color: var(--text-tertiary); font-weight: 400 !important; }
 .esched__others { display: flex !important; flex-wrap: wrap; gap: 0.3rem 0.8rem; font: 500 0.72rem var(--font-mono); color: var(--text-tertiary); align-self: end; }
 .esched__link { margin-left: auto; font: 500 0.78rem var(--font-mono); color: var(--signal); align-self: center; }
+
+/* ── Reported numbers and original filings (CompanyFinancials) ── */
+.cfin { display: grid; gap: 0.75rem; }
+.cfin__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.4rem 1rem; }
+.cfin__src { font: 500 0.6rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
+.cfin__table td, .cfin__table th { white-space: nowrap; }
+.cfin__table sup { color: var(--signal); margin-left: 1px; }
+.cfin__table .is-up { color: var(--up); }
+.cfin__table .is-down { color: var(--down); }
+.cfin__note { margin: 0; font-size: 0.72rem; color: var(--text-tertiary); }
+.cfin__docs-head { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin-top: 0.4rem; padding-top: 0.7rem; border-top: 1px solid var(--border); }
+.cfin__toggle { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; }
+.cfin__toggle button { font: 600 0.6rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; padding: 0.3rem 0.6rem; background: transparent; color: var(--text-tertiary); border: 0; cursor: pointer; }
+.cfin__toggle button.is-on { background: var(--bg-3); color: var(--text-primary); }
+.cfin__docs { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.1rem; }
+.cfin__docs li { display: grid; grid-template-columns: 6.2rem 8.5rem 1fr; gap: 0.6rem; align-items: baseline; padding: 0.35rem 0; border-bottom: 1px solid var(--border); font-size: 0.78rem; }
+.cfin__date { color: var(--text-tertiary); font-size: 0.72rem; }
+.cfin__form { font: 600 0.62rem var(--font-mono); letter-spacing: 0.04em; color: var(--text-secondary); }
+.cfin__form.is-earnings { color: var(--signal); }
+.cfin__links { display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; }
+.cfin__links a, .cfin__all { color: var(--text-secondary); text-decoration: none; }
+.cfin__links a:hover, .cfin__all:hover { color: var(--text-primary); text-decoration: underline; }
+.cfin__all { font: 600 0.62rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+@media (max-width: 640px) {
+  .cfin__docs li { grid-template-columns: 5.6rem 1fr; }
+  .cfin__links { grid-column: 1 / -1; }
+}

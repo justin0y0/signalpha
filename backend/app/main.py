@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.routes.pulse_detail import router as pulse_detail_router
 from backend.app.api.routes.logos import router as logos_router
+from backend.app.api.routes.company import router as company_router
 from backend.app.api.routes.telegram_webhook import router as tg_webhook_router
 from backend.app.api.routes.backtest import router as backtest_router
 from backend.app.api.routes.calendar import router as calendar_router
@@ -39,6 +40,8 @@ from backend.app.db.session import engine
 
 settings = get_settings()
 configure_logging()
+from backend.app.core.runtime import tame_yfinance  # noqa: E402
+tame_yfinance()
 
 
 @asynccontextmanager
@@ -127,6 +130,7 @@ app.add_middleware(
 app.include_router(health_router, prefix=settings.api_v1_prefix)
 app.include_router(headline_router, prefix=settings.api_v1_prefix)
 app.include_router(arena_router, prefix=settings.api_v1_prefix)
+app.include_router(company_router, prefix=settings.api_v1_prefix)
 app.include_router(waitlist_router, prefix=settings.api_v1_prefix)
 app.include_router(moves_router, prefix=settings.api_v1_prefix)
 app.include_router(playbook_router, prefix=settings.api_v1_prefix)

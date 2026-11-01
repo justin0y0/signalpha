@@ -144,6 +144,10 @@ def bars(tickers: list[str], start: date, ttl: int = 600) -> dict[str, pd.DataFr
             out[f].index = pd.to_datetime(out[f].index).tz_localize(None).normalize()
     _fill_last_session(out)
     _px[key] = (time.time(), out)
+    # keyed by the exact ticker set, which changes every few minutes at the open: without
+    # a cap this held a new frame per call for the life of the process
+    for k in sorted(_px, key=lambda k: _px[k][0])[:-40]:
+        del _px[k]
     return out
 
 

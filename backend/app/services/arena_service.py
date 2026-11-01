@@ -386,9 +386,12 @@ def _upcoming(db: Session, now_et: datetime) -> list[dict[str, Any]]:
 
 
 def _existing(db: Session, ticker: str, d: date) -> set[str]:
+    """Forecasters that already have a call on this report. Within four days counts as
+    the same report: when the calendar moved HDB and IBN from Oct 17 to Oct 16 (2026),
+    a second set was sealed for the new date and the first could never resolve."""
     return {r[0] for r in db.execute(text(
-        "SELECT forecaster FROM arena_forecasts WHERE ticker=:t AND earnings_date=:d"),
-        {"t": ticker, "d": d}).all()}
+        "SELECT forecaster FROM arena_forecasts WHERE ticker=:t AND earnings_date BETWEEN :a AND :b"),
+        {"t": ticker, "a": d - timedelta(days=4), "b": d + timedelta(days=4)}).all()}
 
 
 def _forecast(code: str, ev: dict[str, Any], band: float, facts_fn) -> dict[str, Any] | None:
@@ -565,11 +568,16 @@ def anchor_file(db: Session, anchor_id: int, kind: str) -> tuple[bytes, str] | N
 # ───────────────────────────── resolution ─────────────────────────────
 
 def resolve_due(db: Session) -> dict[str, Any]:
+    # The report's outcome, or — when the calendar date moved after sealing — the outcome
+    # of the same report filed under a date up to three days away.
     rows = db.execute(text("""
-        SELECT a.id, a.band, a.p_breakout, a.lean, o.actual_t1_close_return AS r
+        SELECT a.id, a.band, a.p_breakout, a.lean, o.r
         FROM arena_forecasts a
-        JOIN outcomes o ON o.ticker=a.ticker AND o.earnings_date=a.earnings_date
-        WHERE a.resolved_at IS NULL AND o.actual_t1_close_return IS NOT NULL""")).all()
+        JOIN LATERAL (SELECT x.actual_t1_close_return AS r FROM outcomes x
+                      WHERE x.ticker=a.ticker AND x.earnings_date BETWEEN a.earnings_date - 3 AND a.earnings_date + 3
+                        AND x.actual_t1_close_return IS NOT NULL
+                      ORDER BY abs(x.earnings_date - a.earnings_date) LIMIT 1) o ON TRUE
+        WHERE a.resolved_at IS NULL""")).all()
     n = 0
     for r in rows:
         move = float(r.r)

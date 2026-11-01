@@ -591,6 +591,15 @@ HANDOFF.md §5 的 10 个 bug 里：#2/#3/#4/#7/#8 已修。#5（Oracle 不出�
 - **audit 修掉的**：① outcomes 当晚收集用了没收盘的当日 K 线，10-29 存了 293 个 NaN（NaN 能过 `IS NOT NULL`，Brief 说「295 份只有 1 份突破」）→ `outcome_snapshot` 丢弃无收盘价的 K 线，现有 NaN 改 NULL 待重采；`today_service` 取「≥80% 已采到」的最近交易日。② Markets 热力图行业错（V/MA 在可选消费、GE 在科技、PM 在医疗、TSLA 在工业）= 纳斯达克筛选器分类 → `python -m data_pipeline.universe resector` 用 Yahoo 行业改 universe（≥$2B），个股页显示 universe 行业；历史 earnings_events 不改（模型特征用它）。③ Pulse 已退役却仍显示 Telegram 开、星级、$50k 仓位、P(win) → 去掉。④ `/receipts` 12s、`/today` 8s 冷启动 → 后端线程每 4 分钟预热。⑤「vs S&P +3.6%」其实是超额 → 改「比标普多」。
 - **未修/待 Justin 决定**：Arena 里 HDB、IBN 10-17（周六发财报）预测的日期和日历（10-16）对不上，永远挂在待判——要作废还是按 10-19 判需要你同意（改公开记录）；`earnings_events` 行业等下次重训一起改；Groq 免费额度（8k TPM）是 Oracle + Arena + brainstorm 的共同瓶颈。
 
+### 6q. 2026-11-01：服务器瘦身、内存/句柄泄漏、财报原文件、X 替代源、HDB/IBN 改判
+
+- **日志**：scheduler 的 json 日志 2.7 天 11GB——sector ensemble 用数组训练、用 DataFrame 预测，sklearn 每棵树每次预测打一条 warning（run_predictions 每天 17:00 跑 ~57 分钟，Arena 每 2 小时封存）。`core/logging.configure_logging` + compose `PYTHONWARNINGS` 屏蔽这两条；compose 给 backend/scheduler/frontend 加 `logging` 轮转（50MB×3）和 `restart: unless-stopped`。**postgres/redis 故意没改 compose**（改了下次全量 up 会重建；redis 无持久卷，会丢会话和 Oracle 状态），只用 `docker update --restart` 加了重启策略。服务器磁盘 29G → 16G（日志 11G、journal 424M、build cache）。
+- **泄漏**：yfinance 的 peewee SQLite 缓存每个下载线程一个连接不关（fd_watch：188 个 tkr-tz.db 句柄）→ `core/runtime.tame_yfinance()` 把缓存目录指向 /proc 下不可建目录，yfinance 自动退回内存 dummy 缓存。`receipts_service._px`、`strategy_lab._cache`、`markets_service._cache`、`lookup_service._cache` 原来按可变 key 只增不删，已加上限。fd_watch 现在也打 RSS。重启前 scheduler 5.4GB / backend 2.1GB。
+- **财报数据与原文件**：`services/filings_service.py` + `GET /company/{t}/financials` + `components/CompanyFinancials.tsx`（个股页底部）。XBRL companyfacts → 单季（直接季报 / YTD 差分 / FY−Q1..3，推算值标 *）；8-K 2.02 与 6-K 的附件（EX-99.1 新闻稿等，PDF 标出）读 filing index，永久缓存；外国公司只有 20-F 年度数据。EPS 实际/预期是分析师口径，表里另一列是 GAAP。
+- **X 替代**：Nitter 全死（停服/反爬）、Bluesky 镜像号停更；免费可用的是 Telegram 公开频道网页预览 `t.me/s/<频道>`：`@ElonMusk_posts`（粉丝机器人，Musk 帖子+回复，约 1 小时内）→ `oracle_service.src_tg`（跳过纯转发）。Serenity 无镜像，加 `src_kwfeed` 扫中文快讯 RSS（Odaily/PANews/ChainCatcher/TechFlow）里的关键词。
+- **Arena HDB/IBN**：两家 10-17（周六）发财报、ADR 周一 10-19 反应；日历记成 10-16 BMO，10-16 那套 10 条被按周五（发布前）判分 → 作废进 arena_voided（保留分数和原因），事件改 AMC 重算结果，10-17 那套按 10-19 判。机制：`_existing` 同票 ±4 天视为同一财报不再重复封存；`resolve_due` 找 ±3 天内的结果。
+- **决定（Justin 授权我自己定）**：fade_spike 在站长模拟盘继续开着（纸面钱，用来积累实盘证据；新用户默认关不变）；Pulse 10-21 起已不在导航。
+
 ## 7. Repo 索引（省 token，别每次全文扫）
 
 已用 **graphify** 建好结构索引：`graphify-out/graph.json`（1005 nodes / 2339 edges）。

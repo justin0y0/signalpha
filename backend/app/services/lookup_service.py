@@ -130,4 +130,6 @@ def lookup(db: Session, ticker: str) -> dict[str, Any]:
         "computed_at": datetime.now().isoformat(timespec="seconds"),
     }
     _cache[t] = (time.time(), body)
+    for k in sorted(_cache, key=lambda k: _cache[k][0])[:-500]:   # one entry per ticker ever looked up
+        del _cache[k]
     return body

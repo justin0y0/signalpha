@@ -51,6 +51,8 @@ def _cached(key, ttl: float, fn):
         return hit[1]
     val = fn()
     _cache[key] = (time.time(), val)
+    for k in sorted(_cache, key=lambda k: _cache[k][0])[:-200]:   # bounded: keys vary by ticker set
+        del _cache[k]
     return val
 
 

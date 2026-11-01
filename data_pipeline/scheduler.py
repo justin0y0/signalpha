@@ -33,6 +33,8 @@ from data_pipeline.jobs import (
 
 settings = get_settings()
 configure_logging()
+from backend.app.core.runtime import tame_yfinance  # noqa: E402
+tame_yfinance()
 logger = get_logger(__name__)
 
 scheduler = BackgroundScheduler(timezone=settings.scheduler_timezone)
@@ -151,7 +153,8 @@ def fd_watch() -> None:
             if k == "file":
                 files[tgt] += 1
         n = sum(kinds.values())
-        print(f"fd_watch {n} {dict(kinds)}" + (f" top files {files.most_common(5)}" if n > 200 else ""), flush=True)
+        rss = next((int(x.split()[1]) // 1024 for x in open("/proc/self/status") if x.startswith("VmRSS")), -1)
+        print(f"fd_watch {n} {dict(kinds)} rss {rss} MB" + (f" top files {files.most_common(5)}" if n > 200 else ""), flush=True)
     except Exception as exc:  # noqa: BLE001
         print("fd_watch failed:", exc, flush=True)
 
