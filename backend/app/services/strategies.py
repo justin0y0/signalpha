@@ -63,6 +63,9 @@ SPECS: dict[str, dict[str, Any]] = {
                   "source": "SignAlpha", "desk": "/strategy"},
     "follow_gap": {"family": "earnings", "kind": "direction", "side": "LONG", "entry": "close", "slots": 10, "alloc": 15, "on": False,
                    "source": "Earnings-announcement-return drift — Brandt et al. (2008)", "desk": "/strategy"},
+    # fade_miss: at the bot's real fills the backtest compounds to +0.2% a year with a −49%
+    # drawdown, and live (2026-10-22..11-12) it won 1 of 8, −8.2% a trade: small caps that
+    # missed and still opened up kept running (KIDS +30%, FMC +16%). Off by default.
     "fade_miss": {"family": "earnings", "kind": "direction", "side": "SHORT", "entry": "open", "slots": 5, "alloc": 10, "on": False,
                   "source": "SignAlpha", "desk": "/strategy"},
     "pre_run": {"family": "earnings", "kind": "event", "side": "LONG", "entry": "close", "exit": "close", "slots": 30, "alloc": 30, "on": True,

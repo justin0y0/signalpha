@@ -600,6 +600,14 @@ HANDOFF.md §5 的 10 个 bug 里：#2/#3/#4/#7/#8 已修。#5（Oracle 不出�
 - **Arena HDB/IBN**：两家 10-17（周六）发财报、ADR 周一 10-19 反应；日历记成 10-16 BMO，10-16 那套 10 条被按周五（发布前）判分 → 作废进 arena_voided（保留分数和原因），事件改 AMC 重算结果，10-17 那套按 10-19 判。机制：`_existing` 同票 ±4 天视为同一财报不再重复封存；`resolve_due` 找 ±3 天内的结果。
 - **决定（Justin 授权我自己定）**：fade_spike 在站长模拟盘继续开着（纸面钱，用来积累实盘证据；新用户默认关不变）；Pulse 10-21 起已不在导航。
 
+### 6r. 2026-11-12：三周半交易复盘、执行修正、SEO、推广方案
+
+- **账户（10-20..11-12，Alpaca 模拟盘）**：$98,462（−1.5%）；同期 SPY −0.9%、QQQ −3.9%、IWM/RSP +4.3%。已平仓 156 笔：buy_flush +$627（53 笔，57%）、rsi2 +$152、pre_run −$245（对 SPY 超额 +1.5%/笔）、fade_spike −$613（33 笔，30%）、fade_miss −$634（8 笔赢 1）。未平仓 −$980（insider −$632）。
+- **信号按 SIP 价是对的，亏在执行**：direction book 全部信号 buy_flush +0.71%（146）、fade_spike +0.70%（93）开→收；实际成交的 fade_spike −1.23%。原因 ①限价单被模拟盘撮合「漏成交」——被撤的 21 张里 19 张在 SIP 上已经成交过限价，撤掉的恰是最快往有利方向走的（buy_flush 撤单 +2.0%、fade_spike +3.0%）；②9:31 时较冷门股票 9:30 的 IEX 分钟线还没发布，9:36 才发现、按 9:33 截止跳过（这批 9:37 进场仍 +1.6%/+2.1%）。
+- **改动**：`LIMIT_TTL_MIN` 4 分钟后按最新成交价 ±`CHASE_COLLAR`(3%) 改价一次（Alpaca PATCH，新订单号写回本表，client id 加 `-r`），再 4 分钟才撤；`run_entries` 在截止前重跑 `_open_pass`；`OPEN_CALL_CUTOFF` 9:33→9:38；站长账户关 fade_miss（真实成交回测年化 +0.2%、回撤 −49%）。live 记录：breakout 旗标 70.7%（191/270）vs 全部 51.3%；follow-through 208 个超额 +0.57%；Arena 736 份后 ML 首次显著好于基准（Brier 0.241 vs 0.249）。
+- **SEO**：之前每页同一个 <title>、没有 robots/sitemap。nginx 把 `/predict/*` 和各 desk 转给 `api/routes/seo.py` 的 `/seo/render`（从 frontend 容器内部 8080 端口取 index.html 当模板，改 title/description/og/canonical；失败回落静态 index.html）；`/sitemap.xml`（3,264 个 URL）、`public/robots.txt`；Layout 按路由设 document.title。待 Justin：Google Search Console / Bing 提交 sitemap。
+- **推广**：`docs/PROMOTION.md`（渠道排序、各社区规则、Show HN / V2EX / r/algotrading 逐字稿）。Claude in Chrome 打不开 Reddit（扩展安全限制）；HN/V2EX/X 都未登录。原则：以作者身份发、只用站上真实数字、不在 r/investing / r/options 推、不开小号。
+
 ## 7. Repo 索引（省 token，别每次全文扫）
 
 已用 **graphify** 建好结构索引：`graphify-out/graph.json`（1005 nodes / 2339 edges）。

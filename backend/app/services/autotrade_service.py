@@ -19,7 +19,8 @@ $2,000 of equity and an easy-to-borrow name; otherwise the signal is skipped, no
 
 A session, New York time:
   09:31   run_open      opening prints from the broker feed -> direction calls -> orders
-  09:32:30, 09:37, 09:51  run_entries again for opens that printed late (until 10:00)
+  09:32:30, 09:37, 09:51  run_entries again for opens that printed late (the 09:32:30 one
+                          also re-reads the opening prints; opening calls found after 09:38 are skipped)
   15:44   run_closes    market-on-close: exits due today, then follow_gap entries
   15:56   flatten_late  exits the closing auction refused go out at market
   */5     reconcile     fills from the broker; marks every strategy's P&L for the charts
@@ -34,6 +35,7 @@ switch should move only after that is settled.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import secrets
 from datetime import date, datetime, timedelta, timezone
@@ -43,6 +45,8 @@ from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 import httpx
+
+log = logging.getLogger(__name__)
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -60,7 +64,11 @@ ENTRY_DEADLINE = (10, 0)
 # passes find at 9:36 or 9:50 stay on the public book but are not traded.
 # Since 2023-07: buy_flush entered at 9:31 +0.24% a trade, at 9:35 -0.04%, at 9:45 -0.21%;
 # fade_spike +0.14% / +0.07% / -0.06%. Only the first three broker passes qualify.
-OPEN_CALL_CUTOFF = tuple(int(x) for x in os.getenv("OPEN_CALL_CUTOFF", "9:33").split(":"))
+# Signals first seen after this are skipped as too late for an opening trade. 9:38 since
+# 2026-11-12: of the signals skipped as late from 10-20 to 11-12, those found by the 9:36
+# pass still made +1.6% (short the spike, n 15) and +2.1% (buy the flush, n 7) from a 9:37
+# entry to the close; those found at 9:50 made +0.3% / +0.8%.
+OPEN_CALL_CUTOFF = tuple(int(x) for x in os.getenv("OPEN_CALL_CUTOFF", "9:38").split(":"))
 CLOSE_CUTOFF = (15, 50)
 DEAD = ("skipped", "failed", "rejected", "canceled", "expired", "done_for_day")
 FINAL = sorted({"filled", "canceled", "expired", "rejected", "done_for_day", "replaced", "failed", "skipped"})
@@ -82,7 +90,14 @@ DEFAULTS: dict[str, Any] = {
 }
 MAX_LIBRARY = 12
 ENTRY_COLLAR = float(os.getenv("AUTOPILOT_COLLAR", "0.006"))
-LIMIT_TTL_MIN = int(os.getenv("AUTOPILOT_LIMIT_TTL_MIN", "10"))
+LIMIT_TTL_MIN = int(os.getenv("AUTOPILOT_LIMIT_TTL_MIN", "4"))
+# An opening limit still open after LIMIT_TTL_MIN is repriced once, CHASE_COLLAR past the
+# latest trade, and canceled only if that is still open LIMIT_TTL_MIN later. Canceling
+# outright (10-30..11-12) dropped exactly the trades that moved our way at once: the 19
+# canceled buy-the-flush / short-the-spike entries made +2.0% / +3.0% open-to-close on
+# the consolidated tape against +0.7% / −1.2% for the ones that filled, and 19 of 21 had
+# traded through their limit on that tape — the paper engine simply did not fill them.
+CHASE_COLLAR = float(os.getenv("AUTOPILOT_CHASE_COLLAR", "0.03"))
 
 DDL = [
     """CREATE TABLE IF NOT EXISTS autotrade_accounts (
@@ -177,6 +192,12 @@ class Alpaca:
 
     def cancel(self, boid: str) -> None:
         self._req("DELETE", f"/v2/orders/{boid}")
+
+    def replace(self, boid: str, limit: float, cid: str) -> dict:
+        """Reprice an open limit order. Alpaca answers with a new order (new id, the given
+        client id); the old one ends as "replaced"."""
+        return self._req("PATCH", f"/v2/orders/{boid}",
+                         json={"limit_price": f"{limit:.2f}" if limit >= 1 else f"{limit:.4f}", "client_order_id": cid})
 
 
 # ───────────────────────────── connections ─────────────────────────────
@@ -702,7 +723,7 @@ def _place(db: Session, row, s: dict, alp: Alpaca, c, *, tif: str, book: _Book, 
     # prices that never traded on the consolidated tape that minute (mean 1.06% worse than
     # the tape when sent, $785 in all — more than the account's whole drawdown). Live, the
     # collar guards against a bad opening print the same way. Unfilled after
-    # LIMIT_TTL_MIN minutes, reconcile() cancels it: the edge is gone by then anyway.
+    # LIMIT_TTL_MIN minutes, reconcile() reprices it once (CHASE_COLLAR), then cancels.
     lim = None
     if isinstance(alp, Alpaca) and tif == "day" and _now().hour < 11 and ENTRY_COLLAR > 0:
         lim = px * (1 + ENTRY_COLLAR) if side == "buy" else px * (1 - ENTRY_COLLAR)
@@ -769,9 +790,6 @@ def sweep_overdue(db: Session, row, alp, now: datetime) -> int:
 def run_open(db: Session) -> dict[str, Any]:
     """Seconds after the bell: overdue exits first, then the opening prints from the broker
     feed, the day's calls and their orders."""
-    from backend.app.services import direction_service as ds
-    from backend.app.services.strategy_lab import opens_today
-
     now = _now()
     if now.weekday() >= 5 or (now.hour, now.minute) < (9, 30) or (now.hour, now.minute) >= ENTRY_DEADLINE:
         return {"why": "outside the entry window"}
@@ -783,16 +801,24 @@ def run_open(db: Session) -> dict[str, Any]:
                 swept[row["id"]] = k
         except Exception as exc:  # noqa: BLE001
             event(db, row["id"], "error", f"overdue sweep: {exc}")
-    cands = ds.candidates(db, now.date())
-    from backend.app.services.strategy_lab import prev_closes
+    res = _open_pass(db, now)
+    return {"swept": swept, **res, "entries": run_entries(db)}
 
+
+def _open_pass(db: Session, now: datetime) -> dict[str, Any]:
+    """Opening prints from the broker feed -> today's direction calls (idempotent)."""
+    from backend.app.services import direction_service as ds
+    from backend.app.services.strategy_lab import last_trades, opens_today, prev_closes
+
+    cands = ds.candidates(db, now.date())
+    if not cands:
+        return {"candidates": 0, "opened": 0, "issued": {"issued": 0}}
     names = sorted({c["ticker"] for c in cands})
-    from backend.app.services.strategy_lab import last_trades
-    opens = opens_today(names, db) if cands else {}
-    closes = prev_closes(names, db) if cands else {}
-    lasts = last_trades(names, db) if cands else {}
-    issued = ds.issue_due(db, opens=opens, closes=closes, lasts=lasts) if cands else {"issued": 0}
-    return {"swept": swept, "candidates": len(cands), "opened": len(opens), "issued": issued, "entries": run_entries(db)}
+    opens = opens_today(names, db)
+    closes = prev_closes(names, db)
+    lasts = last_trades(names, db)
+    issued = ds.issue_due(db, opens=opens, closes=closes, lasts=lasts)
+    return {"candidates": len(cands), "opened": len(opens), "issued": issued}
 
 
 def run_entries(db: Session) -> dict[str, Any]:
@@ -802,6 +828,15 @@ def run_entries(db: Session) -> dict[str, Any]:
         return {"why": "outside the entry window"}
     from backend.app.services.strategies import signals_for
 
+    if (now.hour, now.minute) < OPEN_CALL_CUTOFF:
+        # A second look at the opening prints: at 9:31:00 the 9:30 one-minute bar of a
+        # thinner stock is often not published yet, and the stock was only picked up by
+        # the 9:36 pass and skipped as late (48 of 53 late signals, 2026-10-20..11-12,
+        # had opened at 9:30).
+        try:
+            _open_pass(db, now)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("open re-pass: %s", exc)
     calls = list(db.execute(text("""SELECT * FROM direction_calls WHERE session=:d AND entry='open' AND origin='open'
                                     ORDER BY abs(gap_x) DESC"""), {"d": now.date()}).mappings())
     calls += signals_for(db, now.date(), "open")
@@ -1003,14 +1038,28 @@ def reconcile(db: Session) -> dict[str, Any]:
                 continue
             fq = float(r.get("filled_qty") or 0)
             price = float(r["filled_avg_price"]) if r.get("filled_avg_price") else None
+            age = datetime.now(timezone.utc) - o["submitted_at"]
             if (o.get("limit_price") is not None and o["leg"] == "entry" and r["status"] in ("new", "accepted", "partially_filled")
-                    and o["submitted_at"] < datetime.now(timezone.utc) - timedelta(minutes=LIMIT_TTL_MIN) and hasattr(alp, "cancel")):
+                    and age > timedelta(minutes=LIMIT_TTL_MIN) and hasattr(alp, "cancel")):
+                chased = o["client_order_id"].endswith("-r")
                 try:
-                    alp.cancel(o["broker_order_id"])
-                    event(db, row["id"], "info", f"{o['ticker']} entry limit ${float(o['limit_price']):.2f} not filled in "
-                                                 f"{LIMIT_TTL_MIN} min — canceled" + (f" ({int(fq)} filled)" if fq else ""))
-                except BrokerError:
-                    pass
+                    if not chased and hasattr(alp, "replace"):
+                        from backend.app.services.strategy_lab import last_trades
+                        px = (last_trades([o["ticker"]], db) or {}).get(o["ticker"]) or float(o["ref_price"] or o["limit_price"])
+                        lim = px * (1 + CHASE_COLLAR) if o["side"] == "buy" else px * (1 - CHASE_COLLAR)
+                        new = alp.replace(o["broker_order_id"], lim, o["client_order_id"] + "-r")
+                        db.execute(text("""UPDATE autotrade_orders SET client_order_id=:c, broker_order_id=:b, limit_price=:l
+                                           WHERE id=:i"""), {"c": o["client_order_id"] + "-r", "b": new.get("id"), "l": lim, "i": o["id"]})
+                        db.commit()
+                        event(db, row["id"], "info", f"{o['ticker']} entry limit ${float(o['limit_price']):.2f} not filled in "
+                                                     f"{LIMIT_TTL_MIN} min — repriced to ${lim:.2f}")
+                        continue
+                    if age > timedelta(minutes=2 * LIMIT_TTL_MIN):
+                        alp.cancel(o["broker_order_id"])
+                        event(db, row["id"], "info", f"{o['ticker']} entry limit ${float(o['limit_price']):.2f} still not filled — "
+                                                     f"canceled" + (f" ({int(fq)} filled)" if fq else ""))
+                except BrokerError as exc:
+                    event(db, row["id"], "warn", f"{o['ticker']} reprice/cancel: {exc}")
             if r["status"] == o["status"] and fq == float(o["filled_qty"] or 0):
                 continue
             db.execute(text("""UPDATE autotrade_orders SET status=:s, filled_qty=:q, filled_avg_price=:p,

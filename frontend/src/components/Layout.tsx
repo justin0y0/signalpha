@@ -63,6 +63,17 @@ export function Layout() {
   useSpotlight()
 
   useEffect(() => { setOpen(false); window.scrollTo({ top: 0 }) }, [location.pathname])
+  // A title per page for the browser tab, history and crawlers that run the app (the
+  // server-side one comes from api/routes/seo.py for the first load).
+  useEffect(() => {
+    const p = location.pathname
+    const stock = p.match(/^\/predict\/([^/]+)/)
+    const name = stock ? `${decodeURIComponent(stock[1]).toUpperCase()} earnings`
+      : ({ '/brief': t('nav.brief'), '/arena': t('nav.arena'), '/model': t('nav.model'), '/strategy': t('nav.strategy'),
+           '/autopilot': t('nav.autopilot'), '/library': t('nav.library'), '/markets': t('nav.markets'), '/oracle': t('nav.oracle'),
+           '/pro': t('nav.pro'), '/about': t('nav.about'), '/contact': t('nav.contact'), '/legal': t('nav.legal') } as Record<string, string>)[p]
+    document.title = name ? `${name} · SignAlpha` : 'SignAlpha · Earnings season, on autopilot'
+  }, [location.pathname, t])
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
