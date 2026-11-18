@@ -174,6 +174,21 @@ def library_job() -> None:
 
 scheduler.add_job(library_job, CronTrigger(day_of_week="sat", hour=7, minute=0, timezone=TZ),
                   id="strategy_library", max_instances=1, coalesce=True)
+
+
+def indexnow_job() -> None:
+    """Daily IndexNow ping for the pages that changed (api/routes/seo.py)."""
+    from backend.app.api.routes.seo import indexnow
+    from backend.app.db.session import SessionLocal
+
+    try:
+        with SessionLocal() as db:
+            print("indexnow", indexnow(db), flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print("indexnow failed:", exc, flush=True)
+
+
+scheduler.add_job(indexnow_job, CronTrigger(hour=6, minute=15, timezone=TZ), id="indexnow", max_instances=1, coalesce=True)
 # Connections without a working on-close order (paper accounts, moomoo — see uses_moc) close
 # at market at 15:58:20.
 scheduler.add_job(autopilot_job, CronTrigger(day_of_week="mon-fri", hour=15, minute=58, second=20, timezone=TZ),

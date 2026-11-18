@@ -608,6 +608,13 @@ HANDOFF.md §5 的 10 个 bug 里：#2/#3/#4/#7/#8 已修。#5（Oracle 不出�
 - **SEO**：之前每页同一个 <title>、没有 robots/sitemap。nginx 把 `/predict/*` 和各 desk 转给 `api/routes/seo.py` 的 `/seo/render`（从 frontend 容器内部 8080 端口取 index.html 当模板，改 title/description/og/canonical；失败回落静态 index.html）；`/sitemap.xml`（3,264 个 URL）、`public/robots.txt`；Layout 按路由设 document.title。待 Justin：Google Search Console / Bing 提交 sitemap。
 - **推广**：`docs/PROMOTION.md`（渠道排序、各社区规则、Show HN / V2EX / r/algotrading 逐字稿）。Claude in Chrome 打不开 Reddit（扩展安全限制）；HN/V2EX/X 都未登录。原则：以作者身份发、只用站上真实数字、不在 r/investing / r/options 推、不开小号。
 
+### 6s. 2026-11-17：撤回追价、关 fade_spike、IndexNow
+
+- **追价是错的，已撤回**：限价没成交 = 价格已经朝有利方向跑了，改价追进就是行情走完才进场（11-13 NMAX −13%、HAWK −12%、ANDG −4.6%，三笔 −$643）。上次「19/21 在 SIP 上成交过限价」的统计用的分钟线含下单前的成交，夸大了。现在 `LIMIT_TTL_MIN`=3 分钟直接撤单，无改价。9:32:30 补跑开盘与 9:38 截止保留。
+- **站长模拟盘关 fade_spike**：实盘 38 笔、29% 赢、−1.36%/笔、−$1,130；9:31 进场回测 2023 起只有 +0.14%（t 0.7）。fade_miss 11-12 已关。剩下全是多头策略。
+- **账户（10-19..11-17）**：−3.0%，同期 SPY −4.4%、IWM −0.8%、RSP +1.1%；按日对 SPY 相关 0.88、β 0.26、α −0.09%/天——超出大盘的亏损几乎全来自两条做空策略。未平仓 −$1,815 里约 −$1,285 是大盘、−$542 是选股（insider_cluster 超额 −4.8%、sectors −2.6%；follow_gap +1.4%、pre_run +1.3%）。Alpaca 日净值时间戳就是当天（NY 时区），别再错位一天。
+- **SEO**：IndexNow 已接（key 文件 `frontend/public/<key>.txt`，`seo.indexnow()`，scheduler 每天 6:15 推近 3 天有财报的股票页 + 各 desk）；首次全量 3,264 个 URL 成功。Google 不收 IndexNow，要 Search Console：Chrome 里登录的是 USC 学校账号且已过期（跳 USC SSO），需 Justin 用个人 Gmail 登录后再做（URL 前缀资源 + HTML meta 验证 + 提交 sitemap）。
+
 ## 7. Repo 索引（省 token，别每次全文扫）
 
 已用 **graphify** 建好结构索引：`graphify-out/graph.json`（1005 nodes / 2339 edges）。

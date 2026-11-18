@@ -25,6 +25,9 @@ from backend.app.db.session import get_db
 
 router = APIRouter(prefix="/seo", tags=["seo"])
 SITE = "https://signalpha.app"
+# IndexNow (Bing, Yandex, Seznam, Naver, Yep): no account, just this key served at
+# /<key>.txt (frontend/public). Google does not take IndexNow; it reads the sitemap.
+INDEXNOW_KEY = "ff81af36f5c936fc8339fe171d23640d"
 ET = ZoneInfo("America/New_York")
 
 PAGES: dict[str, tuple[str, str]] = {
@@ -164,3 +167,31 @@ def sitemap(db: Session = Depends(get_db)):
              for u, f, p in urls]
     body.append("</urlset>")
     return Response("\n".join(body), media_type="application/xml", headers={"Cache-Control": "public, max-age=3600"})
+
+
+def _urls(db: Session, days: int = 120) -> list[str]:
+    today = datetime.now(ET).date()
+    tickers = [r[0] for r in db.execute(text("""SELECT DISTINCT ticker FROM earnings_events
+        WHERE earnings_date BETWEEN :a AND :b ORDER BY ticker"""), {"a": today - timedelta(days=days), "b": today + timedelta(days=days)}).all()]
+    return [SITE + "/"] + [SITE + p for p in PAGES] + \
+        [f"{SITE}/predict/{t}" for t in tickers if re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,7}", t)]
+
+
+def indexnow(db: Session, everything: bool = False) -> dict:
+    """Tell IndexNow engines what changed: every page once, then daily the desks and the
+    stocks reporting within three days (their pages change most)."""
+    if everything:
+        urls = _urls(db)
+    else:
+        today = datetime.now(ET).date()
+        tickers = [r[0] for r in db.execute(text("""SELECT DISTINCT ticker FROM earnings_events
+            WHERE earnings_date BETWEEN :a AND :b"""), {"a": today - timedelta(days=3), "b": today + timedelta(days=3)}).all()]
+        urls = [SITE + "/"] + [SITE + p for p in PAGES] + [f"{SITE}/predict/{t}" for t in tickers if re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,7}", t)]
+    sent = 0
+    for i in range(0, len(urls), 10000):
+        r = httpx.post("https://api.indexnow.org/indexnow", timeout=30, json={
+            "host": "signalpha.app", "key": INDEXNOW_KEY, "keyLocation": f"{SITE}/{INDEXNOW_KEY}.txt", "urlList": urls[i:i + 10000]})
+        if r.status_code not in (200, 202):
+            return {"sent": sent, "status": r.status_code, "body": r.text[:200]}
+        sent += len(urls[i:i + 10000])
+    return {"sent": sent, "status": 200}

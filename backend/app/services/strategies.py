@@ -56,7 +56,8 @@ SEC_UA = {"User-Agent": os.getenv("SEC_USER_AGENT") or "Signalpha-research conta
 # account; `on` is whether a new connection starts with it switched on.
 SPECS: dict[str, dict[str, Any]] = {
     # fade_spike: holds over 2016-2026 at the bot's fill (t 2.3) but since 2023-07 entered at
-    # 9:31 it earns +0.14% a trade (t 0.7) — no longer recommended by default.
+    # 9:31 it earns +0.14% a trade (t 0.7) — no longer recommended by default. Live on the
+    # owner's paper account (10-21..11-13): 38 trades, 29% won, −1.36% a trade, −$1,130.
     "fade_spike": {"family": "earnings", "kind": "direction", "side": "SHORT", "entry": "open", "slots": 5, "alloc": 15, "on": False,
                    "source": "SignAlpha", "desk": "/strategy"},
     "buy_flush": {"family": "earnings", "kind": "direction", "side": "LONG", "entry": "open", "slots": 5, "alloc": 20, "on": True,

@@ -90,14 +90,13 @@ DEFAULTS: dict[str, Any] = {
 }
 MAX_LIBRARY = 12
 ENTRY_COLLAR = float(os.getenv("AUTOPILOT_COLLAR", "0.006"))
-LIMIT_TTL_MIN = int(os.getenv("AUTOPILOT_LIMIT_TTL_MIN", "4"))
-# An opening limit still open after LIMIT_TTL_MIN is repriced once, CHASE_COLLAR past the
-# latest trade, and canceled only if that is still open LIMIT_TTL_MIN later. Canceling
-# outright (10-30..11-12) dropped exactly the trades that moved our way at once: the 19
-# canceled buy-the-flush / short-the-spike entries made +2.0% / +3.0% open-to-close on
-# the consolidated tape against +0.7% / −1.2% for the ones that filled, and 19 of 21 had
-# traded through their limit on that tape — the paper engine simply did not fill them.
-CHASE_COLLAR = float(os.getenv("AUTOPILOT_CHASE_COLLAR", "0.03"))
+LIMIT_TTL_MIN = int(os.getenv("AUTOPILOT_LIMIT_TTL_MIN", "3"))
+# An opening limit still open after LIMIT_TTL_MIN is canceled, not chased. An unfilled
+# limit means the price already ran our way; repricing to the latest trade (tried
+# 11-12..11-13) entered after the move: NMAX shorted after a 13% drop, HAWK after 9.5%,
+# ANDG bought after a 3.7% bounce — −13%, −12%, −4.6%, $643 on the three. (The earlier
+# count of "19 of 21 traded through their limit" used minute bars that included the
+# seconds before the order went in.)
 
 DDL = [
     """CREATE TABLE IF NOT EXISTS autotrade_accounts (
@@ -192,12 +191,6 @@ class Alpaca:
 
     def cancel(self, boid: str) -> None:
         self._req("DELETE", f"/v2/orders/{boid}")
-
-    def replace(self, boid: str, limit: float, cid: str) -> dict:
-        """Reprice an open limit order. Alpaca answers with a new order (new id, the given
-        client id); the old one ends as "replaced"."""
-        return self._req("PATCH", f"/v2/orders/{boid}",
-                         json={"limit_price": f"{limit:.2f}" if limit >= 1 else f"{limit:.4f}", "client_order_id": cid})
 
 
 # ───────────────────────────── connections ─────────────────────────────
@@ -723,7 +716,7 @@ def _place(db: Session, row, s: dict, alp: Alpaca, c, *, tif: str, book: _Book, 
     # prices that never traded on the consolidated tape that minute (mean 1.06% worse than
     # the tape when sent, $785 in all — more than the account's whole drawdown). Live, the
     # collar guards against a bad opening print the same way. Unfilled after
-    # LIMIT_TTL_MIN minutes, reconcile() reprices it once (CHASE_COLLAR), then cancels.
+    # LIMIT_TTL_MIN minutes, reconcile() cancels it: the move it was for has happened.
     lim = None
     if isinstance(alp, Alpaca) and tif == "day" and _now().hour < 11 and ENTRY_COLLAR > 0:
         lim = px * (1 + ENTRY_COLLAR) if side == "buy" else px * (1 - ENTRY_COLLAR)
@@ -1038,28 +1031,14 @@ def reconcile(db: Session) -> dict[str, Any]:
                 continue
             fq = float(r.get("filled_qty") or 0)
             price = float(r["filled_avg_price"]) if r.get("filled_avg_price") else None
-            age = datetime.now(timezone.utc) - o["submitted_at"]
             if (o.get("limit_price") is not None and o["leg"] == "entry" and r["status"] in ("new", "accepted", "partially_filled")
-                    and age > timedelta(minutes=LIMIT_TTL_MIN) and hasattr(alp, "cancel")):
-                chased = o["client_order_id"].endswith("-r")
+                    and o["submitted_at"] < datetime.now(timezone.utc) - timedelta(minutes=LIMIT_TTL_MIN) and hasattr(alp, "cancel")):
                 try:
-                    if not chased and hasattr(alp, "replace"):
-                        from backend.app.services.strategy_lab import last_trades
-                        px = (last_trades([o["ticker"]], db) or {}).get(o["ticker"]) or float(o["ref_price"] or o["limit_price"])
-                        lim = px * (1 + CHASE_COLLAR) if o["side"] == "buy" else px * (1 - CHASE_COLLAR)
-                        new = alp.replace(o["broker_order_id"], lim, o["client_order_id"] + "-r")
-                        db.execute(text("""UPDATE autotrade_orders SET client_order_id=:c, broker_order_id=:b, limit_price=:l
-                                           WHERE id=:i"""), {"c": o["client_order_id"] + "-r", "b": new.get("id"), "l": lim, "i": o["id"]})
-                        db.commit()
-                        event(db, row["id"], "info", f"{o['ticker']} entry limit ${float(o['limit_price']):.2f} not filled in "
-                                                     f"{LIMIT_TTL_MIN} min — repriced to ${lim:.2f}")
-                        continue
-                    if age > timedelta(minutes=2 * LIMIT_TTL_MIN):
-                        alp.cancel(o["broker_order_id"])
-                        event(db, row["id"], "info", f"{o['ticker']} entry limit ${float(o['limit_price']):.2f} still not filled — "
-                                                     f"canceled" + (f" ({int(fq)} filled)" if fq else ""))
-                except BrokerError as exc:
-                    event(db, row["id"], "warn", f"{o['ticker']} reprice/cancel: {exc}")
+                    alp.cancel(o["broker_order_id"])
+                    event(db, row["id"], "info", f"{o['ticker']} entry limit ${float(o['limit_price']):.2f} not filled in "
+                                                 f"{LIMIT_TTL_MIN} min — canceled" + (f" ({int(fq)} filled)" if fq else ""))
+                except BrokerError:
+                    pass
             if r["status"] == o["status"] and fq == float(o["filled_qty"] or 0):
                 continue
             db.execute(text("""UPDATE autotrade_orders SET status=:s, filled_qty=:q, filled_avg_price=:p,
